@@ -182,6 +182,23 @@ kbd { border: 1px solid var(--border-strong); border-bottom-width: 2px; border-r
 .dev-seg .icon-btn[aria-pressed="true"] { background: var(--surface-2); color: var(--fg); box-shadow: 0 1px 3px rgb(0 0 0 / .12); }
 .dev-seg .icon-btn svg { transition: transform .2s ease; }
 .dev-seg .icon-btn.land svg { transform: rotate(90deg); }
+/* Putar orientasi: hanya ikon yang diklik yang berputar dengan pantulan (lewat sedikit, lalu kembali) */
+.dev-seg .icon-btn.bounce-land svg { animation: dev-to-land .5s ease-out; }
+.dev-seg .icon-btn.bounce-port svg { animation: dev-to-port .5s ease-out; }
+@keyframes dev-to-land {
+  0% { transform: rotate(0) scale(1); }
+  45% { transform: rotate(108deg) scale(1.25); }
+  70% { transform: rotate(84deg) scale(.92); }
+  85% { transform: rotate(93deg) scale(1.04); }
+  100% { transform: rotate(90deg) scale(1); }
+}
+@keyframes dev-to-port {
+  0% { transform: rotate(90deg) scale(1); }
+  45% { transform: rotate(-18deg) scale(1.25); }
+  70% { transform: rotate(6deg) scale(.92); }
+  85% { transform: rotate(-3deg) scale(1.04); }
+  100% { transform: rotate(0) scale(1); }
+}
 .browser-view.live.dev-tablet, .browser-view.live.dev-mobile { aspect-ratio: auto; height: min(80vh, 920px); min-height: 420px; display: block; overflow: hidden;
   background: repeating-linear-gradient(-45deg, var(--surface-2) 0 10px, var(--surface) 10px 20px); }
 .browser-view.dev-tablet iframe[style], .browser-view.dev-mobile iframe[style] { inset: auto; transform-origin: 0 0; border-radius: 18px;

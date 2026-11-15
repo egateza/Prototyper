@@ -83,7 +83,17 @@ if (!DEVICES[ui.device]) ui.device = 'desktop';
 /** Klik ikon perangkat yang sudah aktif = putar portrait/landscape. */
 function setDevice(d) {
   if (!DEVICES[d]) return;
-  if (d === ui.device) { if (DEVICES[d].w) setLandscape(!ui.landscape); return; }
+  if (d === ui.device) {
+    if (!DEVICES[d].w) return;
+    setLandscape(!ui.landscape);
+    // hanya ikon yang diklik yang memantul; kelas dipasang di DOM (bukan HTML) agar render ulang tidak memotongnya
+    const btn = $(`#d-bar-btns [data-dev="${d}"]`);
+    if (btn) {
+      btn.classList.add(ui.landscape ? 'bounce-land' : 'bounce-port');
+      btn.addEventListener('animationend', () => btn.classList.remove('bounce-land', 'bounce-port'), { once: true });
+    }
+    return;
+  }
   ui.device = d; writePref('prototyper:device', d);
   setLandscape(false); // ganti perangkat selalu mulai dari portrait
 }

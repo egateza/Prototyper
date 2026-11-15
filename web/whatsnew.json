@@ -2,6 +2,14 @@
   "releasesUrl": "https://github.com/egateza/Prototyper/releases",
   "releases": [
     {
+      "version": "0.3.7",
+      "date": "2026-11-15",
+      "title": "Ikon perangkat memantul saat diputar",
+      "items": [
+        "Saat orientasi pratinjau diputar (klik ikon tablet/mobile yang aktif), ikon itu berputar dengan efek memantul. Ikon lain tetap diam."
+      ]
+    },
+    {
       "version": "0.3.6",
       "date": "2026-11-15",
       "title": "Tombol Pasang untuk pembaruan Web UI",
