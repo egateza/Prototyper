@@ -1,6 +1,6 @@
 {
   "name": "prototyper",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Daftarkan, jalankan, dan kelola prototype lokal agar bisa dikerjakan oleh LLM agent apa pun.",
   "type": "module",
   "license": "UNLICENSED",

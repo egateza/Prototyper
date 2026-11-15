@@ -1,9 +1,16 @@
-## Yang baru di 0.3.3
+## Yang baru di 0.3.4
+
+- **Notifikasi tray benar-benar bisa dimatikan.** Bila "Tampilkan notifikasi" tidak dicentang, notifikasi pembaruan, konfirmasi startup, dan info lain kini ikut diam. Sebelumnya hanya notifikasi status prototype yang mati.
+- Yang tetap tampil hanya error dari aksi yang Anda klik sendiri (mis. gagal memasang pembaruan), agar kegagalan tidak terjadi diam-diam.
+
+Dari 0.3.0–0.3.3 (exe atau MSI), tray cukup mengunduh paket aplikasi `prototyper-0.3.4-app-r1.tar.gz` (sekitar 0,6 MB). Pembaruan ini mengubah kode tray, jadi Prototyper dimulai ulang sekali.
+
+## 0.3.3
 
 - **Pembaruan Web UI tanpa restart.** Pembaruan dari tray yang hanya mengubah Web UI kini dipasang tanpa mematikan daemon maupun prototype yang sedang berjalan: cukup muat ulang halaman Prototyper di browser. Pembaruan yang mengubah kode tetap memulai ulang Prototyper seperti biasa.
 - Paket aplikasi dipasang lebih dulu selagi Prototyper berjalan; bila pemasangan gagal, tidak ada yang dihentikan.
 
-Dari 0.3.0–0.3.2 (exe atau MSI), tray cukup mengunduh paket aplikasi `prototyper-0.3.3-app-r1.tar.gz` (sekitar 0,6 MB). Pembaruan ke 0.3.3 ini sendiri masih memulai ulang sekali; mulai rilis berikutnya, pembaruan khusus Web UI berlaku tanpa restart.
+Pembaruan ke 0.3.3 sendiri masih memulai ulang sekali; sesudahnya, pembaruan khusus Web UI berlaku tanpa restart.
 
 ## 0.3.2
 

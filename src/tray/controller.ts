@@ -110,8 +110,12 @@ export class TrayController {
     }
   }
 
-  private notify(title: string, text: string, force = false): void {
-    if (this.state.notifications || force) this.d.host.balloon(title, text);
+  /**
+   * Balon notifikasi tray. `info` mengikuti "Tampilkan notifikasi"; `error` (aksi yang diklik pengguna gagal
+   * atau tidak bisa dijalankan) tetap tampil agar kegagalan tidak terjadi diam-diam.
+   */
+  private notify(title: string, text: string, kind: 'info' | 'error' = 'info'): void {
+    if (this.state.notifications || kind === 'error') this.d.host.balloon(title, text);
   }
 
   render(): void {
@@ -156,7 +160,7 @@ export class TrayController {
     try {
       await this.click(e.id);
     } catch (err) {
-      this.notify('Prototyper', errorMessage(err), true);
+      this.notify('Prototyper', errorMessage(err), 'error');
     }
     await this.poll();
   }
@@ -189,7 +193,7 @@ export class TrayController {
   /** `hash`: halaman tertentu di Web UI, mis. `WHATSNEW_HASH`. */
   private openUi(hash = ''): void {
     if (!this.state.daemonUp) {
-      this.notify('Daemon dijeda', 'Lanjutkan daemon dulu untuk membuka Prototyper.', true);
+      this.notify('Daemon dijeda', 'Lanjutkan daemon dulu untuk membuka Prototyper.', 'error');
       return;
     }
     this.d.openUrl(`${this.state.url}${hash ? `/${hash}` : ''}`);
@@ -202,7 +206,7 @@ export class TrayController {
       return;
     }
     if (!this.state.daemonUp) {
-      this.notify('Daemon dijeda', 'Lanjutkan daemon dulu untuk menjalankan prototype.', true);
+      this.notify('Daemon dijeda', 'Lanjutkan daemon dulu untuk menjalankan prototype.', 'error');
       return;
     }
     await this.d.api.action(id, action);
@@ -214,7 +218,7 @@ export class TrayController {
     for (const p of targets) {
       await this.d.api.action(p.id, 'start').catch(() => failed.push(p.name));
     }
-    if (failed.length) this.notify('Sebagian gagal dijalankan', failed.join(', '), true);
+    if (failed.length) this.notify('Sebagian gagal dijalankan', failed.join(', '), 'error');
   }
 
   private async stopAll(): Promise<void> {
@@ -246,7 +250,7 @@ export class TrayController {
       if (announce) this.notify('Prototyper', 'Daemon berjalan kembali.');
     } catch (err) {
       this.state.daemonUp = false;
-      this.notify('Daemon gagal dinyalakan', errorMessage(err), true);
+      this.notify('Daemon gagal dinyalakan', errorMessage(err), 'error');
     } finally {
       this.state.daemonBusy = null;
       await this.poll();
@@ -268,7 +272,6 @@ export class TrayController {
     this.notify(
       'Jalankan saat startup',
       next ? 'Diaktifkan — Prototyper otomatis berjalan di tray saat Windows mulai.' : 'Dinonaktifkan — jalankan manual dari prototyper.exe.',
-      true,
     );
     this.render();
   }
@@ -297,16 +300,16 @@ export class TrayController {
       u.selfUpdate = this.d.selfUpdate && c.asset !== null;
       if (c.available) {
         u.status = 'available';
-        this.notify('Pembaruan tersedia', `Prototyper ${c.latest.version} sudah rilis (sekarang ${c.current}).`, !silent);
+        this.notify('Pembaruan tersedia', `Prototyper ${c.latest.version} sudah rilis (sekarang ${c.current}).`);
       } else {
         u.status = 'uptodate';
-        if (!silent) this.notify('Tidak ada pembaruan', `Prototyper ${c.current} sudah versi terbaru.`, true);
+        if (!silent) this.notify('Tidak ada pembaruan', `Prototyper ${c.current} sudah versi terbaru.`);
       }
     } catch (err) {
       u.status = 'error';
       u.checkedAt = new Date();
       u.error = errorMessage(err);
-      if (!silent) this.notify('Gagal memeriksa pembaruan', u.error, true);
+      if (!silent) this.notify('Gagal memeriksa pembaruan', u.error, 'error');
     }
     this.render();
   }
@@ -337,10 +340,10 @@ export class TrayController {
         u.progress = f;
       });
       u.status = 'ready';
-      this.notify('Pembaruan siap dipasang', `Pilih "Mulai ulang" di tray untuk memasang ${c.latest.version}.`, true);
+      this.notify('Pembaruan siap dipasang', `Pilih "Mulai ulang" di tray untuk memasang ${c.latest.version}.`);
     } catch (err) {
       u.status = 'available';
-      this.notify('Gagal mengunduh pembaruan', errorMessage(err), true);
+      this.notify('Gagal mengunduh pembaruan', errorMessage(err), 'error');
     }
     this.render();
   }
@@ -348,13 +351,13 @@ export class TrayController {
   private async installUpdate(file: string, check: UpdateCheck): Promise<void> {
     if (check.kind === 'app' && this.d.applyApp && this.d.relaunch) return this.applyAppUpdate(file, check, this.d.applyApp, this.d.relaunch);
     const restore = this.state.prototypes.filter((p) => p.status === 'running').map((p) => p.id);
-    this.notify('Memasang pembaruan…', 'Prototyper akan dimulai ulang.', true);
+    this.notify('Memasang pembaruan…', 'Prototyper akan dimulai ulang.');
     this.stopTimers();
     if (this.state.daemonUp) await this.d.api.shutdown(); // daemon versi lama harus berhenti dulu
     try {
       await this.d.install(file, restore, check);
     } catch (err) {
-      this.notify('Gagal memasang pembaruan', errorMessage(err), true);
+      this.notify('Gagal memasang pembaruan', errorMessage(err), 'error');
       await this.resumeDaemon(false);
       for (const id of restore) await this.d.api.action(id, 'start').catch(() => undefined);
       this.timers.push(setInterval(() => void this.poll(), this.d.pollMs ?? 2000));
@@ -379,7 +382,7 @@ export class TrayController {
       r = await applyApp(file, check);
     } catch (err) {
       // belum ada yang berubah: daemon & prototype tetap berjalan
-      this.notify('Gagal memasang pembaruan', errorMessage(err), true);
+      this.notify('Gagal memasang pembaruan', errorMessage(err), 'error');
       u.status = 'available';
       this.downloaded = null;
       this.render();
@@ -391,12 +394,12 @@ export class TrayController {
       u.status = 'uptodate';
       this.downloaded = null;
       this.check = null;
-      this.notify('Prototyper diperbarui', `Versi ${r.version} terpasang tanpa memulai ulang. Muat ulang halaman Prototyper di browser.`, true);
+      this.notify('Prototyper diperbarui', `Versi ${r.version} terpasang tanpa memulai ulang. Muat ulang halaman Prototyper di browser.`);
       this.render();
       return;
     }
     const restore = this.state.prototypes.filter((p) => p.status === 'running').map((p) => p.id);
-    this.notify('Memasang pembaruan…', 'Prototyper akan dimulai ulang.', true);
+    this.notify('Memasang pembaruan…', 'Prototyper akan dimulai ulang.');
     this.stopTimers();
     if (this.state.daemonUp) await this.d.api.shutdown().catch(() => undefined);
     relaunch(restore);

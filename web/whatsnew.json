@@ -2,6 +2,15 @@
   "releasesUrl": "https://github.com/egateza/Prototyper/releases",
   "releases": [
     {
+      "version": "0.3.4",
+      "date": "2026-11-15",
+      "title": "Notifikasi tray benar-benar bisa dimatikan",
+      "items": [
+        "Bila **Tampilkan notifikasi** tidak dicentang, notifikasi pembaruan, konfirmasi startup, dan info lain kini ikut diam. Sebelumnya hanya notifikasi status prototype yang mati.",
+        "Yang tetap tampil hanya error dari aksi yang Anda klik sendiri (mis. gagal memasang pembaruan), agar kegagalan tidak terjadi diam-diam."
+      ]
+    },
+    {
       "version": "0.3.3",
       "date": "2026-11-15",
       "title": "Pembaruan Web UI tanpa restart",

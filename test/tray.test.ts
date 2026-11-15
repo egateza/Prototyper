@@ -415,6 +415,31 @@ describe('TrayController', () => {
     expect(t2.c.state.notifications).toBe(false);
   });
 
+  it('notifikasi dimatikan: pembaruan, startup, dan info lain diam; hanya error aksi pengguna yang tampil', async () => {
+    const t = setup({ applyApp: async () => ({ live: true, version: '0.2.0' }), relaunch: () => undefined });
+    await t.c.start();
+    await t.c.click('notif');
+    await t.c.click('startup');
+    await t.c.click('update'); // periksa manual → tersedia
+    await t.c.click('update'); // unduh → siap dipasang
+    await t.c.click('update'); // pasang tanpa restart → diperbarui
+    await t.c.click('stopAll');
+    await t.c.click('pause');
+    await t.c.click('pause');
+    expect(t.c.state.update.status).toBe('uptodate');
+    expect(t.host.balloons).toEqual([]);
+
+    // error dari aksi yang diklik tetap tampil
+    await t.c.click('pause');
+    await t.c.click('open');
+    expect(t.host.balloons).toEqual([['Daemon dijeda', 'Lanjutkan daemon dulu untuk membuka Prototyper.']]);
+    const t2 = setup({ updater: { check: async () => Promise.reject(new Error('offline')), download: async () => '' } });
+    await t2.c.start();
+    await t2.c.click('notif');
+    await t2.c.click('update');
+    expect(t2.host.balloons).toEqual([['Gagal memeriksa pembaruan', 'offline']]);
+  });
+
   it('pembaruan: periksa → unduh → mulai ulang memasang & menyalakan lagi prototype yang berjalan', async () => {
     const t = setup();
     await t.c.start();
