@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prototyper</title>
+  <script>
+    // Terapkan tema sebelum render agar tidak berkedip.
+    try { const t = localStorage.getItem('prototyper:theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch {}
+    try { if (localStorage.getItem('prototyper:sidebar') === 'auto') document.documentElement.dataset.side = 'auto'; } catch {}
+  </script>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="ws" id="ws">
+    <aside class="ws-side">
+      <div class="brand"><a class="brand-link" href="#" title="Beranda"><span class="brand-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2 3 7v10l9 5 9-5V7l-9-5Zm0 2.3L18.8 8 12 11.7 5.2 8 12 4.3Z"/></svg></span>Prototyper</a>
+        <small id="meta"></small>
+        <button type="button" class="icon-btn pin" id="btn-pin"></button>
+        <button type="button" class="icon-btn power" id="btn-shutdown" title="Matikan Prototyper" aria-label="Matikan Prototyper"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M12 3v8M6.3 6.3a8 8 0 1 0 11.4 0"/></svg></button></div>
+      <label class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M10 2a8 8 0 0 1 6.32 12.9l5.39 5.4-1.41 1.4-5.4-5.39A8 8 0 1 1 10 2Zm0 2a6 6 0 1 0 0 12 6 6 0 0 0 0-12Z"/></svg>
+        <input id="q" placeholder="Cari…" autocomplete="off" spellcheck="false" aria-label="Cari prototype"><kbd>/</kbd></label>
+      <div class="ws-filter" id="filter">
+        <button type="button" data-f="semua">Semua</button>
+        <button type="button" data-f="aktif">Aktif</button>
+        <button type="button" data-f="masalah">Masalah</button>
+      </div>
+      <div id="offline" class="callout err offline" hidden>Daemon tidak terjangkau. Mencoba lagi…</div>
+      <nav class="ws-list" id="side-list" aria-label="Daftar prototype"></nav>
+      <div class="ws-side-foot">
+        <button type="button" class="btn primary" id="btn-new"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" d="M12 5v14M5 12h14"/></svg>Baru</button>
+        <button type="button" class="btn" id="btn-add" title="Daftarkan folder yang sudah ada">Daftarkan</button>
+        <button type="button" class="icon-btn" id="btn-theme" title="Tema"></button>
+        <button type="button" class="btn ghost" id="btn-palette" title="Palet perintah"><kbd>Ctrl K</kbd></button>
+      </div>
+    </aside>
+    <button type="button" class="side-edge" id="side-edge" title="Tampilkan sidebar" aria-label="Tampilkan sidebar"><i></i></button>
+    <main class="ws-main" id="main"></main>
+  </div>
+
+  <!-- Dialog daftarkan / perbaiki manifest -->
+  <dialog id="dlg-add">
+    <form method="dialog" id="add-form">
+      <div class="dlg-head">
+        <div>
+          <h2 id="add-title">Daftarkan prototype</h2>
+          <p class="muted" id="add-sub">Arahkan ke folder prototype. Bila belum ada <code>prototyper.json</code>, isinya dideteksi otomatis.</p>
+        </div>
+        <button type="button" class="icon-btn" data-close aria-label="Tutup">✕</button>
+      </div>
+      <div id="add-step1">
+        <label class="field">
+          <span>Path folder</span>
+          <input id="add-path" placeholder="D:\IdeaProjects\pos-sembako-ui" autocomplete="off" spellcheck="false">
+        </label>
+      </div>
+      <div id="add-step2" hidden>
+        <div class="detect-path"><code id="add-folder"></code></div>
+        <div class="field" id="add-type-row">
+          <span>Jenis</span>
+          <div class="seg seg-wide" id="add-type">
+            <button type="button" data-val=""><b>otomatis</b><small>hasil deteksi</small></button>
+            <button type="button" data-val="static"><b>static</b><small>HTML/JS di-serve langsung</small></button>
+            <button type="button" data-val="command"><b>command</b><small>npm run dev, dll.</small></button>
+          </div>
+        </div>
+        <ul class="notes" id="add-notes"></ul>
+        <label class="field">
+          <span>prototyper.json</span>
+          <textarea id="add-json" rows="12" spellcheck="false"></textarea>
+        </label>
+        <p class="muted hint">Placeholder <code>{port}</code> dan <code>{host}</code> pada <code>command.run</code> diganti otomatis saat dijalankan.</p>
+        <div class="callout warn">Perintah pada <code>run</code>/<code>install</code> akan dieksekusi di komputer ini — pastikan isinya benar.</div>
+      </div>
+      <div id="add-err" class="callout err" hidden></div>
+      <div class="dlg-foot">
+        <button type="button" class="btn ghost" data-close>Batal</button>
+        <button type="submit" class="btn primary" id="add-next">Lanjut</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Dialog buat prototype baru -->
+  <dialog id="dlg-new">
+    <form method="dialog" id="new-form">
+      <div class="dlg-head">
+        <div>
+          <h2>Buat prototype baru</h2>
+          <p class="muted">Folder dibuat dari template, lengkap dengan <code>prototyper.json</code> dan <code>AGENTS.md</code>, lalu langsung didaftarkan.</p>
+        </div>
+        <button type="button" class="icon-btn" data-close aria-label="Tutup">✕</button>
+      </div>
+      <div class="row2">
+        <label class="field">
+          <span>ID</span>
+          <input id="new-id" placeholder="kasir-grosir" autocomplete="off" spellcheck="false" required>
+        </label>
+        <label class="field">
+          <span>Nama tampilan <small class="muted">(opsional)</small></span>
+          <input id="new-name" class="plain" placeholder="Kasir Grosir" autocomplete="off">
+        </label>
+      </div>
+      <div class="field">
+        <span>Template</span>
+        <div class="seg seg-wide" id="new-tpl">
+          <button type="button" data-val="static" aria-pressed="true"><b>static</b><small>HTML/CSS/JS, tanpa build</small></button>
+          <button type="button" data-val="vite-vanilla" aria-pressed="false"><b>vite-vanilla</b><small>Vite + JavaScript</small></button>
+          <button type="button" data-val="vite-react" aria-pressed="false"><b>vite-react</b><small>Vite + React</small></button>
+        </div>
+      </div>
+      <label class="field" id="new-html-row">
+        <span>Impor HTML <small class="muted">(opsional — mis. artifact Claude yang diunduh)</small></span>
+        <input type="file" id="new-html" accept=".html,.htm,text/html">
+      </label>
+      <label class="check" id="new-install-row" hidden>
+        <input type="checkbox" id="new-install" checked> Jalankan <code>npm install</code> setelah dibuat
+      </label>
+      <label class="field">
+        <span>Folder <small class="muted">(opsional)</small></span>
+        <input id="new-dir" autocomplete="off" spellcheck="false">
+      </label>
+      <p class="muted hint" id="new-hint"></p>
+      <div id="new-err" class="callout err" hidden></div>
+      <div class="dlg-foot">
+        <button type="button" class="btn ghost" data-close>Batal</button>
+        <button type="submit" class="btn primary" id="new-go">Buat</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Dialog agent lokal -->
+  <dialog id="dlg-agents">
+    <form method="dialog">
+      <div class="dlg-head">
+        <div>
+          <h2>Agent lokal</h2>
+          <p class="muted">Agent coding yang dikenali Prototyper di komputer ini. Agent yang tersedia bisa dipilih untuk mengerjakan komentar.</p>
+        </div>
+        <button type="button" class="icon-btn" data-close aria-label="Tutup">✕</button>
+      </div>
+      <div class="agents-list" id="agents-list"></div>
+      <p class="muted hint">Baru menginstal agent? Klik Cek ulang. Path bisa dipaksa lewat env <code>PROTOTYPER_AGENT_BIN_&lt;ID&gt;</code>, default lewat <code>PROTOTYPER_AGENT_DEFAULT</code>.</p>
+      <div class="dlg-foot">
+        <button type="button" class="btn ghost" id="agents-refresh">Cek ulang</button>
+        <button type="button" class="btn primary" data-close>Tutup</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Dialog konfirmasi -->
+  <dialog id="dlg-confirm" class="small">
+    <form method="dialog">
+      <h2 id="cf-title"></h2>
+      <p class="muted" id="cf-body"></p>
+      <div class="dlg-foot">
+        <button value="cancel" class="btn ghost">Batal</button>
+        <button value="ok" class="btn danger-solid" id="cf-ok">Hapus</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Palet perintah -->
+  <dialog id="dlg-cmd" class="cmd">
+    <div class="cmd-input">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M10 2a8 8 0 0 1 6.32 12.9l5.39 5.4-1.41 1.4-5.4-5.39A8 8 0 1 1 10 2Zm0 2a6 6 0 1 0 0 12 6 6 0 0 0 0-12Z"/></svg>
+      <input id="cmd-q" placeholder="Cari prototype atau perintah…" autocomplete="off" spellcheck="false" aria-label="Cari perintah">
+      <kbd>Esc</kbd>
+    </div>
+    <ul id="cmd-list" role="listbox"></ul>
+  </dialog>
+
+  <div id="toasts" aria-live="polite"></div>
+  <script src="/app.js" type="module"></script>
+</body>
+</html>

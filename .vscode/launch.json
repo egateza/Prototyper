@@ -1,0 +1,74 @@
+{
+  // Konfigurasi debug Prototyper. Pilih di panel Run and Debug (Ctrl+Shift+D), lalu F5.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Prototyper: daemon (source)",
+      "type": "node",
+      "request": "launch",
+      "runtimeArgs": ["--import", "tsx"],
+      "program": "${workspaceFolder}/src/cli/index.ts",
+      "args": ["serve"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"],
+      "serverReadyAction": {
+        "pattern": "(http://localhost:\\d+)",
+        "uriFormat": "%s",
+        "action": "openExternally"
+      }
+    },
+    {
+      "name": "Prototyper: daemon (dev, auto-reload)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"]
+    },
+    {
+      "name": "Prototyper: daemon LAN (source)",
+      "type": "node",
+      "request": "launch",
+      "runtimeArgs": ["--import", "tsx"],
+      "program": "${workspaceFolder}/src/cli/index.ts",
+      "args": ["serve", "--lan"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"]
+    },
+    {
+      "name": "Prototyper: CLI (ketik perintah)",
+      "type": "node",
+      "request": "launch",
+      "runtimeArgs": ["--import", "tsx"],
+      "program": "${workspaceFolder}/src/cli/index.ts",
+      "args": "${input:cliArgs}",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"]
+    },
+    {
+      "name": "Prototyper: daemon (hasil build dist)",
+      "type": "node",
+      "request": "launch",
+      "preLaunchTask": "npm: build",
+      "program": "${workspaceFolder}/dist/cli/index.js",
+      "args": ["serve"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "outFiles": ["${workspaceFolder}/dist/**/*.js"],
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"]
+    }
+  ],
+  "inputs": [
+    {
+      "id": "cliArgs",
+      "type": "promptString",
+      "description": "Argumen CLI prototyper",
+      "default": "list"
+    }
+  ]
+}

@@ -1,0 +1,66 @@
+name: release
+
+# Tag vX.Y.Z → bangun semua berkas rilis di tiap OS lalu terbitkan GitHub Release.
+# Jalankan manual (workflow_dispatch) untuk sekadar membangun dan mengunduh artefaknya.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, label: win-x64, targets: 'exe portable' }
+          - { os: ubuntu-latest, label: linux-x64, targets: 'exe portable npm' }
+          - { os: ubuntu-24.04-arm, label: linux-arm64, targets: 'exe portable' }
+          - { os: macos-latest, label: macos-arm64, targets: 'exe portable' }
+          - { os: macos-15-intel, label: macos-x64, targets: 'exe portable' }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run release -- ${{ matrix.targets }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.label }}
+          path: release/*
+          if-no-files-found: error
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cek versi tag = package.json
+        run: |
+          v=$(node -p "require('./package.json').version")
+          if [ "v$v" != "$GITHUB_REF_NAME" ]; then echo "Tag $GITHUB_REF_NAME ≠ versi package.json ($v)"; exit 1; fi
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          pattern: release-*
+          merge-multiple: true
+      - name: Checksum
+        run: cd release && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - name: Terbitkan rilis
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=""
+          case "$GITHUB_REF_NAME" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" release/* --title "Prototyper $GITHUB_REF_NAME" --notes-file docs/RELEASE-NOTES.md $prerelease

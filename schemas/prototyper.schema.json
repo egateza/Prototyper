@@ -1,0 +1,198 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{1,62}$",
+          "description": "ID unik, mis. pos-sembako-ui"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Nama tampilan"
+        },
+        "description": {
+          "type": "string"
+        },
+        "tags": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "agent": {
+          "type": "object",
+          "properties": {
+            "instructions": {
+              "description": "File panduan untuk LLM agent (default AGENTS.md)",
+              "type": "string",
+              "minLength": 1
+            },
+            "syncInstructions": {
+              "description": "false = Prototyper tidak menulis bagian petunjuk di file instruksi dan CLAUDE.md (default true)",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "type": {
+          "type": "string",
+          "const": "static"
+        },
+        "static": {
+          "default": {},
+          "type": "object",
+          "properties": {
+            "root": {
+              "default": ".",
+              "description": "Folder yang di-serve, relatif ke folder prototype",
+              "type": "string",
+              "minLength": 1
+            },
+            "index": {
+              "default": "index.html",
+              "description": "File index",
+              "type": "string",
+              "minLength": 1
+            },
+            "spa": {
+              "default": false,
+              "description": "Jika true, path tak dikenal diarahkan ke index (SPA)",
+              "type": "boolean"
+            },
+            "inject": {
+              "default": true,
+              "description": "Sisipkan skrip Prototyper ke halaman HTML (komentar dengan klik/blok elemen di pratinjau). false = HTML dikirim apa adanya",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{1,62}$",
+          "description": "ID unik, mis. pos-sembako-ui"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Nama tampilan"
+        },
+        "description": {
+          "type": "string"
+        },
+        "tags": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "agent": {
+          "type": "object",
+          "properties": {
+            "instructions": {
+              "description": "File panduan untuk LLM agent (default AGENTS.md)",
+              "type": "string",
+              "minLength": 1
+            },
+            "syncInstructions": {
+              "description": "false = Prototyper tidak menulis bagian petunjuk di file instruksi dan CLAUDE.md (default true)",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "type": {
+          "type": "string",
+          "const": "command"
+        },
+        "command": {
+          "type": "object",
+          "properties": {
+            "run": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Perintah start. Placeholder {port} dan {host} diganti saat dijalankan"
+            },
+            "install": {
+              "description": "Perintah install dependensi (mis. npm install)",
+              "type": "string",
+              "minLength": 1
+            },
+            "cwd": {
+              "default": ".",
+              "description": "Folder kerja, relatif ke folder prototype",
+              "type": "string",
+              "minLength": 1
+            },
+            "env": {
+              "default": {},
+              "description": "Environment variable tambahan",
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "portEnv": {
+              "default": "PORT",
+              "description": "Nama env yang diisi port yang dialokasikan",
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            },
+            "readyPattern": {
+              "description": "Regex pada output; cocok = prototype siap. Tanpa ini dipakai cek port",
+              "type": "string",
+              "minLength": 1
+            },
+            "readyTimeoutSec": {
+              "default": 60,
+              "description": "Batas waktu menunggu siap (detik)",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600
+            }
+          },
+          "required": [
+            "run"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "type",
+        "command"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "$id": "https://raw.githubusercontent.com/egateza/prototyper/main/schemas/prototyper.schema.json",
+  "title": "Prototyper manifest (prototyper.json)",
+  "description": "Mendeskripsikan cara Prototyper menjalankan sebuah prototype."
+}

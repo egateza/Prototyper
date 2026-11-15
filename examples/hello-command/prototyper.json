@@ -1,0 +1,12 @@
+{
+  "$schema": "../../schemas/prototyper.schema.json",
+  "id": "hello-command",
+  "name": "Hello Command",
+  "description": "Contoh prototype mode command (server Node tanpa dependensi)",
+  "type": "command",
+  "command": {
+    "run": "node server.js",
+    "readyPattern": "Listening on"
+  },
+  "tags": ["contoh"]
+}

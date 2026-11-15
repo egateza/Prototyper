@@ -1,0 +1,8 @@
+node_modules/
+dist/
+coverage/
+*.log
+.env
+.prototyper-data/
+build/
+release/

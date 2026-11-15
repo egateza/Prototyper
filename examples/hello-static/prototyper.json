@@ -1,0 +1,9 @@
+{
+  "$schema": "../../schemas/prototyper.schema.json",
+  "id": "hello-static",
+  "name": "Hello Static",
+  "description": "Contoh prototype mode static (HTML biasa)",
+  "type": "static",
+  "static": { "root": ".", "index": "index.html" },
+  "tags": ["contoh"]
+}
