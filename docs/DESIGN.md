@@ -286,7 +286,7 @@ Deteksi `init` (juga dipakai `add` dan `/manifest/detect` bila manifest belum ad
 3. Baca `AGENTS.md` di folder prototype, edit file di `path`.
 4. `prototyper start <id> --json` (atau `restart`) → buka/cek `url`.
 5. `prototyper logs <id> -n 100 --json` untuk debug.
-6. Komentar: `prototyper comments <id> --waiting agent --json` → kerjakan satu per satu → `comments resolve <id> <cid> --note "..."`; bila ada beberapa kemungkinan, `comments ask … --option …` dan biarkan tetap open.
+6. Komentar: `prototyper comments <id> --waiting agent --json` → kerjakan satu per satu → laporkan dengan `comments reply <id> <cid> "..."` dan biarkan open (agent tidak me-`resolve`; pengguna yang menutup komentar setelah memeriksa hasil); bila ada beberapa kemungkinan, `comments ask … --option …` dan biarkan tetap open.
 
 Repo Prototyper sendiri juga punya `AGENTS.md` yang menjelaskan alur ini. Tidak ada fitur yang bergantung pada vendor agent tertentu; menjalankan agent dari Web UI (§10f) hanya kemudahan tambahan.
 
@@ -353,7 +353,7 @@ Tujuan: agent yang mengerjakan sebuah komentar tahu riwayat dan keputusan sebelu
 ## 10e. Petunjuk agent di folder prototype
 
 - Saat didaftarkan (`POST /prototypes`, `POST /prototypes/new`, CLI `add`/`new`) dan saat `PUT /prototypes/:id/manifest`, Prototyper memanggil `syncAgentFiles` (`src/core/agentfiles.ts`).
-- File instruksi (`agent.instructions`, default `AGENTS.md`): dibuat bila belum ada; bila ada, hanya blok di antara `<!-- prototyper:start -->` … `<!-- prototyper:end -->` yang diganti/ditambahkan di akhir. Isi blok: id, mode, cara menjalankan/refresh, alur komentar (`--waiting agent`, `resolve --note`, `ask --option`), dan perintah fallback `npm --prefix "<repo>" run cli --` bila `prototyper` tidak ada di PATH.
+- File instruksi (`agent.instructions`, default `AGENTS.md`): dibuat bila belum ada; bila ada, hanya blok di antara `<!-- prototyper:start -->` … `<!-- prototyper:end -->` yang diganti/ditambahkan di akhir. Isi blok: id, mode, cara menjalankan/refresh, alur komentar (`--waiting agent`, `reply` lalu biarkan open — agent tidak me-`resolve`, `ask --option`), dan perintah fallback `npm --prefix "<repo>" run cli --` bila `prototyper` tidak ada di PATH.
 - `CLAUDE.md`: dibuat berisi `@AGENTS.md`; bila sudah ada dan belum mengimpor, ditambahkan blok bertanda berisi baris impor itu.
 - `agent.syncInstructions: false` mematikan semuanya. Gagal menulis tidak menggagalkan pendaftaran (dilaporkan sebagai `agentFiles[].action = "error"`).
 - `prototyper agents sync [id]` untuk prototype lama / setelah format petunjuk berubah.

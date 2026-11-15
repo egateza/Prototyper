@@ -15,9 +15,10 @@ Bagian ini dibuat otomatis — jangan diedit manual; perbarui dengan `prototyper
 Pengguna menulis komentar di Web UI Prototyper. Bila diminta "kerjakan komentar" (atau sejenisnya):
 
 1. Ambil yang giliran agent: `prototyper comments hello-command --waiting agent --json`. Perhatikan `page`, `anchor` (elemen yang diklik/diblok pengguna: `selector` CSS, `text`, `quote` — cari elemen itu di kode), balasan, dan `answer` pada pertanyaan berpilihan.
-2. Kerjakan satu per satu, lalu `prototyper comments resolve hello-command <commentId> --note "<ringkasan perubahan>"`.
+2. Kerjakan satu per satu, lalu laporkan lewat `prototyper comments reply hello-command <commentId> "<ringkasan perubahan>"` dan biarkan komentar tetap open.
+   **Jangan menutup komentar** (`prototyper comments resolve`): penggunalah yang memeriksa hasil dan menentukan pekerjaan selesai. Resolve hanya bila pengguna secara eksplisit memintanya.
 3. Bila ada beberapa kemungkinan, jangan menebak: `prototyper comments ask hello-command <commentId> "<pertanyaan>" --option "A" --option "B"` (`--multi` bila boleh lebih dari satu), lalu biarkan open.
-4. Pertanyaan balik dari pengguna dijawab dengan `prototyper comments reply hello-command <commentId> "<jawaban>"`.
+4. Pertanyaan balik atau permintaan revisi dari pengguna dijawab dengan `prototyper comments reply hello-command <commentId> "<jawaban>"`.
 5. Komentar dengan `waitingFor: "user"` sedang menunggu pengguna — jangan dikerjakan dulu.
 
 Bila perintah `prototyper` tidak ditemukan, di mesin ini pakai: `npm --prefix "D:\IdeaProjects\prototyper" run cli -- <perintah>`.

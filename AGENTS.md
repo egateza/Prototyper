@@ -11,13 +11,13 @@ prototyper info <id> --json            # path, url, status, instructions.path
 prototyper start <id> --json           # atau restart; cetak url
 prototyper logs <id> -n 100 --json     # debug
 prototyper comments <id> --waiting agent --json   # komentar yang giliran agent
-prototyper comments resolve <id> <commentId> --note "apa yang diubah"
+prototyper comments reply <id> <commentId> "apa yang diubah"   # lapor hasil; komentar tetap open
 prototyper comments ask <id> <commentId> "pertanyaan" --option "A" --option "B" [--multi]
 ```
 
 - Jangan menyalin kode prototype ke repo ini; prototype tinggal di foldernya sendiri.
 - Folder prototype biasanya sudah punya bagian `<!-- prototyper:start -->` di `AGENTS.md` (dan `CLAUDE.md` → `@AGENTS.md`) yang ditulis Prototyper saat didaftarkan; ikuti itu. Bila belum ada: `prototyper agents sync <id>`.
-- "Kerjakan komentar di prototype X": ambil komentar dengan `--waiting agent`, kerjakan satu per satu (perhatikan `page`, balasan, dan `answer` pada pertanyaan berpilihan), lalu `resolve` dengan `--note`. Bila ada beberapa kemungkinan, pakai `comments ask` dengan `--option` (tampil sebagai radio/checkbox di Web UI) dan biarkan tetap open; pertanyaan balik dari pengguna dijawab dengan `comments reply`. Komentar `waitingFor: "user"` jangan dikerjakan dulu. Komentar disimpan di `<folder>/.prototyper/comments.json` (boleh dibaca langsung).
+- "Kerjakan komentar di prototype X": ambil komentar dengan `--waiting agent`, kerjakan satu per satu (perhatikan `page`, balasan, dan `answer` pada pertanyaan berpilihan), lalu laporkan hasilnya dengan `comments reply` dan biarkan komentar tetap open. **Jangan `resolve`**: pengguna yang memeriksa hasil dan menutup komentar (kecuali pengguna eksplisit meminta agent menutupnya). Bila ada beberapa kemungkinan, pakai `comments ask` dengan `--option` (tampil sebagai radio/checkbox di Web UI) dan biarkan tetap open; pertanyaan balik dari pengguna dijawab dengan `comments reply`. Komentar `waitingFor: "user"` jangan dikerjakan dulu. Komentar disimpan di `<folder>/.prototyper/comments.json` (boleh dibaca langsung).
 - Prototype baru: `prototyper new <id> --template static|vite-vanilla|vite-react --json` → dapat `path`; isi file di sana (impor HTML: `--from <file.html>`). Folder yang sudah ada: `prototyper add <folder>` (manifest dideteksi bila belum ada), lalu periksa `prototyper.json`.
 - Mode static mengirim `Cache-Control: no-store`: cukup refresh setelah edit. Mode command biasanya punya HMR; bila tidak, `restart`.
 - Tanpa `npm link`, pakai `npm run cli -- <perintah>` dari repo ini.

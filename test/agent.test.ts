@@ -58,6 +58,9 @@ describe('agent (helper)', () => {
     expect(s).toContain('Fokus hanya pada komentar: c2, c4.');
     expect(s).toContain('Pesan dari pengguna: pakai warna ungu');
     expect(s).toContain('prototyper comments pos --waiting agent --json');
+    expect(s).toContain('prototyper comments reply pos <commentId>');
+    expect(s).toContain('Jangan menutup komentar');
+    expect(agentRules('claude')).toContain('biarkan pengguna yang menutupnya');
   });
 });
 

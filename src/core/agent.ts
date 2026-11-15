@@ -84,6 +84,7 @@ const BASE_RULES = [
   'Pengguna tidak bisa membalas jawaban akhirmu. Untuk bertanya, gunakan `prototyper comments ask` (dengan opsi) atau `prototyper comments reply` pada komentar terkait.',
   'Hanya ubah file di folder kerja ini. Jangan ubah prototyper.json, folder .prototyper/, AGENTS.md, atau CLAUDE.md.',
   'Selalu baca isi file yang relevan sebelum mengeditnya.',
+  'Jangan menutup komentar dengan `prototyper comments resolve`; laporkan hasil dengan `prototyper comments reply` dan biarkan pengguna yang menutupnya.',
 ];
 
 /**
@@ -199,9 +200,10 @@ export function agentPrompt(p: ResolvedPrototype, opts: AgentRunOptions = {}): s
     '',
     'Langkah:',
     `1. \`prototyper comments ${id} --waiting agent --json\` — komentar yang giliran agent. Perhatikan \`page\`, \`anchor\` (selector CSS / teks elemen yang diklik pengguna), balasan, dan \`answer\` pada pertanyaan berpilihan.`,
-    `2. Kerjakan satu per satu dengan mengedit file di folder ini, lalu \`prototyper comments resolve ${id} <commentId> --note "<ringkasan perubahan>"\`.`,
+    `2. Kerjakan satu per satu dengan mengedit file di folder ini, lalu laporkan lewat \`prototyper comments reply ${id} <commentId> "<ringkasan perubahan>"\` dan biarkan komentar tetap open.`,
+    '   Jangan menutup komentar (`prototyper comments resolve`): pengguna yang memeriksa hasil dan menentukan pekerjaan selesai.',
     `3. Bila ada beberapa kemungkinan, jangan menebak: \`prototyper comments ask ${id} <commentId> "<pertanyaan>" --option "A" --option "B"\` dan biarkan open.`,
-    `4. Pertanyaan balik dari pengguna dijawab dengan \`prototyper comments reply ${id} <commentId> "<jawaban>"\`.`,
+    `4. Pertanyaan balik atau permintaan revisi dari pengguna dijawab dengan \`prototyper comments reply ${id} <commentId> "<jawaban>"\`.`,
     '5. Akhiri dengan ringkasan singkat dalam Bahasa Indonesia.',
   );
   return lines.join('\n');
@@ -290,7 +292,7 @@ export function npmShimTarget(cmdFile: string): string | null {
   }
   const m = /"%(?:~)?dp0%\\?([^"]+?\.(?:c|m)?js)"/i.exec(text);
   if (!m?.[1]) return null;
-  const target = path.join(path.dirname(cmdFile), m[1]);
+  const target = path.join(path.dirname(cmdFile), ...m[1].split(/[\\/]/)); // shim memakai "\" walau dibaca di OS lain
   return existsSync(target) ? target : null;
 }
 

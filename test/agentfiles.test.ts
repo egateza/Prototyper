@@ -73,6 +73,13 @@ describe('syncAgentFiles', () => {
     expect(s).toContain('prototyper install vite-x');
   });
 
+  it('agent diminta membalas, bukan menutup komentar', () => {
+    const s = prototyperSection(parseManifest({ id: 'vite-x', name: 'V', type: 'command', command: { run: 'npm run dev' } }));
+    expect(s).toContain('prototyper comments reply vite-x <commentId> "<ringkasan perubahan>"');
+    expect(s).toContain('**Jangan menutup komentar**');
+    expect(s).not.toContain('resolve vite-x');
+  });
+
   it('upsertBlock', () => {
     expect(upsertBlock('', 'B')).toBe('B\n');
     expect(upsertBlock('a\n\n\n', 'B')).toBe('a\n\nB\n');
