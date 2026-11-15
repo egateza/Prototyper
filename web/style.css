@@ -108,8 +108,8 @@ kbd { border: 1px solid var(--border-strong); border-bottom-width: 2px; border-r
 .ws { display: grid; grid-template-columns: 300px minmax(0, 1fr); height: 100vh; }
 .ws-side { border-right: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; min-height: 0; }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 16px; letter-spacing: -.02em; padding: 18px 18px 14px; }
-.brand-mark { width: 28px; height: 28px; border-radius: 9px; display: grid; place-items: center; background: var(--fg); color: var(--bg); }
-.brand-mark svg { width: 16px; height: 16px; }
+.brand-mark { width: 28px; height: 28px; display: grid; place-items: center; flex: none; }
+.brand-mark svg { width: 28px; height: 28px; display: block; } /* icon Blueprint (assets/icon.svg) */
 .brand small { font-weight: 500; color: var(--muted); font-size: 12px; letter-spacing: 0; margin-left: auto; }
 .brand .power { width: 28px; height: 28px; margin: -4px -8px -4px -4px; }
 .brand .power:hover { color: var(--err); }
@@ -194,6 +194,8 @@ kbd { border: 1px solid var(--border-strong); border-bottom-width: 2px; border-r
 .kv > :nth-child(-n+2) { border-top: 0; }
 .kv dt { color: var(--muted); font-size: 12.5px; background: var(--surface-2); }
 .kv dd { margin: 0; font-size: 13px; }
+.kv .instr-sync { margin-left: 8px; vertical-align: middle; }
+.kv .instr-sync svg { width: 13px; height: 13px; margin-right: 4px; }
 .callout { padding: 10px 14px; border-radius: var(--r); font-size: 12.5px; border: 1px solid; }
 .callout.err { color: var(--err); background: color-mix(in oklab, var(--err) 8%, transparent); border-color: color-mix(in oklab, var(--err) 30%, transparent); white-space: pre-wrap; overflow-wrap: anywhere; }
 .callout.err ul { margin: 4px 0 0; padding-left: 18px; white-space: normal; }

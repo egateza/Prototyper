@@ -25,8 +25,10 @@ export interface ResolvedPrototype extends RegistryEntry {
  */
 export class Registry {
   readonly file: string;
+  readonly home: string;
 
   constructor(home: string) {
+    this.home = home;
     this.file = path.join(home, 'registry.json');
   }
 

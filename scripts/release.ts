@@ -3,8 +3,10 @@ import { createHash } from 'node:crypto';
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { inject } from 'postject';
+import { rcedit } from 'rcedit';
 import { BUNDLE_FILE, SEA_MANIFEST_ASSET, type SeaManifest } from '../src/core/appfiles.js';
 import { bundleApp, readPackage, ROOT } from './bundle.js';
+import { windowsFileVersion } from './winres.js';
 
 /**
  * Buat berkas rilis untuk OS + arsitektur mesin ini (Node yang menjalankan skrip ini ikut dikemas).
@@ -122,6 +124,24 @@ function copyDir(from: string, to: string): void {
   }
 }
 
+/** Ganti icon dan info file node.exe (Properties → Details) dengan milik Prototyper. */
+async function brandWindowsExe(exe: string, version: string): Promise<void> {
+  const pkg = readPackage();
+  await rcedit(exe, {
+    icon: path.join(ROOT, 'assets', 'icon.ico'),
+    'file-version': windowsFileVersion(version),
+    'product-version': version,
+    'version-string': {
+      ProductName: 'Prototyper',
+      FileDescription: 'Prototyper',
+      InternalFilename: 'prototyper',
+      OriginalFilename: 'prototyper.exe',
+      CompanyName: 'Prototyper',
+      Comments: `${pkg.description ?? ''} Berjalan di atas Node.js ${process.version}.`.trim(),
+    },
+  });
+}
+
 async function buildExe(appDir: string, bundle: string, version: string, work: string, out: string): Promise<string> {
   const seaDir = path.join(work, 'sea');
   rmSync(seaDir, { recursive: true, force: true });
@@ -146,6 +166,7 @@ async function buildExe(appDir: string, bundle: string, version: string, work: s
   const exe = path.join(seaDir, exeName);
   copyFileSync(process.execPath, exe);
   chmodSync(exe, 0o755);
+  if (isWin) await brandWindowsExe(exe, version); // sebelum inject: mengubah resource setelahnya berisiko merusak blob
   if (isMac) run('codesign', ['--remove-signature', exe]);
   await inject(exe, 'NODE_SEA_BLOB', readFileSync(blob), {
     sentinelFuse: SEA_FUSE,

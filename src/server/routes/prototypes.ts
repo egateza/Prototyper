@@ -45,6 +45,7 @@ export type NewPrototypeResponse = PrototypeView & {
 
 /** Respons pendaftaran: view + hasil pemasangan petunjuk agent. */
 export type RegisterResponse = PrototypeView & { agentFiles: AgentFileResult[] };
+export type InstructionsSyncResult = { id: string; agentFiles: AgentFileResult[]; prototype: PrototypeView };
 
 /** Batas body untuk impor HTML artifact (bisa berisi gambar base64). */
 const NEW_BODY_LIMIT = 25 * 1024 * 1024;
@@ -100,7 +101,7 @@ export const prototypeRoutes: FastifyPluginAsync<{ ctx: RouteContext }> = async 
         await writeManifest(abs, b.manifest, { overwrite: b.overwrite === true });
       }
       const p = await registry.add(abs);
-      const agentFiles = p.manifest ? await syncAgentFiles(p.path, p.manifest) : [];
+      const agentFiles = p.manifest ? await syncAgentFiles(p.path, p.manifest, { home: config.home }) : [];
       reply.code(201);
       return { ...view(p), agentFiles } satisfies RegisterResponse;
     },
@@ -219,8 +220,27 @@ export const prototypeRoutes: FastifyPluginAsync<{ ctx: RouteContext }> = async 
       }
     }
     await writeManifest(p.path, raw, { overwrite: true });
-    await syncAgentFiles(p.path, m); // id/nama/perintah di petunjuk ikut berubah
+    await syncAgentFiles(p.path, m, { home: config.home }); // id/nama/perintah di petunjuk ikut berubah
     return view(await registry.require(m.id));
+  });
+
+  // Pasang/perbarui petunjuk agent (AGENTS.md + CLAUDE.md), sama dengan `prototyper agents sync <id>`.
+  app.post<IdParams>('/prototypes/:id/instructions/sync', async (req): Promise<InstructionsSyncResult> => {
+    const p = await registry.require(req.params.id);
+    if (!p.manifest) throw new AppError('BAD_REQUEST', `Manifest "${p.id}" tidak valid; perbaiki dulu sebelum sinkron`);
+    const agentFiles = await syncAgentFiles(p.path, p.manifest, { home: config.home });
+    return { id: p.id, agentFiles, prototype: view(await registry.require(p.id)) };
+  });
+
+  // Semua prototype terdaftar, sama dengan `prototyper agents sync`. Manifest tidak valid dilewati.
+  app.post('/instructions/sync', async (): Promise<{ results: Array<{ id: string; agentFiles: AgentFileResult[]; error: string | null }> }> => {
+    const results = [];
+    for (const p of await registry.list()) {
+      results.push(p.manifest
+        ? { id: p.id, agentFiles: await syncAgentFiles(p.path, p.manifest, { home: config.home }), error: null }
+        : { id: p.id, agentFiles: [], error: p.error || 'manifest tidak valid' });
+    }
+    return { results };
   });
 
   app.post<IdParams>('/prototypes/:id/reload',async (req) => view(await registry.require(req.params.id)));

@@ -20,6 +20,20 @@ npm config set cache "D:\npm-cache"
 
 Tanpa clone repo: unduh dari [GitHub Releases](https://github.com/egateza/Prototyper/releases). Setiap OS (Windows, Linux x64/arm64, macOS Apple Silicon/Intel) punya **biner tunggal** (`.exe` di Windows) dan **versi portable**; keduanya tidak butuh Node. Ada juga **paket npm** (`npm i -g prototyper-<versi>.tgz`) bagi yang sudah punya Node. Panduannya ada di [`docs/RELEASE-NOTES.md`](docs/RELEASE-NOTES.md); cara membangun dan menerbitkan rilis di [`docs/RELEASE.md`](docs/RELEASE.md).
 
+## Tray Windows
+
+Di Windows, Prototyper bisa berjalan sebagai ikon di tray (pojok kanan bawah taskbar), tanpa jendela konsol:
+
+```powershell
+prototyper tray        # atau dobel-klik prototyper.exe dari Explorer
+```
+
+- **Klik kiri**: popup ringkas bertema gelap. Isinya status daemon dengan tombol jeda, daftar prototype (toggle jalankan/hentikan, ↗ buka di browser), jalankan saat startup, periksa pembaruan, jalankan/hentikan semua, dan bar **Buka Prototyper** di bawah. Popup tetap terbuka saat tombolnya diklik. Untuk menutupnya, pakai tombol ✕ di kanan atas, tekan Esc, atau klik ikon tray lagi.
+- **Klik kanan**: menu seperti prototype (terang/gelap mengikuti tema Windows) berisi buka Prototyper di browser, jalankan/hentikan semua, jeda/lanjutkan daemon, jalankan saat startup, tampilkan notifikasi, periksa pembaruan, dan keluar.
+- **Klik dua kali**: buka Web UI.
+
+Angka di ikon = jumlah prototype yang berjalan; titik oranye = ada pembaruan. "Jeda daemon" menghentikan daemon beserta semua prototype, dan "Keluar" juga menghentikan daemon. "Jalankan saat startup" menulis nilai `Prototyper` di `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. Pembaruan diambil dari GitHub Releases. Untuk `prototyper.exe`, pembaruan bisa diunduh (dicek dengan `SHA256SUMS.txt`) lalu dipasang lewat "Mulai ulang", dan prototype yang sedang berjalan dinyalakan lagi. Untuk bentuk rilis lain, tray hanya membuka halaman rilis. Log tray ada di `<PROTOTYPER_HOME>/tray.log`; untuk debug: `prototyper tray --foreground`.
+
 ## Install dari source
 
 ```powershell
@@ -94,7 +108,9 @@ Panel Komentar punya tombol **Kerjakan dengan [agent ▾]** (semua komentar yang
 
 Saat folder didaftarkan (`add`, `new`, atau Web UI), Prototyper menulis bagian petunjuk di `AGENTS.md` folder prototype (dibuat bila belum ada; isi Anda di luar penanda `<!-- prototyper:start/end -->` tidak disentuh) dan `CLAUDE.md` berisi `@AGENTS.md` untuk Claude Code. Agent yang dibuka di folder prototype langsung tahu cara menjalankan prototype dan mengerjakan komentar — cukup bilang *"kerjakan komentar"*.
 
-- Prototype yang sudah terdaftar sebelumnya / setelah update Prototyper: `prototyper agents sync` (atau `agents sync <id>`).
+- **Setelah update Prototyper, petunjuk ikut disesuaikan otomatis.** Setiap kali daemon menyala, bagian bertanda di semua prototype terdaftar diperbarui ke versi Prototyper yang sedang berjalan; daftar prototype yang berubah tercatat di `daemon.log`. Sinkron otomatis hanya memperbarui bagian yang sudah ada: bila bagian itu dihapus, atau bila prototype memasang `"agent": { "syncInstructions": false }`, folder tersebut tidak disentuh. Matikan untuk semua prototype dengan `PROTOTYPER_AUTO_SYNC=0`.
+- Untuk memasang ulang secara manual (termasuk membuat `AGENTS.md`/`CLAUDE.md` bila belum ada): `prototyper agents sync` (atau `agents sync <id>`).
+- Bila `prototyper` belum ada di PATH, petunjuk menyebut shim `<PROTOTYPER_HOME>/bin/prototyper(.cmd)`. Shim itu ditulis ulang oleh daemon sehingga selalu menunjuk ke instalasi yang terakhir berjalan, baik exe, portable, npm, maupun source.
 - Tidak mau file ditulis: `"agent": { "syncInstructions": false }` di `prototyper.json`.
 
 ## Komentar
@@ -147,6 +163,9 @@ URL LAN tampil di `prototyper info` dan Web UI. Dari perangkat lain hanya bisa m
 | `PROTOTYPER_PORT` | `4000` | port daemon (API + UI) |
 | `PROTOTYPER_PORT_RANGE` | `4100-4199` | rentang port prototype |
 | `PROTOTYPER_LAN` | – | `1` = sama dengan `--lan` |
+| `PROTOTYPER_AUTO_SYNC` | `1` | `0` = jangan memperbarui petunjuk agent di prototype saat daemon menyala |
+| `PROTOTYPER_UPDATE_CHECK` | `1` | `0` = tray tidak memeriksa pembaruan otomatis (saat menyala dan tiap 24 jam) |
+| `PROTOTYPER_UPDATE_REPO` | `egateza/Prototyper` | repo GitHub sumber pembaruan tray |
 | `PROTOTYPER_AGENT_AUTH` | `login` | `apikey` = jalankan Claude dengan `--bare` + `ANTHROPIC_API_KEY` |
 | `PROTOTYPER_AGENT_TIMEOUT_MIN` | `20` | batas waktu satu run agent |
 | `PROTOTYPER_AGENT_DEFAULT` | `claude` | agent default (`claude`, `codex`, `gemini`, `copilot`) |

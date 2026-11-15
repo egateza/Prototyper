@@ -16,8 +16,11 @@ import { createPrototype, isTemplate, TEMPLATE_INFO, TEMPLATES } from '../core/s
 import { toView, type PrototypeView } from '../core/views.js';
 import { startServer } from '../server/index.js';
 import { VERSION } from '../version.js';
+import { APP_MODE } from '../core/appfiles.js';
 import { DaemonClient } from './client.js';
+import { isExplorerLaunch, runLauncher, windowsParentImage } from './launcher.js';
 import { registerCommentCommands } from './comments.js';
+import { launchTray, runTray } from '../tray/index.js';
 import { formatLogLine, printInfo, printJson, printTable, reportError } from './output.js';
 
 interface GlobalOpts {
@@ -220,7 +223,7 @@ program
       }
 
       const p = await ctx.registry.add(abs);
-      const agentFiles = p.manifest ? await syncAgentFiles(p.path, p.manifest) : [];
+      const agentFiles = p.manifest ? await syncAgentFiles(p.path, p.manifest, { home: ctx.config.home }) : [];
       let v = localView(p);
       if (o.start) {
         await ctx.client.ensure();
@@ -449,6 +452,26 @@ program
     }),
   );
 
+program
+  .command('tray')
+  .description('jalankan Prototyper di tray Windows (daemon ikut dinyalakan); bila sudah berjalan, buka Web UI')
+  .option('--foreground', 'tetap di terminal ini (untuk debug); default: berjalan di latar')
+  .option('--restore <ids>', 'jalankan prototype ini setelah daemon siap (dipisah koma)')
+  .action(
+    act(async (ctx, _args, cmd) => {
+      const o = cmd.opts<{ foreground?: boolean; restore?: string }>();
+      if (o.foreground) {
+        const restore = (o.restore ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+        await runTray(ctx.config, { restore });
+        return;
+      }
+      const r = await launchTray(ctx.config);
+      if (ctx.json) return printJson(r);
+      if (r.alreadyRunning) console.log(`Prototyper sudah berjalan di tray (PID ${r.pid}); Web UI dibuka di browser.`);
+      else console.log(`✓ Prototyper berjalan di tray (log: ${r.log})`);
+    }),
+  );
+
 const agentsCmd = program.command('agents').description('agent coding lokal & petunjuk agent di folder prototype');
 
 agentsCmd
@@ -483,7 +506,7 @@ agentsCmd
           results.push({ id: p.id, path: p.path, error: p.error, files: [] });
           continue;
         }
-        results.push({ id: p.id, path: p.path, error: null, files: await syncAgentFiles(p.path, p.manifest) });
+        results.push({ id: p.id, path: p.path, error: null, files: await syncAgentFiles(p.path, p.manifest, { home: ctx.config.home }) });
       }
       if (ctx.json) return printJson(results);
       if (!results.length) console.log('Belum ada prototype terdaftar.');
@@ -498,7 +521,13 @@ agentsCmd
 
 registerCommentCommands(program, act);
 
-program.parseAsync(process.argv).catch((err: unknown) => {
-  reportError(err, process.argv.includes('--json'));
-  process.exit(1);
-});
+const userArgs = process.argv.slice(2);
+if (isExplorerLaunch({ platform: process.platform, mode: APP_MODE, args: userArgs, parentImage: windowsParentImage })) {
+  // Dobel-klik exe: jalankan di tray (daemon ikut menyala), bukan mencetak bantuan lalu jendela tertutup.
+  void runLauncher(loadConfig({}));
+} else {
+  program.parseAsync(process.argv).catch((err: unknown) => {
+    reportError(err, process.argv.includes('--json'));
+    process.exit(1);
+  });
+}

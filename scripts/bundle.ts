@@ -6,7 +6,7 @@ import { BUNDLE_FILE } from '../src/core/appfiles.js';
 
 /**
  * Buat folder aplikasi rilis: satu file `prototyper.cjs` (semua kode + dependensi) beserta
- * web/, schemas/, dan package.json ringkas. Dipakai untuk rilis portable dan biner tunggal (SEA).
+ * web/, schemas/, assets/tray/, dan package.json ringkas. Dipakai untuk rilis portable dan biner tunggal (SEA).
  */
 export const ROOT = fileURLToPath(new URL('../', import.meta.url));
 
@@ -41,6 +41,8 @@ export async function bundleApp(outDir: string): Promise<{ dir: string; bundle: 
   });
   cpSync(path.join(ROOT, 'web'), path.join(outDir, 'web'), { recursive: true });
   cpSync(path.join(ROOT, 'schemas'), path.join(outDir, 'schemas'), { recursive: true });
+  mkdirSync(path.join(outDir, 'assets'), { recursive: true });
+  cpSync(path.join(ROOT, 'assets', 'tray'), path.join(outDir, 'assets', 'tray'), { recursive: true }); // logo tray (src/tray)
   const meta = { name: pkg.name, version: pkg.version, description: pkg.description, license: pkg.license };
   writeFileSync(path.join(outDir, 'package.json'), `${JSON.stringify(meta, null, 2)}\n`);
   return { dir: outDir, bundle, version: pkg.version };

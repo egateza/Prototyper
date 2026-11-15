@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { APP_DIR, APP_MODE, cliCommand } from './appfiles.js';
+import { resolveHome } from './config.js';
 import { errorMessage } from './errors.js';
 import type { Manifest } from './manifest.js';
 
@@ -13,7 +13,7 @@ import type { Manifest } from './manifest.js';
 export const MARK_START = '<!-- prototyper:start -->';
 export const MARK_END = '<!-- prototyper:end -->';
 
-export type AgentFileAction = 'created' | 'updated' | 'unchanged' | 'skipped' | 'error';
+export type AgentFileAction = 'created' | 'updated' | 'unchanged' | 'skipped' | 'missing' | 'error';
 
 export interface AgentFileResult {
   file: string;
@@ -21,10 +21,22 @@ export interface AgentFileResult {
   error?: string;
 }
 
-/** Cara memanggil CLI di mesin ini bila `prototyper` belum ada di PATH. */
-function fallbackCli(): string {
-  if (APP_MODE === 'source') return `npm --prefix "${APP_DIR}" run cli --`;
-  return cliCommand().map((p) => `"${p}"`).join(' ');
+export interface SyncOptions {
+  /** Folder data Prototyper; menentukan path shim di petunjuk (default: PROTOTYPER_HOME / ~/.prototyper). */
+  home?: string;
+  /**
+   * Sinkron otomatis: hanya perbarui bagian Prototyper yang sudah ada. File yang belum ada atau
+   * tidak punya penanda dilewati ('missing'), dan CLAUDE.md tidak disentuh.
+   */
+  onlyExisting?: boolean;
+}
+
+/**
+ * Shim CLI di folder data (ditulis ulang daemon tiap menyala, lihat ensureShim). Dipakai di petunjuk
+ * agar isinya sama walau Prototyper dijalankan dari exe, portable, npm, atau source.
+ */
+export function shimCommand(home: string, platform: NodeJS.Platform = process.platform): string {
+  return platform === 'win32' ? path.win32.join(home, 'bin', 'prototyper.cmd') : path.posix.join(home.replace(/\\/g, '/'), 'bin', 'prototyper');
 }
 
 export function instructionsFile(m: Manifest): string {
@@ -32,7 +44,7 @@ export function instructionsFile(m: Manifest): string {
 }
 
 /** Isi bagian Prototyper (di antara penanda) untuk sebuah manifest. */
-export function prototyperSection(m: Manifest): string {
+export function prototyperSection(m: Manifest, home: string = resolveHome()): string {
   const id = m.id;
   const lines = [
     MARK_START,
@@ -68,7 +80,7 @@ export function prototyperSection(m: Manifest): string {
     `4. Pertanyaan balik atau permintaan revisi dari pengguna dijawab dengan \`prototyper comments reply ${id} <commentId> "<jawaban>"\`.`,
     '5. Komentar dengan `waitingFor: "user"` sedang menunggu pengguna — jangan dikerjakan dulu.',
     '',
-    `Bila perintah \`prototyper\` tidak ditemukan, di mesin ini pakai: \`${fallbackCli()} <perintah>\`.`,
+    `Bila perintah \`prototyper\` tidak ditemukan, pakai shim-nya: \`"${shimCommand(home)}" <perintah>\`.`,
     MARK_END,
   );
   return lines.join('\n');
@@ -103,19 +115,22 @@ async function writeIfChanged(file: string, before: string | null, after: string
  * Pasang/perbarui petunjuk agent di folder prototype. Tidak pernah melempar error: kegagalan
  * menulis (mis. folder read-only) dilaporkan sebagai action "error" agar pendaftaran tetap jalan.
  */
-export async function syncAgentFiles(dir: string, m: Manifest): Promise<AgentFileResult[]> {
+export async function syncAgentFiles(dir: string, m: Manifest, opts: SyncOptions = {}): Promise<AgentFileResult[]> {
   const rel = instructionsFile(m);
   if (m.agent?.syncInstructions === false) return [{ file: rel, action: 'skipped' }];
   const out: AgentFileResult[] = [];
+  const section = prototyperSection(m, opts.home);
 
   const instr = path.join(dir, rel);
   try {
     const before = (await readText(instr))?.replace(/^﻿/, '') ?? null;
-    const after = before === null ? `# ${m.name}\n\n${prototyperSection(m)}\n` : upsertBlock(before, prototyperSection(m));
+    if (opts.onlyExisting && !before?.includes(MARK_START)) return [{ file: rel, action: 'missing' }];
+    const after = before === null ? `# ${m.name}\n\n${section}\n` : upsertBlock(before, section);
     out.push({ file: rel, action: await writeIfChanged(instr, before, after) });
   } catch (err) {
     out.push({ file: rel, action: 'error', error: errorMessage(err) });
   }
+  if (opts.onlyExisting) return out; // CLAUDE.md hanya berisi impor; tidak berubah antar versi
 
   // Claude Code membaca CLAUDE.md; impor file instruksi agar isinya sama.
   const claude = path.join(dir, 'CLAUDE.md');
@@ -138,6 +153,7 @@ const ACTION_LABEL: Record<AgentFileAction, string> = {
   updated: 'diperbarui',
   unchanged: 'sudah terbaru',
   skipped: 'dilewati (agent.syncInstructions: false)',
+  missing: 'tidak punya bagian Prototyper (pasang dengan `prototyper agents sync`)',
   error: 'gagal',
 };
 

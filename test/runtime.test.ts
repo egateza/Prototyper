@@ -4,7 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import { probePort } from '../src/core/ports.js';
 import type { PrototypeView } from '../src/core/views.js';
 import { buildApp } from '../src/server/app.js';
-import { EXAMPLES, makePrototype, testConfig } from './helpers.js';
+import { copyExample, makePrototype, testConfig } from './helpers.js';
 
 function isAlive(pid: number): boolean {
   try {
@@ -33,7 +33,7 @@ describe('menjalankan prototype lewat API', () => {
   });
 
   it('mode static: daftar, start, akses, stop', async () => {
-    const add = await post('/api/prototypes', { path: path.join(EXAMPLES, 'hello-static') });
+    const add = await post('/api/prototypes', { path: copyExample('hello-static') });
     expect(add.statusCode).toBe(201);
     expect(add.json<PrototypeView>()).toMatchObject({ id: 'hello-static', status: 'stopped', valid: true });
 
@@ -60,7 +60,7 @@ describe('menjalankan prototype lewat API', () => {
   });
 
   it('mode command: start, akses, restart memakai port sticky, stop membunuh proses', async () => {
-    await post('/api/prototypes', { path: path.join(EXAMPLES, 'hello-command') });
+    await post('/api/prototypes', { path: copyExample('hello-command') });
     const v = (await post('/api/prototypes/hello-command/start')).json<PrototypeView>();
     expect(v.status).toBe('running');
     expect(v.pid).toBeTypeOf('number');

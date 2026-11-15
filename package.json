@@ -1,6 +1,6 @@
 {
   "name": "prototyper",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Daftarkan, jalankan, dan kelola prototype lokal agar bisa dikerjakan oleh LLM agent apa pun.",
   "type": "module",
   "license": "UNLICENSED",
@@ -19,6 +19,7 @@
     "test": "node scripts/vitest.mjs run",
     "test:watch": "node scripts/vitest.mjs",
     "schema": "tsx scripts/gen-schema.ts",
+    "icon": "tsx scripts/gen-icon.ts",
     "start": "node dist/cli/index.js serve",
     "release": "tsx scripts/release.ts"
   },
@@ -29,9 +30,11 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "@types/node": "^24.19.2",
     "esbuild": "^0.28.2",
     "postject": "^1.0.0-alpha.6",
+    "rcedit": "^5.0.2",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitest": "^5.1.0"
@@ -39,6 +42,7 @@
   "files": [
     "dist",
     "web",
-    "schemas"
+    "schemas",
+    "assets/tray"
   ]
 }

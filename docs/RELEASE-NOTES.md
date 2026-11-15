@@ -1,3 +1,11 @@
+## Yang baru
+
+- **Tray Windows.** Dobel-klik `prototyper.exe` untuk menjalankan Prototyper sebagai ikon di tray, tanpa jendela konsol. Klik kiri membuka popup ringkas: status daemon, daftar prototype dengan toggle jalankan/hentikan, tombol buka di browser, jalankan saat startup, periksa pembaruan, dan jalankan/hentikan semua. Klik kanan membuka menu, dan klik dua kali membuka Web UI. Angka pada ikon menunjukkan jumlah prototype yang berjalan.
+- **Pembaruan dari tray.** Tray memeriksa GitHub Releases. Untuk `prototyper.exe`, pembaruan diunduh, dicocokkan dengan `SHA256SUMS.txt`, lalu dipasang lewat "Mulai ulang", dan prototype yang tadinya berjalan dinyalakan lagi. Fitur ini baru berlaku mulai 0.2.0: dari 0.1.0, unduh 0.2.0 secara manual sekali.
+- **Jalankan saat startup** (Windows) dari tray.
+- Icon Prototyper ("Blueprint") untuk exe, Web UI, dan tray.
+- Petunjuk agent di semua prototype disesuaikan otomatis saat daemon versi baru menyala.
+
 ## Pilih berkas unduhan
 
 | OS | Biner tunggal (tanpa Node) | Portable (tanpa Node) | Lewat npm (butuh Node ≥ 22.12) |
@@ -27,6 +35,8 @@ prototyper.cmd --version
 # npm
 npm install -g .\prototyper-<versi>.tgz
 ```
+
+Bila `prototyper.exe` di-dobel-klik dari Explorer, Prototyper berjalan sebagai ikon di tray Windows: daemon ikut dinyalakan, lalu jendela konsolnya tertutup sendiri. Klik kiri ikon untuk status dan daftar prototype, klik kanan untuk menu (buka Web UI, jalankan saat startup, periksa pembaruan, keluar), dan klik dua kali untuk membuka Web UI (http://localhost:4000). Perintah lain dijalankan dari terminal (`prototyper --help`).
 
 Karena biner belum ditandatangani, Windows SmartScreen bisa memperingatkan. Pilih **More info → Run anyway**.
 

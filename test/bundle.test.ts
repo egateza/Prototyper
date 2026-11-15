@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { cpSync, readFileSync } from 'node:fs';
+import { cpSync, existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { bundleApp } from '../scripts/bundle.js';
@@ -42,6 +42,7 @@ describe('bundle rilis', () => {
     const r = cli(['--version']);
     expect(r.code).toBe(0);
     expect(r.stdout.trim()).toBe(pkg.version);
+    expect(existsSync(path.join(path.dirname(bundle), 'assets', 'tray'))).toBe(true); // icon tray
   });
 
   it('menjalankan prototype static lewat daemon: Web UI, embed.js, petunjuk agent', async () => {
@@ -55,7 +56,13 @@ describe('bundle rilis', () => {
     const health = (await (await fetch(`http://localhost:${DAEMON_PORT}/api/health`)).json()) as { status: string };
     expect(health.status).toBe('ok');
     expect(await (await fetch(`http://localhost:${DAEMON_PORT}/`)).text()).toContain('<html');
+    expect((await fetch(`http://localhost:${DAEMON_PORT}/favicon.svg`)).status).toBe(200);
     expect((await fetch(`${url}/__prototyper/embed.js`)).status).toBe(200);
-    expect(readFileSync(path.join(dir, 'AGENTS.md'), 'utf8')).toContain(path.basename(bundle));
+    expect(readFileSync(path.join(dir, 'AGENTS.md'), 'utf8')).toContain(path.join(home, 'bin', 'prototyper'));
+
+    // daemon menyala → shim di <home>/bin ditulis ulang agar menunjuk ke bundle ini
+    const shim = path.join(home, 'bin', process.platform === 'win32' ? 'prototyper.cmd' : 'prototyper');
+    for (let i = 0; i < 50 && !existsSync(shim); i++) await new Promise((r) => setTimeout(r, 100));
+    expect(readFileSync(shim, 'utf8')).toContain(path.basename(bundle));
   }, 60_000);
 });

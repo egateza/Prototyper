@@ -35,17 +35,19 @@ npm run dev          # daemon + auto-reload di http://localhost:4000
 npm run cli -- <cmd>
 npm run typecheck && npm test
 npm run schema       # wajib setelah mengubah skema manifest (ada tes yang mengecek sinkron)
+npm run icon         # setelah mengubah assets/icon.svg / icon-tray.svg: buat ulang icon.ico, png, web/favicon.svg, assets/tray/*.png
 npm run release      # berkas rilis untuk OS ini: exe (Node SEA) + portable + npm → release/ (lihat docs/RELEASE.md)
 ```
 
 Struktur:
 
 ```
-src/core/    appfiles (APP_DIR/APP_MODE: source|dist|bundle|sea, cliCommand), config, manifest (zod), detect (init), scaffold (new + template), agentfiles (AGENTS.md/CLAUDE.md), comments, embed (sisip skrip pratinjau), agent (menjalankan claude -p), registry, state, ports, logs, runtime, views
+src/core/    appfiles (APP_DIR/APP_MODE: source|dist|bundle|sea, cliCommand), config, manifest (zod), detect (init), scaffold (new + template), agentfiles (AGENTS.md/CLAUDE.md), comments, embed (sisip skrip pratinjau), agent (menjalankan claude -p), registry, state, ports, logs, runtime, views, startup (Run key Windows), update (GitHub Releases), open (buka browser)
 src/server/  app.ts (buildApp), routes/health.ts, routes/prototypes.ts, routes/comments.ts, routes/agent.ts
-src/cli/     index.ts (perintah), comments.ts (prototyper comments …), client.ts (HTTP + auto-start daemon), output.ts
+src/cli/     index.ts (perintah), comments.ts (prototyper comments …), client.ts (HTTP + auto-start daemon), launcher.ts (dobel-klik exe), output.ts
+src/tray/    tray Windows: index.ts (proses, lock, install), controller.ts (logika, diuji dgn host tiruan), popup.ts (tata letak popup klik kiri, varian B Ringkas), menu.ts (menu klik kanan), host.ts (skrip PowerShell: NotifyIcon + popup)
 web/         UI tanpa build step (HTML + JS modul); web/embed.js = skrip yang disisipkan ke prototype static (komentar elemen)
-scripts/     bundle.ts (esbuild → prototyper.cjs), release.ts (exe/portable/npm), gen-schema.ts, vitest.mjs
+scripts/     bundle.ts (esbuild → prototyper.cjs), release.ts (exe/portable/npm), gen-icon.ts + winres.ts (icon/resource exe), gen-schema.ts, vitest.mjs
 examples/    hello-static, hello-command (dipakai tes)
 test/        vitest; route diuji dengan app.inject(); tes runtime memakai port 47100-47149
 ```

@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,6 +8,13 @@ export const EXAMPLES = fileURLToPath(new URL('../examples/', import.meta.url));
 
 export function tmpDir(prefix = 'prototyper-test-'): string {
   return mkdtempSync(path.join(os.tmpdir(), prefix));
+}
+
+/** Salinan contoh di folder sementara: mendaftarkan prototype menulis AGENTS.md, jadi jangan di repo. */
+export function copyExample(name: string): string {
+  const dir = path.join(tmpDir('prototyper-example-'), name);
+  cpSync(path.join(EXAMPLES, name), dir, { recursive: true });
+  return dir;
 }
 
 /** Config untuk tes: home sementara, rentang port tinggi agar tidak bentrok. */

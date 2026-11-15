@@ -19,6 +19,12 @@ export interface Config {
   lan: boolean;
   /** Folder induk default untuk `prototyper new`. */
   workspace: string;
+  /** Perbarui petunjuk agent di semua prototype saat daemon menyala (PROTOTYPER_AUTO_SYNC=0 mematikan). */
+  autoSyncAgents: boolean;
+  /** Repo GitHub (`pemilik/nama`) sumber pembaruan untuk tray (PROTOTYPER_UPDATE_REPO). */
+  updateRepo: string;
+  /** Tray memeriksa pembaruan otomatis saat menyala dan tiap 24 jam (PROTOTYPER_UPDATE_CHECK=0 mematikan). */
+  updateCheck: boolean;
 }
 
 export interface ConfigOverrides {
@@ -47,6 +53,20 @@ function parseRange(value: string | undefined): PortRange {
   return { start, end };
 }
 
+export const DEFAULT_UPDATE_REPO = 'egateza/Prototyper';
+
+function parseRepo(value: string | undefined): string {
+  if (value === undefined || value === '') return DEFAULT_UPDATE_REPO;
+  const v = value.trim();
+  if (!/^[\w.-]+\/[\w.-]+$/.test(v)) throw new Error(`PROTOTYPER_UPDATE_REPO tidak valid: "${value}" (format: pemilik/nama)`);
+  return v;
+}
+
+/** Folder data Prototyper: override (--home) > PROTOTYPER_HOME > ~/.prototyper. */
+export function resolveHome(override?: string, env: NodeJS.ProcessEnv = process.env): string {
+  return path.resolve(override ?? env.PROTOTYPER_HOME ?? path.join(os.homedir(), '.prototyper'));
+}
+
 /**
  * Bangun konfigurasi dari env + override (flag CLI).
  * Prioritas: override > env > default.
@@ -56,7 +76,7 @@ export function loadConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): Config {
   const lan = overrides.lan ?? env.PROTOTYPER_LAN === '1';
-  const home = path.resolve(overrides.home ?? env.PROTOTYPER_HOME ?? path.join(os.homedir(), '.prototyper'));
+  const home = resolveHome(overrides.home, env);
   const port = overrides.port ?? parsePort(env.PROTOTYPER_PORT, 4000, 'PROTOTYPER_PORT');
   const portRange = parseRange(env.PROTOTYPER_PORT_RANGE);
   // Default mengikuti PROTOTYPER_HOME agar prototype baru ikut di drive yang sama (mis. D:).
@@ -73,5 +93,8 @@ export function loadConfig(
     portRange,
     lan,
     workspace,
+    autoSyncAgents: env.PROTOTYPER_AUTO_SYNC !== '0',
+    updateRepo: parseRepo(env.PROTOTYPER_UPDATE_REPO),
+    updateCheck: env.PROTOTYPER_UPDATE_CHECK !== '0',
   };
 }

@@ -21,16 +21,21 @@ Node yang menjalankan skrip ikut dikemas, jadi pakai Node resmi dari nodejs.org 
 Urutan kerja [`scripts/release.ts`](../scripts/release.ts):
 
 1. [`scripts/bundle.ts`](../scripts/bundle.ts) menjalankan esbuild: `src/cli/index.ts` → `build/app/prototyper.cjs` (CommonJS, semua dependensi ikut di-bundle), lalu menyalin web/, schemas/, dan package.json ringkas.
-2. **exe**: semua isi `build/app` (kecuali bundle) menjadi aset SEA, ditambah `sea-manifest.json` (`id` = versi + hash). `node --experimental-sea-config` → blob, salin `node`, lalu `postject`. Di macOS ada langkah `codesign --remove-signature` sebelumnya dan tanda tangan ad-hoc sesudahnya. Hasilnya diuji dengan `--version`.
+2. **exe**: semua isi `build/app` (kecuali bundle) menjadi aset SEA, ditambah `sea-manifest.json` (`id` = versi + hash). `node --experimental-sea-config` → blob, salin `node`, lalu `postject`. Di Windows, sebelum `postject` dijalankan, `rcedit` memasang `assets/icon.ico` dan info file (ProductName, versi) agar exe tidak tampil sebagai Node.js. Di macOS ada langkah `codesign --remove-signature` sebelumnya dan tanda tangan ad-hoc sesudahnya. Hasilnya diuji dengan `--version`.
 3. **portable**: salin `node` + `build/app` + peluncur, lalu arsipkan (.zip di Windows lewat `tar.exe` bawaan, .tar.gz di Linux/macOS).
 4. **npm**: `npm run build` (setelah `dist/` dibersihkan) lalu `npm pack`.
+
+## Icon
+
+Sumber tunggal icon adalah `assets/icon.svg`, monogram "Blueprint" beraksen Indigo `#5b5bf6`. Setelah mengubahnya, jalankan `npm run icon` ([`scripts/gen-icon.ts`](../scripts/gen-icon.ts)) untuk membuat ulang `assets/icon.ico` (16–256 px), `assets/icon-256.png`, `assets/icon-512.png`, dan `web/favicon.svg`, lalu commit hasilnya. Build rilis tidak merender ulang icon.
 
 ## Hal yang perlu diingat saat mengubah kode
 
 - Jangan memakai `import.meta.url` untuk mencari file aplikasi. Pakai `APP_DIR` dari [`src/core/appfiles.ts`](../src/core/appfiles.ts). Di bundle CJS `import.meta` kosong, dan di biner tunggal file aplikasi diekstrak ke `<PROTOTYPER_HOME>/app/<id>/`.
 - Untuk memanggil CLI dari proses lain, pakai `cliCommand()`. Jangan menyusun `process.execPath` + skrip sendiri, karena di biner tunggal `process.execPath` adalah prototyper itu sendiri. Untuk menjalankan skrip JS pihak lain, pakai `scriptRunner()`.
 - Jangan memakai top-level await atau `import()` dinamis di `src/`: bundle-nya CommonJS.
-- File baru yang perlu dibaca saat runtime harus disalin oleh `bundleApp()`. Tes `test/bundle.test.ts` menjalankan bundle tanpa `node_modules`.
+- Pembaruan dari tray (`src/core/update.ts`) bergantung pada nama berkas `prototyper-<versi>-win-<arch>.exe`, tag `v<versi>`, dan `SHA256SUMS.txt` di rilis. Bila salah satunya diubah, ubah juga `selfUpdateAssetName()`.
+- File baru yang perlu dibaca saat runtime harus disalin oleh `bundleApp()` (mis. `assets/tray/` untuk logo tray). Tes `test/bundle.test.ts` menjalankan bundle tanpa `node_modules`.
 
 ## Menerbitkan rilis
 

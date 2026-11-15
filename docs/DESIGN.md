@@ -263,6 +263,7 @@ prototyper start|stop|restart <id>           # start cetak URL
 prototyper status
 prototyper logs <id> [-n 200] [-f]           # tanpa daemon: dibaca dari file log; -f butuh daemon
 prototyper shutdown                          # hentikan daemon + semua prototype
+prototyper tray [--foreground] [--restore a,b]   # Windows: ikon tray (lihat §10g); default berjalan di latar
 prototyper agents list                       # agent coding lokal yang terdeteksi
 prototyper agents sync [id]                  # tulis ulang blok petunjuk AGENTS.md/CLAUDE.md
 prototyper comments <id> [-a|--resolved] [--page /x] [-w agent|user]
@@ -353,10 +354,11 @@ Tujuan: agent yang mengerjakan sebuah komentar tahu riwayat dan keputusan sebelu
 ## 10e. Petunjuk agent di folder prototype
 
 - Saat didaftarkan (`POST /prototypes`, `POST /prototypes/new`, CLI `add`/`new`) dan saat `PUT /prototypes/:id/manifest`, Prototyper memanggil `syncAgentFiles` (`src/core/agentfiles.ts`).
-- File instruksi (`agent.instructions`, default `AGENTS.md`): dibuat bila belum ada; bila ada, hanya blok di antara `<!-- prototyper:start -->` … `<!-- prototyper:end -->` yang diganti/ditambahkan di akhir. Isi blok: id, mode, cara menjalankan/refresh, alur komentar (`--waiting agent`, `reply` lalu biarkan open — agent tidak me-`resolve`, `ask --option`), dan perintah fallback `npm --prefix "<repo>" run cli --` bila `prototyper` tidak ada di PATH.
+- File instruksi (`agent.instructions`, default `AGENTS.md`): dibuat bila belum ada; bila ada, hanya blok di antara `<!-- prototyper:start -->` … `<!-- prototyper:end -->` yang diganti/ditambahkan di akhir. Isi blok: id, mode, cara menjalankan/refresh, alur komentar (`--waiting agent`, `reply` lalu biarkan open — agent tidak me-`resolve`, `ask --option`), dan shim `<PROTOTYPER_HOME>/bin/prototyper(.cmd)` sebagai fallback bila `prototyper` tidak ada di PATH. Fallback-nya sengaja shim, bukan path instalasi, agar isi blok sama di exe/portable/npm/source dan tidak berubah bolak-balik.
 - `CLAUDE.md`: dibuat berisi `@AGENTS.md`; bila sudah ada dan belum mengimpor, ditambahkan blok bertanda berisi baris impor itu.
 - `agent.syncInstructions: false` mematikan semuanya. Gagal menulis tidak menggagalkan pendaftaran (dilaporkan sebagai `agentFiles[].action = "error"`).
-- `prototyper agents sync [id]` untuk prototype lama / setelah format petunjuk berubah.
+- Sinkron otomatis (`src/core/autosync.ts`): setiap kali daemon menyala (setelah `listen`, di belakang layar), shim CLI ditulis ulang lalu `syncAgentFiles(…, { onlyExisting: true })` dijalankan untuk semua prototype terdaftar. Dengan begitu, setelah Prototyper diperbarui, petunjuk di semua prototype mengikuti versi baru. `onlyExisting` hanya mengganti blok yang sudah ada: file tanpa penanda (belum dipasang atau sengaja dihapus) dilaporkan `missing` dan tidak dibuat ulang, dan `CLAUDE.md` tidak disentuh. Yang berubah atau gagal dicatat di log daemon. `PROTOTYPER_AUTO_SYNC=0` mematikan sinkron otomatis.
+- `prototyper agents sync [id]` memasang lengkap secara manual, termasuk membuat file yang belum ada.
 
 ## 10f. Agent dari Web UI (Claude Code, Codex, Gemini CLI, Copilot CLI)
 
@@ -373,6 +375,17 @@ Rincian Claude Code:
 
 - Perintah: `claude -p "<prompt>" --output-format stream-json --verbose --permission-mode dontAsk --permission-prompts none --allowedTools "Read,Edit,Write,Glob,Grep,Bash(prototyper *),PowerShell(prototyper *)" --append-system-prompt …` di folder prototype (`--bare` bila `PROTOTYPER_AGENT_AUTH=apikey`).
 - Output stream-json diringkas menjadi log (`💬` teks, `→` pemakaian tool, `✗` tool gagal, `✓` selesai); ringkasan akhir, jumlah langkah, dan estimasi biaya disimpan di info run.
+
+## 10g. Tray Windows (`src/tray/`)
+
+Rancangannya divalidasi lewat prototype `prototyper-runtime`: hanya ikon tray, tanpa jendela.
+
+- **Proses**: `prototyper tray` menjalankan `tray --foreground` terlepas dari konsol (output ke `<home>/tray.log`), lalu keluar. Satu tray per home (`<home>/tray.pid`); bila sudah ada yang berjalan, Web UI dibuka. Dobel-klik `prototyper.exe` dari Explorer = `prototyper tray`.
+- **Daemon terpisah dari tray**: tray berbicara lewat HTTP seperti CLI (`DaemonClient`), polling `/api/prototypes` tiap 2 detik. Jeda = `POST /api/shutdown`, lanjutkan = `ensure()`. Keluar juga mematikan daemon. Daemon yang dimatikan dari luar tampil sebagai "dijeda" dan tidak dinyalakan ulang otomatis.
+- **Ikon tanpa modul native**: `host.ts` menulis skrip PowerShell (NotifyIcon WinForms) ke `<home>/tray/` dan menjalankannya. Protokolnya JSON per baris lewat stdin/stdout. Host hanya menggambar dan melaporkan klik; semua logika ada di `controller.ts` (diuji dengan host tiruan). Klik kiri membuka popup tanpa bingkai yang meniru varian **B Ringkas** prototype: `popup.ts` menghitung tata letaknya sebagai daftar bentuk berkoordinat (rect, teks, toggle, spinner, progress, area klik) pada 96 DPI, lalu host menskalakannya ke DPI layar. Sudut membulat dipasang lewat DWM di Windows 11, dan di Windows 10 dipakai `Region` sebagai gantinya. Popup tidak tertutup saat kehilangan fokus. Popup hanya ditutup lewat tombol ✕ (area klik `close` tanpa id, ditangani host), Esc, atau klik ikon tray. Klik kanan membuka menu yang juga digambar sendiri (`menuLayout`): urutan, teks, ✓, dan sorotan item pembaruan sama dengan menu konteks prototype. Warna terang/gelapnya mengikuti tema aplikasi Windows (`AppsUseLightTheme`), dan menu tertutup setelah item dipilih atau saat kehilangan fokus. Klik diproses satu fungsi (`Click-At`), dan tes memanggilnya lewat pesan `clickAt` tanpa menggerakkan mouse. Area klik yang bertumpuk (tombol di dalam baris) pernah membuat id terkirim sebagai `" update"` dan popup langsung tertutup. Teks digambar dengan GDI+ (ClearType); simbol di awal teks memakai Segoe UI Symbol (`glyphRuns`). Logo tray & popup berasal dari `assets/tray/tray-<px>.png` (`npm run icon` dari `assets/icon-tray.svg`, tile tanpa padding seperti prototype), bukan .ico, karena System.Drawing salah membaca .ico berisi PNG. Pesan `snapshot` menggambar popup ke PNG untuk tes dan pengecekan visual.
+- **Startup**: nilai `Prototyper` di `HKCU\…\Run` lewat `reg.exe` (`src/core/startup.ts`), isinya `cliCommand()` + `--home --port tray`.
+- **Pembaruan** (`src/core/update.ts`): GitHub Releases `PROTOTYPER_UPDATE_REPO`, diperiksa otomatis 10 detik setelah menyala lalu tiap 24 jam (`PROTOTYPER_UPDATE_CHECK=0` mematikan). Biner tunggal Windows: unduh `prototyper-<versi>-win-<arch>.exe` ke `<home>/updates/`, cocokkan dengan `SHA256SUMS.txt`, lalu "Mulai ulang": daemon dimatikan, exe lama di-rename ke `.old` (dihapus saat tray berikutnya menyala), exe baru disalin, dan tray baru dijalankan dengan `--restore <prototype yang tadi berjalan>`. Bentuk rilis lain: buka halaman rilis.
+- Belum ada: tray untuk macOS/Linux.
 
 ## 11. Mode LAN
 
@@ -395,9 +408,11 @@ prototyper/
 │  ├─ version.ts
 │  ├─ core/   config manifest detect scaffold agentfiles comments embed agent
 │  │          registry state ports logs runtime views errors fsutil net
+│  │          autosync open startup update
 │  ├─ server/ index.ts app.ts errors.ts
 │  │          routes/health.ts routes/prototypes.ts routes/comments.ts routes/agent.ts
-│  └─ cli/    index.ts comments.ts client.ts output.ts
+│  ├─ cli/    index.ts comments.ts client.ts output.ts launcher.ts
+│  └─ tray/   index.ts controller.ts popup.ts menu.ts host.ts (ikon tray Windows, §10g)
 ├─ web/       index.html app.js style.css embed.js
 ├─ examples/  hello-static, hello-command (dipakai tes)
 ├─ scripts/   gen-schema.ts vitest.mjs

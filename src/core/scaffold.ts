@@ -289,7 +289,7 @@ export async function createPrototype(registry: Registry, opts: NewPrototypeOpti
     }
     await writeManifest(dir, manifest);
     const prototype = await registry.add(dir);
-    const agentFiles = prototype.manifest ? await syncAgentFiles(dir, prototype.manifest) : [];
+    const agentFiles = prototype.manifest ? await syncAgentFiles(dir, prototype.manifest, { home: registry.home }) : [];
     const extra = agentFiles.filter((f) => f.action === 'created' && !(f.file in files)).map((f) => f.file);
     return { prototype, template, files: ['prototyper.json', ...Object.keys(files), ...extra].sort(), agentFiles };
   } catch (err) {

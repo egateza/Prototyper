@@ -355,9 +355,11 @@ function infoHtml(p) {
     ['Port / PID', `${p.port ?? '—'} / ${p.pid ?? '—'}`],
     ['Uptime', uptime(p) ?? '—'],
     ['Exit code', p.exitCode ?? '—'],
-    ['Instruksi agent', p.instructions.exists
+    ['Instruksi agent', `${p.instructions.exists
       ? `<span class="mono">${esc(p.instructions.path.split(/[\\/]/).pop())}</span> ✓`
-      : `<span class="muted">Belum ada ${esc(p.instructions.path.split(/[\\/]/).pop())}</span>`],
+      : `<span class="muted">Belum ada ${esc(p.instructions.path.split(/[\\/]/).pop())}</span>`}${LOCAL && p.valid
+      ? ` <button type="button" class="btn sm ghost instr-sync" data-act="sync-instr" data-id="${esc(p.id)}" title="Pasang/perbarui petunjuk Prototyper di AGENTS.md dan CLAUDE.md (sama dengan prototyper agents sync)" ${ui.busy.has(`sync:${p.id}`) ? 'disabled' : ''}>${ICON.restart}Sinkronkan</button>`
+      : ''}`],
   ];
   const editBtn = LOCAL
     ? `<button type="button" class="btn sm ${p.valid ? 'ghost' : 'primary'}" data-act="edit-manifest" data-id="${esc(p.id)}">${p.valid ? 'Edit' : 'Perbaiki manifest'}</button>`
@@ -445,6 +447,44 @@ async function run(act, p) {
   }
 }
 
+// ---------- Sinkron petunjuk agent (AGENTS.md / CLAUDE.md) ----------
+const SYNC_LABEL = {
+  created: 'dibuat', updated: 'diperbarui', unchanged: 'sudah terbaru',
+  skipped: 'dilewati (agent.syncInstructions: false)', missing: 'belum dipasang', error: 'gagal',
+};
+const describeSync = (files) => files.map((f) => `${f.file} ${SYNC_LABEL[f.action] ?? f.action}${f.error ? `: ${f.error}` : ''}`).join(', ');
+
+async function syncInstructions(p) {
+  const key = `sync:${p.id}`;
+  if (ui.busy.has(key)) return;
+  ui.busy.add(key);
+  render();
+  try {
+    const r = await api('POST', `/api/prototypes/${enc(p.id)}/instructions/sync`);
+    toast(`${p.name}: ${describeSync(r.agentFiles)}`, r.agentFiles.some((f) => f.action === 'error'));
+  } catch (err) {
+    toast(err.message, true);
+  } finally {
+    ui.busy.delete(key);
+    await refresh(true);
+  }
+}
+
+async function syncAllInstructions() {
+  try {
+    const { results } = await api('POST', '/api/instructions/sync');
+    const changed = results.filter((r) => r.agentFiles.some((f) => f.action === 'created' || f.action === 'updated'));
+    const failed = results.filter((r) => r.error || r.agentFiles.some((f) => f.action === 'error'));
+    const parts = [changed.length ? `diperbarui: ${changed.map((r) => r.id).join(', ')}` : 'semua sudah terbaru'];
+    if (failed.length) parts.push(`gagal/dilewati: ${failed.map((r) => r.id).join(', ')}`);
+    toast(`Petunjuk agent — ${parts.join('; ')}`, failed.length > 0);
+  } catch (err) {
+    toast(err.message, true);
+  } finally {
+    await refresh(true);
+  }
+}
+
 /** Dialog konfirmasi; resolve true bila tombol OK ditekan. */
 function confirmDialog({ title, body, ok }) {
   const d = $('#dlg-confirm');
@@ -524,6 +564,7 @@ document.addEventListener('click', (e) => {
     case 'reload-preview': previewNonce++; return render();
     case 'device': return setDevice(t.dataset.dev);
     case 'edit-manifest': return p && openManifestEditor(p);
+    case 'sync-instr': return p && syncInstructions(p);
     case 'add': return openAdd();
     case 'new': return openNew();
     case 'agent-run': return runAgent();
@@ -1545,6 +1586,7 @@ function commands() {
   out.push({ ic: '⇤', label: ui.sidePinned ? 'Sidebar: sembunyi otomatis' : 'Sidebar: sematkan', grp: 'Tampilan', run: () => setSidePinned(!ui.sidePinned) });
   if (LOCAL) out.push({ ic: '⏻', label: 'Matikan Prototyper', grp: 'Umum', run: () => confirmShutdown() });
   out.push({ ic: '✦', label: 'Agent lokal: cek agent yang tersedia', grp: 'Umum', run: () => openAgentsDialog() });
+  if (LOCAL && list.length) out.push({ ic: '↻', label: 'Sinkronkan petunjuk agent (semua prototype)', grp: 'Umum', run: () => syncAllInstructions() });
   for (const [k, d] of Object.entries(DEVICES)) {
     if (k !== ui.device) out.push({ ic: '▭', label: `Pratinjau: ${d.label}${d.w ? ` (${d.w}×${d.h})` : ''}`, grp: 'Tampilan', run: () => setDevice(k) });
   }

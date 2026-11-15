@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { autoSyncAgentFiles, describeAutoSync } from '../core/autosync.js';
 import type { Config } from '../core/config.js';
 import { lanAddresses } from '../core/net.js';
 import { buildApp } from './app.js';
@@ -56,4 +57,11 @@ export async function startServer(config: Config): Promise<void> {
       `Data   : ${config.home}\nPort   : prototype ${config.portRange.start}-${config.portRange.end}` +
       `${config.lan ? '\nMode   : LAN (kontrol hanya dari mesin ini)' : ''}\nCtrl+C untuk berhenti.\n`,
   );
+
+  // Setelah update Prototyper: sesuaikan petunjuk agent di semua prototype (di belakang layar).
+  if (config.autoSyncAgents) {
+    void autoSyncAgentFiles(config, built.ctx.registry).then((r) => {
+      for (const line of describeAutoSync(r)) console.log(line);
+    });
+  }
 }

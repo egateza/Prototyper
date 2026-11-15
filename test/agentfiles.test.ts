@@ -2,8 +2,10 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { MARK_END, MARK_START, prototyperSection, syncAgentFiles, upsertBlock } from '../src/core/agentfiles.js';
+import { MARK_END, MARK_START, prototyperSection, shimCommand, syncAgentFiles, upsertBlock } from '../src/core/agentfiles.js';
+import { autoSyncAgentFiles, describeAutoSync } from '../src/core/autosync.js';
 import { parseManifest, type Manifest } from '../src/core/manifest.js';
+import { Registry } from '../src/core/registry.js';
 import { buildApp } from '../src/server/app.js';
 import { makePrototype, testConfig, tmpDir } from './helpers.js';
 
@@ -110,5 +112,79 @@ describe('API memasang petunjuk agent', () => {
     });
     expect(put.statusCode).toBe(200);
     expect(read(dir, 'AGENTS.md')).toContain('prototyper comments daftar-baru');
+  });
+
+  it('POST /api/prototypes/:id/instructions/sync dan /api/instructions/sync (Web UI)', async () => {
+    const dir = makePrototype({ id: 'sync-ui', name: 'Sync UI', type: 'static' }, { 'index.html': 'x' });
+    expect((await app.inject({ method: 'POST', url: '/api/prototypes', payload: { path: dir } })).statusCode).toBe(201);
+    writeFileSync(path.join(dir, 'AGENTS.md'), `# Catatan\n\n${MARK_START}\nlama\n${MARK_END}\n`);
+
+    const one = await app.inject({ method: 'POST', url: '/api/prototypes/sync-ui/instructions/sync' });
+    expect(one.statusCode).toBe(200);
+    expect(one.json()).toMatchObject({
+      id: 'sync-ui',
+      agentFiles: [{ file: 'AGENTS.md', action: 'updated' }, { file: 'CLAUDE.md', action: 'unchanged' }],
+      prototype: { id: 'sync-ui', instructions: { exists: true } },
+    });
+    expect(read(dir, 'AGENTS.md')).toContain('prototyper comments sync-ui');
+    expect(read(dir, 'AGENTS.md').startsWith('# Catatan\n')).toBe(true);
+
+    const all = await app.inject({ method: 'POST', url: '/api/instructions/sync' });
+    expect(all.statusCode).toBe(200);
+    expect(all.json().results).toContainEqual({ id: 'sync-ui', agentFiles: [{ file: 'AGENTS.md', action: 'unchanged' }, { file: 'CLAUDE.md', action: 'unchanged' }], error: null });
+
+    expect((await app.inject({ method: 'POST', url: '/api/prototypes/tidak-ada/instructions/sync' })).statusCode).toBe(404);
+  });
+});
+
+describe('sinkron otomatis petunjuk agent', () => {
+  it('onlyExisting: hanya memperbarui bagian yang sudah ada; tidak membuat file baru', async () => {
+    const home = tmpDir('prototyper-home-');
+    const none = tmpDir();
+    expect(await syncAgentFiles(none, staticManifest(), { home, onlyExisting: true })).toEqual([{ file: 'AGENTS.md', action: 'missing' }]);
+    expect(existsSync(path.join(none, 'AGENTS.md'))).toBe(false);
+
+    const removed = tmpDir();
+    writeFileSync(path.join(removed, 'AGENTS.md'), '# Catatan saya\n');
+    expect(await syncAgentFiles(removed, staticManifest(), { home, onlyExisting: true })).toEqual([{ file: 'AGENTS.md', action: 'missing' }]);
+    expect(read(removed, 'AGENTS.md')).toBe('# Catatan saya\n');
+
+    const old = tmpDir();
+    writeFileSync(path.join(old, 'AGENTS.md'), `# Catatan\n\n${MARK_START}\nversi lama, id salah: hello-command\n${MARK_END}\n\nekor\n`);
+    const r = await syncAgentFiles(old, staticManifest('pos-sembako'), { home, onlyExisting: true });
+    expect(r).toEqual([{ file: 'AGENTS.md', action: 'updated' }]);
+    const text = read(old, 'AGENTS.md');
+    expect(text).toContain('prototyper comments pos-sembako');
+    expect(text).not.toContain('hello-command');
+    expect(text.startsWith('# Catatan\n\n')).toBe(true);
+    expect(text.endsWith('\n\nekor\n')).toBe(true);
+    expect(existsSync(path.join(old, 'CLAUDE.md'))).toBe(false);
+  });
+
+  it('petunjuk menunjuk shim di folder data (sama untuk exe, portable, npm, source)', () => {
+    expect(shimCommand(String.raw`D:\prototyper-data`, 'win32')).toBe(String.raw`D:\prototyper-data\bin\prototyper.cmd`);
+    expect(shimCommand('/home/u/.prototyper', 'linux')).toBe('/home/u/.prototyper/bin/prototyper');
+    const home = tmpDir('prototyper-home-');
+    expect(prototyperSection(staticManifest(), home)).toContain(`"${shimCommand(home)}" <perintah>`);
+  });
+
+  it('autoSyncAgentFiles: semua prototype terdaftar disesuaikan dan shim ditulis', async () => {
+    const config = testConfig();
+    const registry = new Registry(config.home);
+    const a = makePrototype({ id: 'auto-a', name: 'A', type: 'static' }, { 'index.html': 'x' });
+    const b = makePrototype({ id: 'auto-b', name: 'B', type: 'static' }, { 'index.html': 'x' });
+    await registry.add(a);
+    await registry.add(b);
+    writeFileSync(path.join(a, 'AGENTS.md'), `${MARK_START}\nlama\n${MARK_END}\n`);
+
+    const r = await autoSyncAgentFiles(config, registry);
+    expect(r.shimError).toBeNull();
+    expect(r.results).toEqual([
+      { id: 'auto-a', path: expect.any(String), files: [{ file: 'AGENTS.md', action: 'updated' }] },
+      { id: 'auto-b', path: expect.any(String), files: [{ file: 'AGENTS.md', action: 'missing' }] },
+    ]);
+    expect(existsSync(path.join(config.home, 'bin', 'prototyper.cmd'))).toBe(true);
+    expect(describeAutoSync(r)).toEqual(['Petunjuk agent diperbarui: auto-a']);
+    expect(describeAutoSync(await autoSyncAgentFiles(config, registry))).toEqual([]);
   });
 });

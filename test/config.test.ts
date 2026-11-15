@@ -26,4 +26,9 @@ describe('loadConfig', () => {
     expect(() => loadConfig({}, { PROTOTYPER_PORT_RANGE: '4199-4100' })).toThrow(/terbalik/);
     expect(() => loadConfig({ port: 4150 }, {})).toThrow(/bentrok/);
   });
+
+  it('PROTOTYPER_AUTO_SYNC=0 mematikan sinkron otomatis petunjuk agent', () => {
+    expect(loadConfig({}, {}).autoSyncAgents).toBe(true);
+    expect(loadConfig({}, { PROTOTYPER_AUTO_SYNC: '0' }).autoSyncAgents).toBe(false);
+  });
 });
