@@ -4,9 +4,16 @@
 //                  prototyper:mode-off, prototyper:pin-click {id}
 //   UI → halaman : prototyper:hello, prototyper:mode {on}, prototyper:pins {pins}, prototyper:focus {selector},
 //                  prototyper:clear
+//
+// Live-reload (atribut data-livereload pada tag skrip) aktif juga di luar pratinjau: EventSource ke
+// /__prototyper/livereload; event "reload" memuat ulang halaman (posisi scroll dipulihkan), event
+// "css" hanya mengganti stylesheet.
 (() => {
-  if (window.__prototyperEmbed || window.parent === window) return;
+  if (window.__prototyperEmbed) return;
   window.__prototyperEmbed = true;
+  const self = document.currentScript;
+  if (self && self.hasAttribute('data-livereload')) liveReload(new URL('/__prototyper/livereload', self.src));
+  if (window.parent === window) return;
 
   const P = '__pt-';
   let parentOrigin = null; // diisi saat UI mengirim hello
@@ -234,6 +241,44 @@
   addEventListener('scroll', positionPins, true);
   addEventListener('resize', positionPins);
   setInterval(positionPins, 700); // tata letak bisa berubah tanpa event (animasi, data dimuat)
+
+  // ---------- Live-reload ----------
+  function liveReload(url) {
+    const KEY = '__pt-scroll';
+    const store = (() => { try { return window.sessionStorage; } catch { return null; } })();
+    try {
+      const saved = store && JSON.parse(store.getItem(KEY) || 'null');
+      if (saved && saved.href === location.href) {
+        store.removeItem(KEY);
+        const restore = () => window.scrollTo(saved.x || 0, saved.y || 0);
+        if (document.readyState === 'complete') restore(); else addEventListener('load', restore, { once: true });
+      }
+    } catch { /* sessionStorage tidak tersedia */ }
+
+    function reload() {
+      try { store && store.setItem(KEY, JSON.stringify({ href: location.href, x: scrollX, y: scrollY })); } catch { /* abaikan */ }
+      location.reload();
+    }
+    function swapCss() {
+      const links = [...document.querySelectorAll('link[rel~="stylesheet"][href]')];
+      const own = links.filter((l) => { try { return new URL(l.href).origin === location.origin; } catch { return false; } });
+      if (!own.length) return reload();
+      for (const old of own) {
+        const u = new URL(old.href);
+        u.searchParams.set('__pt', String(Date.now()));
+        const next = old.cloneNode();
+        next.href = u.href;
+        const done = () => old.remove();
+        next.addEventListener('load', done, { once: true });
+        next.addEventListener('error', done, { once: true });
+        old.after(next);
+      }
+    }
+    if (!window.EventSource) return;
+    const es = new EventSource(url);
+    es.addEventListener('reload', reload);
+    es.addEventListener('css', swapCss);
+  }
 
   function start() {
     mount();

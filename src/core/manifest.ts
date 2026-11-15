@@ -41,6 +41,10 @@ export const staticConfigSchema = z
       .boolean()
       .default(true)
       .describe('Sisipkan skrip Prototyper ke halaman HTML (komentar dengan klik/blok elemen di pratinjau). false = HTML dikirim apa adanya'),
+    liveReload: z
+      .boolean()
+      .default(true)
+      .describe('Muat ulang halaman otomatis saat file di root berubah (CSS diganti tanpa muat ulang). Butuh inject: true'),
   })
   .strict();
 

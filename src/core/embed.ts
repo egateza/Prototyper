@@ -10,6 +10,8 @@ import { APP_DIR } from './appfiles.js';
  */
 export const EMBED_PATH = '/__prototyper/embed.js';
 export const EMBED_TAG = `<script src="${EMBED_PATH}" defer></script>`;
+/** Tag skrip dengan live-reload aktif (embed.js membaca atribut data-livereload). */
+export const EMBED_TAG_LIVE = `<script src="${EMBED_PATH}" data-livereload defer></script>`;
 
 const EMBED_FILE = path.join(APP_DIR, 'web', 'embed.js');
 
@@ -19,10 +21,11 @@ export function readEmbedScript(): Promise<string> {
 }
 
 /** Sisipkan tag skrip sebelum </body> terakhir (atau di akhir dokumen). Tidak dobel. */
-export function injectEmbedTag(html: string): string {
+export function injectEmbedTag(html: string, opts: { liveReload?: boolean } = {}): string {
   if (html.includes(EMBED_PATH)) return html;
+  const tag = opts.liveReload ? EMBED_TAG_LIVE : EMBED_TAG;
   const i = html.toLowerCase().lastIndexOf('</body>');
-  return i >= 0 ? `${html.slice(0, i)}${EMBED_TAG}${html.slice(i)}` : `${html}\n${EMBED_TAG}\n`;
+  return i >= 0 ? `${html.slice(0, i)}${tag}${html.slice(i)}` : `${html}\n${tag}\n`;
 }
 
 /** Ubah payload onSend Fastify (string/Buffer/stream) menjadi teks. */

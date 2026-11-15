@@ -125,6 +125,8 @@ prototyper comments ask kasir-grosir c4 "Warna tombol?" --option Ungu --option H
 
 **Komentari elemen** (prototype static): klik tombol **Komentari** di bilah pratinjau, lalu klik elemen atau blok teks di pratinjau — form komentar terisi elemen itu (selector CSS, cuplikan teks, teks yang diblok) dan halamannya otomatis. Komentar berelemen tampil sebagai pin bernomor di pratinjau; klik pin untuk melihat komentarnya, klik chip elemen di komentar untuk menyorot elemennya. Ini bekerja lewat skrip kecil yang disisipkan server static ke halaman HTML (diam bila halaman tidak dibuka di Web UI); matikan dengan `"static": { "inject": false }`. Prototype mode command (Vite) belum didukung — pakai komentar per halaman.
 
+**Live-reload** (prototype static): halaman yang terbuka, baik di pratinjau maupun di tab browser biasa, dimuat ulang otomatis begitu file di folder prototype berubah, dan posisi scroll dipertahankan. Bila yang berubah hanya file `.css`, stylesheet diganti tanpa memuat ulang halaman, jadi isian form dan state lain tetap. Matikan dengan `"static": { "liveReload": false }`.
+
 Pertanyaan dari `ask` tampil di Web UI sebagai radio button (atau checkbox dengan `--multi`) plus kolom teks: pilih opsi untuk menjawab, atau tulis pertanyaan balik tanpa memilih — pertanyaannya tetap menunggu. Setiap komentar open diberi label **Menunggu Anda** / **Menunggu agent**; badge sidebar berwarna oranye bila ada yang menunggu Anda. Agent mengambil yang gilirannya dengan `prototyper comments <id> --waiting agent --json`.
 
 Komentar disimpan di `<folder prototype>/.prototyper/comments.json` (boleh di-commit; tidak ikut disajikan oleh server static). Badge di sidebar menunjukkan jumlah komentar open.

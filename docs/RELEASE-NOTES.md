@@ -1,4 +1,12 @@
-## Yang baru di 0.3.7
+## Yang baru di 0.3.8
+
+- **Live-reload untuk prototype static.** Halaman yang terbuka, di pratinjau Web UI maupun di tab browser biasa, dimuat ulang otomatis begitu file prototype berubah, misalnya saat agent selesai mengedit. Posisi scroll dipertahankan.
+- Bila yang berubah hanya file `.css`, stylesheet diganti tanpa memuat ulang halaman, jadi isian form dan state lain tetap.
+- Setiap muat ulang dicatat di log prototype. Matikan per prototype dengan `"static": { "liveReload": false }` di `prototyper.json`.
+
+Pembaruan ke 0.3.8 mengubah kode server, jadi Prototyper dimulai ulang sekali. Prototype static yang sedang berjalan perlu di-restart agar live-reload aktif.
+
+## 0.3.7
 
 - **Ikon perangkat memantul saat diputar.** Saat orientasi pratinjau diputar (klik ikon tablet/mobile yang aktif), ikon itu berputar dengan efek memantul. Ikon lain tetap diam.
 

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { addComment, cleanAnchor, listComments } from '../src/core/comments.js';
-import { EMBED_PATH, EMBED_TAG, injectEmbedTag } from '../src/core/embed.js';
+import { EMBED_PATH, EMBED_TAG, EMBED_TAG_LIVE, injectEmbedTag } from '../src/core/embed.js';
 import { buildApp } from '../src/server/app.js';
 import { makePrototype, testConfig, tmpDir } from './helpers.js';
 
@@ -59,10 +59,10 @@ describe('server static menyisipkan skrip embed', () => {
     const { url } = (await app.inject({ method: 'POST', url: '/api/prototypes/embed-on/start' })).json() as { url: string };
     const index = await fetch(`${url}/`);
     const html = await index.text();
-    expect(html).toBe(`<!doctype html><html><body><h1>Halo</h1>${EMBED_TAG}</body></html>`);
+    expect(html).toBe(`<!doctype html><html><body><h1>Halo</h1>${EMBED_TAG_LIVE}</body></html>`);
     expect(index.headers.get('cache-control')).toBe('no-store');
-    expect(await (await fetch(`${url}/sub/page.html`)).text()).toContain(EMBED_TAG);
-    expect(await (await fetch(`${url}/rute/spa`)).text()).toContain(EMBED_TAG);
+    expect(await (await fetch(`${url}/sub/page.html`)).text()).toContain(EMBED_TAG_LIVE);
+    expect(await (await fetch(`${url}/rute/spa`)).text()).toContain(EMBED_TAG_LIVE);
     expect(await (await fetch(`${url}/style.css`)).text()).toBe('body{}');
     const js = await fetch(`${url}${EMBED_PATH}`);
     expect(js.status).toBe(200);

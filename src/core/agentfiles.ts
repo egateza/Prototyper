@@ -58,7 +58,7 @@ export function prototyperSection(m: Manifest, home: string = resolveHome()): st
   if (m.type === 'static') {
     const entry = path.posix.join(m.static.root.replace(/\\/g, '/'), m.static.index);
     lines.push(
-      `- Mode static: file disajikan apa adanya (\`Cache-Control: no-store\`). Setelah edit cukup refresh, tidak perlu restart. Titik masuk: \`${entry}\`${m.static.spa ? ' (SPA)' : ''}.`,
+      `- Mode static: file disajikan apa adanya (\`Cache-Control: no-store\`). ${m.static.inject && m.static.liveReload ? 'Halaman yang sedang dibuka dimuat ulang otomatis setelah file berubah (live-reload)' : 'Setelah edit cukup refresh'}, tidak perlu restart. Titik masuk: \`${entry}\`${m.static.spa ? ' (SPA)' : ''}.`,
     );
   } else {
     lines.push(

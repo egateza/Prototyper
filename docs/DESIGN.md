@@ -109,6 +109,7 @@ Diletakkan di root folder prototype. Ini *sumber kebenaran* untuk info prototype
 | `static.index` | tidak | default `index.html` |
 | `static.spa` | tidak | jika `true`, path tak dikenal fallback ke `index` |
 | `static.inject` | tidak | default `true`: sisipkan skrip pratinjau (komentar elemen, §10c). `false` = HTML dikirim apa adanya |
+| `static.liveReload` | tidak | default `true`: halaman dimuat ulang saat file di `root` berubah (§7, butuh `inject`) |
 | `command.run` | ya (command) | perintah start; placeholder `{port}` dan `{host}` diganti saat jalan |
 | `command.install` | tidak | dijalankan via `prototyper install <id>` / tombol Install, bukan otomatis |
 | `command.cwd` | tidak | relatif ke folder prototype, default `.` |
@@ -171,7 +172,9 @@ Bila daemon mati tidak wajar, PID yang tersisa **tidak dibunuh otomatis** saat d
 ## 7. Menjalankan prototype
 
 ### Static
-Daemon membuat instance Fastify terpisah + `@fastify/static` per prototype di port yang dialokasikan. Header `Cache-Control: no-store` agar perubahan file oleh agent langsung terlihat saat refresh (live-reload menyusul). Path yang memuat segmen `.prototyper` ditolak (404). Bila `static.inject` ≠ `false`, skrip pratinjau disisipkan ke setiap respons HTML (§10c).
+Daemon membuat instance Fastify terpisah + `@fastify/static` per prototype di port yang dialokasikan. Header `Cache-Control: no-store` agar perubahan file oleh agent langsung terlihat saat refresh. Path yang memuat segmen `.prototyper` ditolak (404). Bila `static.inject` ≠ `false`, skrip pratinjau disisipkan ke setiap respons HTML (§10c).
+
+**Live-reload** (`src/core/livereload.ts`, bila `inject` dan `liveReload` tidak `false`): tag skrip diberi `data-livereload`; `embed.js` (juga di luar iframe) membuka `EventSource` ke `/__prototyper/livereload`. Server mengawasi `root` dengan `fs.watch` rekursif **hanya selama ada halaman terhubung** (handle folder dilepas saat tidak ada yang membuka), mengabaikan `.prototyper`, `.git`, `node_modules`, dan file sementara editor, lalu mengirim satu event per 120 ms: `css` bila semua yang berubah `.css` (stylesheet same-origin diganti dengan `?__pt=<waktu>`, state halaman tetap), selain itu `reload` (posisi scroll disimpan di `sessionStorage` lalu dipulihkan). Setiap event dicatat di log prototype. Aliran ditutup di hook `preClose` agar stop tidak tertahan. Web UI tidak lagi memuat ulang pratinjau setelah run agent bila live-reload aktif.
 
 ### Command — Runtime (`src/core/runtime.ts`)
 - `spawn(run, { shell: true, cwd, env })` dengan `PORT`/`{port}`/`{host}` terisi.
@@ -369,7 +372,7 @@ Tujuan: agent yang mengerjakan sebuah komentar tahu riwayat dan keputusan sebelu
 - Prompt: id prototype, fokus komentar (opsional), pesan pengguna (opsional), langkah alur komentar. Instruksi tambahan: tidak interaktif → bertanya lewat `comments ask/reply`; hanya ubah folder ini; jangan ubah `prototyper.json`, `.prototyper/`, `AGENTS.md`, `CLAUDE.md`.
 - `prototyper` disediakan lewat shim `<PROTOTYPER_HOME>/bin/prototyper(.cmd)` yang ditambahkan di depan `PATH` proses agent (beserta `PROTOTYPER_HOME`/`PROTOTYPER_PORT`), sehingga tidak perlu `npm link`. Penanda sesi `CLAUDECODE` tidak diwariskan.
 - Log run di `logs/<id>.agent.log` (+ SSE). Bila agent keluar tanpa output, log menyarankan menjalankannya di terminal atau mengatur `PROTOTYPER_AGENT_BIN_<ID>`.
-- Web UI: bar agent di panel Komentar (dropdown agent yang tersedia — pilihan disimpan di browser — tombol Kerjakan, status, Stop, log live), tombol Kerjakan per komentar yang menunggu agent, dialog *Agent lokal* (status, versi, path, izin, cara install, Pakai). Saat run selesai komentar dimuat ulang dan pratinjau static di-refresh.
+- Web UI: bar agent di panel Komentar (dropdown agent yang tersedia — pilihan disimpan di browser — tombol Kerjakan, status, Stop, log live), tombol Kerjakan per komentar yang menunggu agent, dialog *Agent lokal* (status, versi, path, izin, cara install, Pakai). Saat run selesai komentar dimuat ulang dan pratinjau static di-refresh (bila live-reload mati).
 - Tidak ada pemicu otomatis (mis. menjalankan agent setiap ada komentar baru atau saat pengguna menjawab) — sengaja, agar pemakaian tetap atas permintaan pengguna.
 
 Rincian Claude Code:

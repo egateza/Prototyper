@@ -2,6 +2,16 @@
   "releasesUrl": "https://github.com/egateza/Prototyper/releases",
   "releases": [
     {
+      "version": "0.3.8",
+      "date": "2026-11-15",
+      "title": "Live-reload untuk prototype static",
+      "items": [
+        "Halaman prototype static yang terbuka, di pratinjau maupun di tab browser biasa, kini dimuat ulang otomatis begitu file berubah, misalnya saat agent selesai mengedit. Posisi scroll dipertahankan.",
+        "Bila yang berubah hanya file `.css`, tampilan diperbarui tanpa memuat ulang halaman, jadi isian form dan state lain tetap.",
+        "Matikan per prototype dengan `\"static\": { \"liveReload\": false }` di `prototyper.json`."
+      ]
+    },
+    {
       "version": "0.3.7",
       "date": "2026-11-15",
       "title": "Ikon perangkat memantul saat diputar",

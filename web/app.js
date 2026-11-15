@@ -1281,8 +1281,9 @@ function agentFinished(run) {
   cm.lastHtml = '';
   loadComments();
   refresh(true);
-  // Mode static tidak punya HMR: muat ulang pratinjau agar perubahan langsung terlihat.
-  if (p?.type === 'static' && p.status === 'running') { previewNonce++; render(); }
+  // Static tanpa live-reload tidak memuat ulang sendiri: muat ulang pratinjau agar perubahan langsung terlihat.
+  const live = p?.manifest?.static?.inject !== false && p?.manifest?.static?.liveReload !== false;
+  if (p?.type === 'static' && p.status === 'running' && !live) { previewNonce++; render(); }
 }
 
 function ago(iso) {

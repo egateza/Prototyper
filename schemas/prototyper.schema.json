@@ -71,6 +71,11 @@
               "default": true,
               "description": "Sisipkan skrip Prototyper ke halaman HTML (komentar dengan klik/blok elemen di pratinjau). false = HTML dikirim apa adanya",
               "type": "boolean"
+            },
+            "liveReload": {
+              "default": true,
+              "description": "Muat ulang halaman otomatis saat file di root berubah (CSS diganti tanpa muat ulang). Butuh inject: true",
+              "type": "boolean"
             }
           },
           "additionalProperties": false

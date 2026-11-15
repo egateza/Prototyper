@@ -6,6 +6,7 @@ import type { Config } from './config.js';
 import { AppError, errorMessage } from './errors.js';
 import { EMBED_PATH, injectEmbedTag, payloadToString, readEmbedScript } from './embed.js';
 import { isDirectory } from './fsutil.js';
+import { LIVERELOAD_PATH, LiveReload } from './livereload.js';
 import { LogStore, type LogLine } from './logs.js';
 import type { CommandConfig, StaticConfig } from './manifest.js';
 import { allocatePort, isPortFree, probeHosts, probePort } from './ports.js';
@@ -245,6 +246,7 @@ export class Runtime {
           return reply.code(404).type('text/plain; charset=utf-8').send('404 - tidak ditemukan');
         }
       });
+      const liveReload = cfg.inject && cfg.liveReload;
       if (cfg.inject) {
         // Skrip komentar-elemen untuk pratinjau Web UI; disisipkan ke setiap respons HTML.
         server.get(EMBED_PATH, async (_req, reply) =>
@@ -255,8 +257,23 @@ export class Runtime {
           const html = await payloadToString(payload);
           if (html === null) return payload;
           reply.removeHeader('content-length');
-          return injectEmbedTag(html);
+          return injectEmbedTag(html, { liveReload });
         });
+      }
+      if (liveReload) {
+        const lr = new LiveReload(root, {
+          onBroadcast: (kind, files) => {
+            const list = files.length > 3 ? `${files.slice(0, 3).join(', ')}, +${files.length - 3}` : files.join(', ');
+            logs.system(`live-reload${kind === 'css' ? ' (css)' : ''}: ${list || 'berubah'}`);
+          },
+          onError: (msg) => logs.system(`live-reload berhenti: ${msg}`),
+        });
+        server.get(LIVERELOAD_PATH, (req, reply) => {
+          reply.hijack();
+          lr.attach(reply.raw);
+        });
+        server.addHook('preClose', async () => lr.close()); // akhiri aliran SSE agar close tidak menunggu
+        server.addHook('onClose', async () => lr.close());
       }
       await server.register(fastifyStatic, {
         root,
