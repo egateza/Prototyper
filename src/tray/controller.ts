@@ -43,6 +43,14 @@ export interface TrayDeps {
   settingsFile: string;
   /** Pasang `file` (jenisnya dari `check.kind`) lalu jalankan ulang tray yang menyalakan lagi `restore`. */
   install: (file: string, restore: string[], check: UpdateCheck) => Promise<void>;
+  /**
+   * Paket aplikasi (`check.kind === 'app'`): pasang selagi daemon berjalan. `live`: hanya Web UI yang
+   * berubah dan daemon sudah beralih ke sana, tanpa restart. `live: false`: sudah terpasang, tapi kode
+   * berubah sehingga tray & daemon perlu dimulai ulang (lewat `relaunch`). Tanpa ini: alur `install`.
+   */
+  applyApp?: (file: string, check: UpdateCheck) => Promise<AppApplyResult>;
+  /** Jalankan tray baru yang menyalakan lagi `restore` (dipakai setelah `applyApp` butuh restart). */
+  relaunch?: (restore: string[]) => void;
   /** Dipanggil saat tray selesai (Keluar, host tertutup). */
   exit: (code: number) => void;
   /** Tema aplikasi Windows untuk menu klik kanan (default terang). */
@@ -56,6 +64,8 @@ export interface TrayDeps {
 interface Settings {
   notifications: boolean;
 }
+
+export type AppApplyResult = { live: true; version: string } | { live: false };
 
 /** Hash halaman "Yang baru" di Web UI (lihat `WHATSNEW` di web/app.js). */
 export const WHATSNEW_HASH = '#!whatsnew';
@@ -336,6 +346,7 @@ export class TrayController {
   }
 
   private async installUpdate(file: string, check: UpdateCheck): Promise<void> {
+    if (check.kind === 'app' && this.d.applyApp && this.d.relaunch) return this.applyAppUpdate(file, check, this.d.applyApp, this.d.relaunch);
     const restore = this.state.prototypes.filter((p) => p.status === 'running').map((p) => p.id);
     this.notify('Memasang pembaruan…', 'Prototyper akan dimulai ulang.', true);
     this.stopTimers();
@@ -349,6 +360,46 @@ export class TrayController {
       this.timers.push(setInterval(() => void this.poll(), this.d.pollMs ?? 2000));
       return;
     }
+    this.finish(0);
+  }
+
+  /**
+   * Paket aplikasi dipasang selagi daemon & prototype tetap berjalan. Bila hanya Web UI yang berubah,
+   * selesai di sini (cukup muat ulang browser); bila kode berubah, baru daemon dihentikan & tray dimulai ulang.
+   */
+  private async applyAppUpdate(
+    file: string,
+    check: UpdateCheck,
+    applyApp: NonNullable<TrayDeps['applyApp']>,
+    relaunch: NonNullable<TrayDeps['relaunch']>,
+  ): Promise<void> {
+    const u = this.state.update;
+    let r: AppApplyResult;
+    try {
+      r = await applyApp(file, check);
+    } catch (err) {
+      // belum ada yang berubah: daemon & prototype tetap berjalan
+      this.notify('Gagal memasang pembaruan', errorMessage(err), true);
+      u.status = 'available';
+      this.downloaded = null;
+      this.render();
+      return;
+    }
+    if (r.live) {
+      u.current = r.version;
+      u.latest = r.version;
+      u.status = 'uptodate';
+      this.downloaded = null;
+      this.check = null;
+      this.notify('Prototyper diperbarui', `Versi ${r.version} terpasang tanpa memulai ulang. Muat ulang halaman Prototyper di browser.`, true);
+      this.render();
+      return;
+    }
+    const restore = this.state.prototypes.filter((p) => p.status === 'running').map((p) => p.id);
+    this.notify('Memasang pembaruan…', 'Prototyper akan dimulai ulang.', true);
+    this.stopTimers();
+    if (this.state.daemonUp) await this.d.api.shutdown().catch(() => undefined);
+    relaunch(restore);
     this.finish(0);
   }
 

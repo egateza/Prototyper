@@ -432,6 +432,59 @@ describe('TrayController', () => {
     expect(t.host.closed).toBe(true);
   });
 
+  it('paket aplikasi yang hanya mengubah Web UI dipasang tanpa menghentikan daemon & prototype', async () => {
+    const applied: string[] = [];
+    const relaunched: string[][] = [];
+    const t = setup({
+      applyApp: async (file) => {
+        applied.push(file);
+        return { live: true, version: '0.2.0' };
+      },
+      relaunch: (r) => void relaunched.push(r),
+    });
+    await t.c.start();
+    await t.c.click('p:start:kasir');
+    await t.c.poll();
+    await t.c.click('update');
+    await t.c.click('update');
+    await t.c.click('update');
+    expect(applied).toEqual([path.join(t.home, 'new.exe')]);
+    expect(t.api.calls).not.toContain('shutdown');
+    expect(relaunched).toEqual([]);
+    expect(t.installs).toEqual([]);
+    expect(t.exits).toEqual([]);
+    expect(t.c.state.update).toMatchObject({ status: 'uptodate', current: '0.2.0', latest: '0.2.0' });
+    expect(t.host.balloons.at(-1)![0]).toBe('Prototyper diperbarui');
+    expect(JSON.stringify(t.host.popup)).toContain('v0.2.0'); // judul popup ikut versi baru
+  });
+
+  it('paket aplikasi dengan perubahan kode: terpasang dulu, baru daemon dihentikan & tray dimulai ulang', async () => {
+    const relaunched: string[][] = [];
+    const t = setup({ applyApp: async () => ({ live: false }), relaunch: (r) => void relaunched.push(r) });
+    await t.c.start();
+    await t.c.click('p:start:kasir');
+    await t.c.poll();
+    await t.c.click('update');
+    await t.c.click('update');
+    await t.c.click('update');
+    expect(t.api.calls.at(-1)).toBe('shutdown');
+    expect(relaunched).toEqual([['kasir']]);
+    expect(t.installs).toEqual([]);
+    expect(t.exits).toEqual([0]);
+  });
+
+  it('paket aplikasi gagal dipasang: daemon tidak pernah dihentikan', async () => {
+    const t = setup({ applyApp: async () => Promise.reject(new Error('verifikasi gagal')), relaunch: () => undefined });
+    await t.c.start();
+    await t.c.click('update');
+    await t.c.click('update');
+    await t.c.click('update');
+    expect(t.api.calls).not.toContain('shutdown');
+    expect(t.host.balloons.at(-1)).toEqual(['Gagal memasang pembaruan', 'verifikasi gagal']);
+    expect(t.c.state.update.status).toBe('available');
+    expect(t.exits).toEqual([]);
+  });
+
   it('tanpa pemasangan otomatis, pembaruan membuka halaman rilis', async () => {
     const t = setup({ selfUpdate: false });
     await t.c.start();

@@ -244,6 +244,8 @@ export interface AppInstallOptions {
   /** Aplikasi yang sedang berjalan dan aplikasi bawaan exe: tidak ikut dibersihkan. */
   active: AppInfo;
   embedded: AppInfo;
+  /** Id aplikasi lain yang masih dipakai (mis. sumber Web UI daemon setelah pembaruan tanpa restart). */
+  keep?: string[];
   /** Pastikan exe menjalankan aplikasi baru (mis. `prototyper --version`); melempar bila gagal. */
   verify: (info: AppInfo) => Promise<void> | void;
 }
@@ -290,7 +292,7 @@ export async function installAppUpdate(pack: string, o: AppInstallOptions): Prom
     rmSync(dir, { recursive: true, force: true });
     throw new AppError('INTERNAL', `Aplikasi ${info.version} gagal dijalankan, pembaruan dibatalkan: ${errorMessage(err)}`);
   }
-  pruneAppStore(o.root, [info.id, o.active.id, o.embedded.id]);
+  pruneAppStore(o.root, [info.id, o.active.id, o.embedded.id, ...(o.keep ?? [])]);
   rmSync(pack, { force: true });
   return info;
 }

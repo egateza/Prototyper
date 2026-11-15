@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -183,6 +184,63 @@ export function bootApp(o: BootOptions): HostInfo {
   const dir = path.join(o.root, embedded.id);
   extractFiles(dir, o.manifest.files, o.read);
   return start(embedded, dir);
+}
+
+/**
+ * Sidik jari "kode" aplikasi: semua file kecuali `web/` dan `app.json`, dengan `version` di
+ * package.json diabaikan (berubah tiap rilis). Dua aplikasi dengan codeHash sama hanya berbeda di
+ * Web UI, sehingga daemon cukup berpindah folder web tanpa dimulai ulang (lihat `resolveWebSwap`).
+ */
+export function computeCodeHash(files: Iterable<[name: string, data: Uint8Array]>): string {
+  const entries = [...files].filter(([name]) => name !== APP_INFO_FILE && !name.startsWith('web/'));
+  entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  const hash = createHash('sha256');
+  for (const [name, data] of entries) {
+    let content: Uint8Array = data;
+    if (name === 'package.json') {
+      try {
+        const { version: _version, ...rest } = JSON.parse(Buffer.from(data).toString('utf8')) as Record<string, unknown>;
+        content = Buffer.from(JSON.stringify(rest));
+      } catch {
+        /* bukan JSON: pakai apa adanya */
+      }
+    }
+    hash.update(name).update('\0').update(content).update('\0');
+  }
+  return hash.digest('hex').slice(0, 16);
+}
+
+/** `codeHash` di app.json sebuah folder aplikasi; null untuk aplikasi lama (≤ 0.3.2) atau bila tak terbaca. */
+export function readCodeHash(appDir: string): string | null {
+  try {
+    const data = JSON.parse(readFileSync(path.join(appDir, APP_INFO_FILE), 'utf8')) as { codeHash?: unknown };
+    return typeof data.codeHash === 'string' && data.codeHash.length > 0 ? data.codeHash : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Aplikasi di `current.json` boleh dipakai sebagai sumber Web UI oleh proses yang menjalankan kode
+ * `runningAppDir` tanpa dimulai ulang: runtime cocok, folder utuh, dan codeHash keduanya sama.
+ * Mengembalikan aplikasi tujuan beserta folder web-nya, atau alasan kenapa perlu mulai ulang.
+ */
+export function resolveWebSwap(
+  root: string,
+  runningAppDir: string,
+  runtime: number,
+): { ok: true; app: AppInfo; webDir: string } | { ok: false; reason: string } {
+  const current = readCurrent(root);
+  if (!current) return { ok: false, reason: 'current.json tidak ada' };
+  if (!isUsableApp(root, current, runtime)) return { ok: false, reason: `aplikasi ${current.id} tidak bisa dipakai` };
+  const dir = path.join(root, current.id);
+  const own = readCodeHash(runningAppDir);
+  const next = readCodeHash(dir);
+  if (!own || !next) return { ok: false, reason: 'codeHash tidak tersedia' };
+  if (own !== next) return { ok: false, reason: 'kode aplikasi berubah' };
+  const webDir = path.join(dir, 'web');
+  if (!existsSync(path.join(webDir, 'index.html'))) return { ok: false, reason: 'web/index.html tidak ada' };
+  return { ok: true, app: { id: current.id, version: current.version, runtime: current.runtime }, webDir };
 }
 
 /** Hapus folder aplikasi di app store kecuali `keep` (dan current.json). Diam bila ada yang terkunci. */

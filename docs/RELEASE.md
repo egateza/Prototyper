@@ -39,9 +39,11 @@ Pembaruan dari tray memilih berkas rilis (`updateCandidates()` di [`src/core/upd
 
 | Berkas di rilis | Dipakai bila | Pemasangan |
 |---|---|---|
-| `prototyper-<v>-app-r<RUNTIME exe>.tar.gz` | ada (runtime sama) | ekstrak ke app store, ganti `current.json`, verifikasi `prototyper --version` (gagal → `current.json` dikembalikan), restart tray |
+| `prototyper-<v>-app-r<RUNTIME exe>.tar.gz` | ada (runtime sama) | ekstrak ke app store, ganti `current.json`, verifikasi `prototyper --version` (gagal → `current.json` dikembalikan), semuanya selagi daemon tetap berjalan. Bila hanya Web UI yang berubah (lihat di bawah): tanpa restart. Selain itu: daemon dihentikan, tray dimulai ulang |
 | `prototyper-<v>-win-<arch>.msi` | dipasang lewat MSI (`installer.json` di sebelah exe) | skrip PowerShell: tunggu tray keluar, `msiexec /passive LAUNCHAPP=0`, nyalakan tray dengan `--restore` |
 | `prototyper-<v>-win-<arch>.exe` | selain itu | exe lama di-rename ke `.old`, exe baru disalin |
+
+**Pembaruan Web UI tanpa restart.** `stampApp()` menulis `codeHash` di `app.json`: hash semua file aplikasi kecuali `web/` dan `app.json`, dengan `version` di `package.json` diabaikan (`computeCodeHash()` di `src/core/apphost.ts`). Rilis yang hanya mengubah `web/` (termasuk `whatsnew.json`) menghasilkan `codeHash` yang sama. Setelah paket dipasang, tray membandingkan `codeHash` aplikasi baru dengan kodenya sendiri. Bila sama, tray memanggil `POST /api/app/reload-web`: daemon memeriksa ulang terhadap kodenya sendiri (`resolveWebSwap()`), lalu melayani Web UI dan versi `/api/health` dari folder aplikasi baru. Daemon dan prototype tetap berjalan, dan pengguna cukup memuat ulang browser. Bila `codeHash` berbeda, tidak ada, atau daemon menolak (409), tray kembali ke alur restart. Folder aplikasi yang sedang menjadi sumber Web UI tidak ikut dibersihkan (`keep` di `installAppUpdate`). Aplikasi ≤ 0.3.2 belum punya `codeHash`, jadi pembaruan pertama dari versi itu tetap restart. Perubahan di `src/`, `schemas/`, `assets/`, atau dependensi selalu berarti restart.
 
 **Kapan menaikkan `RUNTIME`** (`src/core/apphost.ts`): versi mayor Node di CI berganti, `src/boot/sea.ts` atau kontrak `HostInfo` berubah, atau aplikasi memakai API Node yang belum ada di exe lama. Setelah dinaikkan, paket aplikasi bernama `-app-r<baru>` tidak cocok dengan exe lama, sehingga tray mengunduh MSI/exe penuh. Ikon exe dan info versi di Properties exe hanya berganti lewat MSI/exe penuh. Bila perubahan ikon perlu segera sampai ke pengguna, naikkan `RUNTIME`.
 

@@ -4,7 +4,7 @@ import path from 'node:path';
 import { DaemonClient } from '../cli/client.js';
 import { openBrowser } from '../core/open.js';
 import { APP_DIR, APP_HOST, APP_MODE, cliCommand } from '../core/appfiles.js';
-import type { AppInfo } from '../core/apphost.js';
+import { resolveWebSwap, type AppInfo } from '../core/apphost.js';
 import type { Config } from '../core/config.js';
 import { AppError } from '../core/errors.js';
 import { runReg, StartupEntry, type RegRunner } from '../core/startup.js';
@@ -228,6 +228,9 @@ export async function runTray(config: Config, opts: { restore?: string[] } = {})
     installer: APP_MODE === 'sea' ? detectInstaller(process.execPath) : null,
   };
   const restoreArgs = (restore: string[]) => (restore.length ? ['--restore', restore.join(',')] : []);
+  // Setelah pembaruan Web UI tanpa restart, proses ini tetap menjalankan kode lama tetapi versinya sudah baru.
+  let currentVersion = VERSION;
+  let liveWebApp: string | null = null;
   const startup = new StartupEntry();
   const host = new TrayHost();
   const theme = await readAppsTheme();
@@ -239,8 +242,8 @@ export async function runTray(config: Config, opts: { restore?: string[] } = {})
     selfUpdate: updateCandidates(VERSION, installCtx).length > 0,
     updater: {
       check: async () => {
-        const latest = await fetchLatestRelease(config.updateRepo, VERSION);
-        return evaluateRelease(VERSION, latest, updateCandidates(latest.version, installCtx));
+        const latest = await fetchLatestRelease(config.updateRepo, currentVersion);
+        return evaluateRelease(currentVersion, latest, updateCandidates(latest.version, installCtx));
       },
       download: (check, onProgress) => downloadUpdate(check, f.updates, onProgress),
     },
@@ -256,6 +259,37 @@ export async function runTray(config: Config, opts: { restore?: string[] } = {})
       await installUpdate(config, file, check, restoreArgs(restore));
       releaseLock();
       if (check.kind !== 'msi') spawnTray(config, restoreArgs(restore)); // MSI: skrip pemasang yang menyalakan lagi
+    },
+    applyApp:
+      APP_MODE === 'sea' && APP_HOST
+        ? async (file) => {
+            const host = APP_HOST!;
+            const info = await installAppUpdate(file, {
+              root: host.root,
+              runtime: host.runtime,
+              active: host.app,
+              embedded: host.embedded,
+              keep: liveWebApp ? [liveWebApp] : [],
+              verify: verifyApp,
+            });
+            // kode tray ini harus sama persis dengan aplikasi baru; daemon memeriksa kodenya sendiri
+            if (!resolveWebSwap(host.root, host.appDir, host.runtime).ok) return { live: false };
+            const client = new DaemonClient(config);
+            if (await client.health()) {
+              try {
+                await client.request('POST', '/api/app/reload-web');
+              } catch {
+                return { live: false }; // daemon lama / kode daemon berbeda
+              }
+            } // daemon dijeda: saat dilanjutkan, exe langsung memuat aplikasi baru
+            liveWebApp = info.id;
+            currentVersion = info.version;
+            return { live: true, version: info.version };
+          }
+        : undefined,
+    relaunch: (restore) => {
+      releaseLock();
+      spawnTray(config, restoreArgs(restore));
     },
     exit: (code) => {
       releaseLock();

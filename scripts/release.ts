@@ -5,7 +5,7 @@ import path from 'node:path';
 import { build } from 'esbuild';
 import { inject } from 'postject';
 import { rcedit } from 'rcedit';
-import { APP_INFO_FILE, BROKEN_MARK, BUNDLE_FILE, RUNTIME, SEA_MANIFEST_ASSET, writeCurrent, type AppInfo, type SeaManifest } from '../src/core/apphost.js';
+import { APP_INFO_FILE, BROKEN_MARK, BUNDLE_FILE, computeCodeHash, RUNTIME, SEA_MANIFEST_ASSET, writeCurrent, type AppInfo, type SeaManifest } from '../src/core/apphost.js';
 import { packFiles } from '../src/core/apppack.js';
 import { appPackName, msiName } from '../src/core/update.js';
 import { bundleApp, readPackage, ROOT } from './bundle.js';
@@ -155,9 +155,11 @@ async function brandWindowsExe(exe: string, version: string): Promise<void> {
 function stampApp(appDir: string, version: string): AppInfo {
   rmSync(path.join(appDir, APP_INFO_FILE), { force: true });
   const hash = createHash('sha256');
-  for (const f of listFiles(appDir).sort()) hash.update(f).update(readFileSync(path.join(appDir, ...f.split('/'))));
+  const files = listFiles(appDir).sort().map((f): [string, Buffer] => [f, readFileSync(path.join(appDir, ...f.split('/')))]);
+  for (const [f, data] of files) hash.update(f).update(data);
   const info: AppInfo = { id: `${version}-${hash.digest('hex').slice(0, 12)}`, version, runtime: RUNTIME };
-  writeFileSync(path.join(appDir, APP_INFO_FILE), `${JSON.stringify(info, null, 2)}\n`);
+  // codeHash: sama antar rilis yang hanya mengubah web/ → tray memasangnya tanpa memulai ulang daemon
+  writeFileSync(path.join(appDir, APP_INFO_FILE), `${JSON.stringify({ ...info, codeHash: computeCodeHash(files) }, null, 2)}\n`);
   return info;
 }
 

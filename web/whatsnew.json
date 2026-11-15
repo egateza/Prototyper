@@ -2,6 +2,16 @@
   "releasesUrl": "https://github.com/egateza/Prototyper/releases",
   "releases": [
     {
+      "version": "0.3.3",
+      "date": "2026-11-15",
+      "title": "Pembaruan Web UI tanpa restart",
+      "items": [
+        "Pembaruan dari tray yang hanya mengubah Web UI kini dipasang tanpa mematikan daemon maupun prototype yang sedang berjalan: cukup muat ulang halaman Prototyper di browser. Pembaruan yang mengubah kode tetap memulai ulang Prototyper seperti biasa.",
+        "Paket aplikasi dipasang lebih dulu selagi Prototyper berjalan; bila pemasangan gagal, tidak ada yang dihentikan.",
+        "Pembaruan ke 0.3.3 ini sendiri masih memulai ulang sekali; mulai rilis berikutnya pembaruan khusus Web UI berlaku tanpa restart."
+      ]
+    },
+    {
       "version": "0.3.2",
       "date": "2026-11-15",
       "title": "Versi di popup tray",

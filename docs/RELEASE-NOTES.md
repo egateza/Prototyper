@@ -1,8 +1,13 @@
-## Yang baru di 0.3.2
+## Yang baru di 0.3.3
+
+- **Pembaruan Web UI tanpa restart.** Pembaruan dari tray yang hanya mengubah Web UI kini dipasang tanpa mematikan daemon maupun prototype yang sedang berjalan: cukup muat ulang halaman Prototyper di browser. Pembaruan yang mengubah kode tetap memulai ulang Prototyper seperti biasa.
+- Paket aplikasi dipasang lebih dulu selagi Prototyper berjalan; bila pemasangan gagal, tidak ada yang dihentikan.
+
+Dari 0.3.0–0.3.2 (exe atau MSI), tray cukup mengunduh paket aplikasi `prototyper-0.3.3-app-r1.tar.gz` (sekitar 0,6 MB). Pembaruan ke 0.3.3 ini sendiri masih memulai ulang sekali; mulai rilis berikutnya, pembaruan khusus Web UI berlaku tanpa restart.
+
+## 0.3.2
 
 - Popup klik kiri tray kini menampilkan versi Prototyper yang sedang berjalan di samping judul.
-
-Dari 0.3.0/0.3.1 (exe atau MSI), tray cukup mengunduh paket aplikasi `prototyper-0.3.2-app-r1.tar.gz` (sekitar 0,6 MB).
 
 ## 0.3.1
 
