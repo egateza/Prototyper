@@ -60,7 +60,7 @@ describe('menu tray', () => {
   it('popup ringkas: ringkasan, baris prototype dengan toggle, opsi, bar Buka Prototyper di bawah', () => {
     const p = popupLayout(state({ prototypes: [view('kasir', 'running', 4101), view('landing')] }));
     expect(p.w).toBe(POPUP_W);
-    expect(texts(p)).toEqual(expect.arrayContaining(['Prototyper Runtime', 'Aktif · 1 dari 2 berjalan', 'KASIR  Berjalan · :4101', 'LANDING  Berhenti', 'Jalankan saat startup']));
+    expect(texts(p)).toEqual(expect.arrayContaining(['Prototyper  v0.1.0', 'Aktif · 1 dari 2 berjalan', 'KASIR  Berjalan · :4101', 'LANDING  Berhenti', 'Jalankan saat startup']));
     expect(hitIds(p)).toEqual(['pause', 'p:open:kasir', 'p:stop:kasir', 'p:start:landing', 'startup', 'update', 'startAll', 'stopAll', 'open']);
     expect(p.items.filter((i) => i.k === 'toggle').map((i) => (i as { on: boolean }).on)).toEqual([true, false, false]);
     // bar Buka Prototyper menempel di bawah; tombol di popup tidak menutup popup

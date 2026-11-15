@@ -1,12 +1,16 @@
-## Yang baru di 0.3.1
+## Yang baru di 0.3.2
+
+- Popup klik kiri tray kini menampilkan versi Prototyper yang sedang berjalan di samping judul.
+
+Dari 0.3.0/0.3.1 (exe atau MSI), tray cukup mengunduh paket aplikasi `prototyper-0.3.2-app-r1.tar.gz` (sekitar 0,6 MB).
+
+## 0.3.1
 
 - Halaman **Yang baru** di Web UI kini dibuka dengan klik nomor versi di samping logo; titik kecil di samping versi menandai perubahan yang belum dilihat. Item di sidebar dan palet perintah dihapus. Menu tray tetap ada.
 - Ikon tombol agent **Kerjakan** kembali seperti semula.
 - Berkas `.wixpdb` tidak lagi ikut di halaman rilis.
 
-Dari 0.3.0 (exe atau MSI), tray cukup mengunduh paket aplikasi `prototyper-0.3.1-app-r1.tar.gz` (sekitar 0,6 MB).
-
-## Sejak 0.2.0
+## 0.3.0 (sejak 0.2.0)
 
 - **Installer MSI (Windows).** `prototyper-<versi>-win-x64.msi` memasang Prototyper per pengguna tanpa hak admin (default `%LOCALAPPDATA%\Programs\Prototyper`): shortcut Start Menu, PATH pengguna, dan tray langsung menyala setelah dipasang. Uninstall menutup tray, daemon, dan prototype lebih dulu, serta menghapus "jalankan saat startup".
 - **Pembaruan lebih kecil dari tray.** Bila exe tidak perlu diganti, tray cukup mengunduh paket aplikasi `prototyper-<versi>-app-r<runtime>.tar.gz` (sekitar 0,6 MB) alih-alih exe penuh. Aplikasi yang gagal dimuat otomatis kembali ke versi bawaan exe. Instalasi MSI diperbarui lewat MSI. Dari 0.2.0, tray mengunduh exe penuh sekali.

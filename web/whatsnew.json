@@ -2,6 +2,14 @@
   "releasesUrl": "https://github.com/egateza/Prototyper/releases",
   "releases": [
     {
+      "version": "0.3.2",
+      "date": "2026-11-15",
+      "title": "Versi di popup tray",
+      "items": [
+        "Popup klik kiri tray kini menampilkan versi Prototyper yang sedang berjalan di samping judul."
+      ]
+    },
+    {
       "version": "0.3.1",
       "date": "2026-11-15",
       "title": "Perbaikan kecil",

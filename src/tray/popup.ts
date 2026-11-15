@@ -144,7 +144,11 @@ export function popupLayout(s: TrayState): Popup {
   const cbx = W - 12 - 30;
   const pbx = cbx - 6 - 30;
   items.push({ k: 'icon', x: 12, y: 13, size: 24 });
-  items.push({ k: 'text', x: 46, y: 8, w: pbx - 8 - 46, h: 18, runs: [{ text: 'Prototyper Runtime', size: 13, color: C.text, bold: true }] });
+  // judul + versi yang sedang berjalan (lebar ±152px sampai tombol jeda: "Prototyper Runtime" + versi tidak muat)
+  items.push({
+    k: 'text', x: 46, y: 8, w: pbx - 8 - 46, h: 18,
+    runs: [{ text: 'Prototyper', size: 13, color: C.text, bold: true }, { text: `  v${s.update.current}`, size: 11, color: C.muted }],
+  });
   const dot = busy || !s.daemonUp ? C.warn : C.ok;
   items.push({ k: 'circle', x: 46, y: 30, d: 8, fill: dot, ...(dot === C.ok ? { ring: C.okRing, ringW: 3 } : {}) });
   items.push({ k: 'text', x: 59, y: 26, w: pbx - 8 - 59, h: 16, runs: [{ text: popupSummary(s), size: 11, color: C.muted }] });
