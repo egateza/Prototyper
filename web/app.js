@@ -15,6 +15,7 @@ const ICON = {
   play: svg('M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5Z', 'fill="currentColor"'),
   stop: svg('M7.5 5h9A2.5 2.5 0 0 1 19 7.5v9a2.5 2.5 0 0 1-2.5 2.5h-9A2.5 2.5 0 0 1 5 16.5v-9A2.5 2.5 0 0 1 7.5 5Z', 'fill="currentColor"'),
   restart: svg('M20 12a8 8 0 1 1-2.34-5.66M20 4v4.5h-4.5', 'fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"'),
+  undo: svg('M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11', 'fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"'),
   install: svg('M12 4v11M7 10l5 5 5-5M5 20h14'),
   trash: svg('M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3', 'fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"'),
   copy: svg('M9 9h10v11H9zM5 15V4h10', 'fill="none" stroke="currentColor" stroke-width="2"'),
@@ -508,11 +509,14 @@ async function syncAllInstructions() {
 }
 
 /** Dialog konfirmasi; resolve true bila tombol OK ditekan. */
-function confirmDialog({ title, body, ok }) {
+function confirmDialog({ title, body, ok, list }) {
   const d = $('#dlg-confirm');
   $('#cf-title').textContent = title;
   $('#cf-body').textContent = body;
   $('#cf-ok').textContent = ok;
+  const ul = $('#cf-list');
+  ul.hidden = !list?.length;
+  ul.innerHTML = (list ?? []).map((x) => `<li>${esc(x)}</li>`).join('');
   d.returnValue = '';
   d.showModal();
   return new Promise((resolve) => d.addEventListener('close', () => resolve(d.returnValue === 'ok'), { once: true }));
@@ -589,6 +593,7 @@ document.addEventListener('click', (e) => {
     case 'agent-run': return runAgent();
     case 'agent-run-one': return runAgent([t.dataset.cid]);
     case 'agent-stop': return stopAgent();
+    case 'agent-undo': return undoAgent();
     case 'agent-list': return openAgentsDialog();
     case 'agent-log-toggle': ag.open = !ag.open; return renderAgent();
     case 'cm-pick': return togglePick();
@@ -1332,6 +1337,7 @@ function renderAgent() {
       </div>
       <span class="muted">${waiting ? `${waiting} menunggu agent` : 'tidak ada yang menunggu agent'}${lastTxt ? ` · terakhir: ${lastTxt}` : ''}</span>
       <span class="spacer"></span>
+      ${undoHtml(r)}
       ${r ? `<button type="button" class="btn sm ghost" data-act="agent-log-toggle">${ag.open ? 'Tutup log' : 'Log'}</button>` : ''}${gear}`;
   }
   bar.hidden = !html;
@@ -1356,6 +1362,60 @@ async function runAgent(commentIds) {
     toast(err.message, true);
   }
   renderAgent();
+}
+
+const CHANGE_LABEL = { added: 'baru', modified: 'diubah', deleted: 'dihapus' };
+const changeList = (changes) => changes.map((c) => `${c.path}  (${CHANGE_LABEL[c.status] ?? c.status})`);
+
+/** Tombol Batalkan untuk run terakhir yang mengubah file (checkpoint). */
+function undoHtml(r) {
+  const cp = r?.checkpoint;
+  if (!cp?.changes?.length) return '';
+  const n = cp.changes.length;
+  if (cp.undoneAt) return `<span class="muted agent-undone">perubahan ${n} file dibatalkan</span>`;
+  if (!LOCAL) return '';
+  const tip = changeList(cp.changes.slice(0, 15)).join('\n') + (n > 15 ? `\n… +${n - 15}` : '');
+  return `<button type="button" class="btn sm ghost" data-act="agent-undo" title="${esc(`Kembalikan ${n} file ke keadaan sebelum agent bekerja:\n${tip}`)}">${ICON.undo}Batalkan (${n} file)</button>`;
+}
+
+async function undoAgent() {
+  const id = cm.id;
+  const r = ag.state?.run;
+  const changes = r?.checkpoint?.changes ?? [];
+  if (!id || !changes.length) return;
+  const yes = await confirmDialog({
+    title: `Batalkan perubahan ${agentName(r.agent)}?`,
+    body: `${changes.length} file dikembalikan ke keadaan sebelum agent bekerja; file baru buatan agent dihapus. Komentar yang dikerjakan agent diberi balasan bahwa perubahannya dibatalkan.`,
+    list: changeList(changes),
+    ok: 'Batalkan perubahan',
+  });
+  if (!yes) return;
+  const send = (force) => api('POST', `/api/prototypes/${enc(id)}/agent/undo`, force ? { force: true } : undefined);
+  try {
+    let res;
+    try {
+      res = await send(false);
+    } catch (err) {
+      if (err.code !== 'CONFLICT' || !err.details?.length) throw err;
+      const again = await confirmDialog({
+        title: 'File sudah diubah lagi',
+        body: 'File berikut sudah berubah setelah agent selesai (mungkin Anda edit). Membatalkan tetap akan menimpa perubahan itu.',
+        list: err.details,
+        ok: 'Timpa & batalkan',
+      });
+      if (!again) return;
+      res = await send(true);
+    }
+    toast(`Perubahan dibatalkan: ${res.restored.length} file dikembalikan${res.removed.length ? `, ${res.removed.length} file baru dihapus` : ''}${res.comments?.length ? ` · dicatat di ${res.comments.join(', ')}` : ''}`);
+    cm.lastHtml = '';
+    loadComments();
+    const p = byId(id);
+    const live = p?.manifest?.static?.inject !== false && p?.manifest?.static?.liveReload !== false;
+    if (p?.type === 'static' && p.status === 'running' && !live) { previewNonce++; render(); }
+  } catch (err) {
+    toast(err.message, true);
+  }
+  loadAgent();
 }
 
 async function stopAgent() {

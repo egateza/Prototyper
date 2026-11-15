@@ -59,6 +59,13 @@ export const agentRoutes: FastifyPluginAsync<{ registry: Registry; agent: AgentR
     return { id: p.id, running: agent.isRunning(p.id), run };
   });
 
+  // Batalkan perubahan file dari run terakhir (checkpoint). force: timpa file yang diedit lagi sesudah run.
+  app.post<Params & { Body: { force?: unknown } | null }>('/prototypes/:id/agent/undo', async (req) => {
+    const p = await registry.require(req.params.id);
+    const res = await agent.undo(p, { force: req.body?.force === true });
+    return { id: p.id, running: agent.isRunning(p.id), ...res };
+  });
+
   app.get<Params & { Querystring: { tail?: string } }>('/prototypes/:id/agent/logs', async (req) => {
     const p = await registry.require(req.params.id);
     const n = Math.max(0, Math.min(1000, Number(req.query.tail ?? 200) || 200));

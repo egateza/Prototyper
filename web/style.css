@@ -344,6 +344,9 @@ dialog.small p { margin: 0; }
 @keyframes cm-flash { 0%, 30% { box-shadow: 0 0 0 4px var(--accent-line); border-color: var(--accent); } 100% { box-shadow: none; } }
 .agent-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 10px; border-radius: var(--r); border: 1px solid var(--accent-line); background: var(--accent-soft); font-size: 12.5px; }
 .agent-bar[hidden] { display: none; }
+.agent-undone { font-style: italic; }
+.cf-list { margin: 0 0 14px; padding: 8px 10px 8px 26px; max-height: 220px; overflow: auto; border: 1px solid var(--border); border-radius: var(--r); font: 12px/1.6 var(--mono); }
+.cf-list[hidden] { display: none; }
 .agent-bar .btn svg, .agent-one svg { width: 13px; height: 13px; margin-right: 4px; }
 .agent-na { display: inline-flex; align-items: center; gap: 6px; }
 .agent-na svg { width: 13px; height: 13px; }

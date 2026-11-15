@@ -2,6 +2,17 @@
   "releasesUrl": "https://github.com/egateza/Prototyper/releases",
   "releases": [
     {
+      "version": "0.3.9",
+      "date": "2026-11-16",
+      "title": "Batalkan perubahan agent",
+      "items": [
+        "Sebelum agent mulai bekerja, Prototyper menyimpan checkpoint folder prototype. Bila agent mengubah file, bar agent menampilkan tombol **Batalkan (N file)** beserta daftar filenya.",
+        "File yang diubah agent dikembalikan dan file baru buatan agent dihapus; file lain yang Anda edit tidak ikut berubah. Bila file itu sudah Anda edit lagi, Prototyper bertanya dulu sebelum menimpa.",
+        "Komentar yang dikerjakan agent mendapat balasan bahwa perubahannya dibatalkan, dan giliran kembali ke Anda. Komentar yang sempat diselesaikan agent dibuka lagi.",
+        "Butuh Git; checkpoint disimpan terpisah, jadi repo Git Anda tidak disentuh."
+      ]
+    },
+    {
       "version": "0.3.8",
       "date": "2026-11-15",
       "title": "Live-reload untuk prototype static",

@@ -4,6 +4,7 @@ import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { Command, InvalidArgumentError } from 'commander';
 import { AgentRunner } from '../core/agent.js';
+import { removeCheckpoints } from '../core/checkpoint.js';
 import { describeAgentFiles, syncAgentFiles } from '../core/agentfiles.js';
 import { loadConfig, type Config } from '../core/config.js';
 import { detectManifest } from '../core/detect.js';
@@ -255,7 +256,10 @@ program
       const pid = id ?? '';
       const removed = (await ctx.client.health())
         ? (await ctx.client.request<{ removed: { id: string; path: string } }>('DELETE', `/api/prototypes/${enc(pid)}`)).removed
-        : await ctx.registry.remove(pid);
+        : await ctx.registry.remove(pid).then(async (r) => {
+            await removeCheckpoints(ctx.config.home, r.id).catch(() => undefined);
+            return r;
+          });
       if (ctx.json) return printJson({ removed: { id: removed.id, path: removed.path } });
       console.log(`✓ "${removed.id}" dihapus dari daftar (folder ${removed.path} tidak disentuh)`);
     }),

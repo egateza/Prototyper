@@ -11,6 +11,7 @@ import type { LogLine } from '../../core/logs.js';
 import { lanAddresses } from '../../core/net.js';
 import type { Registry, ResolvedPrototype } from '../../core/registry.js';
 import type { Runtime } from '../../core/runtime.js';
+import type { AgentRunner } from '../../core/agent.js';
 import { createPrototype, isTemplate, TEMPLATES } from '../../core/scaffold.js';
 import { toView, type PrototypeView } from '../../core/views.js';
 
@@ -18,6 +19,7 @@ export interface RouteContext {
   config: Config;
   registry: Registry;
   runtime: Runtime;
+  agent: AgentRunner;
 }
 
 type IdParams = { Params: { id: string } };
@@ -204,6 +206,7 @@ export const prototypeRoutes: FastifyPluginAsync<{ ctx: RouteContext }> = async 
     const p = await registry.require(req.params.id);
     await runtime.forget(p.id);
     const removed = await registry.remove(p.id);
+    await ctx.agent.forget(p.id).catch(() => undefined); // repo checkpoint; gagal menghapus tidak menggagalkan remove
     return { removed: { id: removed.id, path: removed.path } };
   });
 

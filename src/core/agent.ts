@@ -2,6 +2,8 @@ import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { existsSync, readFileSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { APP_MODE, cliCommand, type AppMode } from './appfiles.js';
+import { Checkpoints, removeCheckpoints, type FileChange, type UndoResult } from './checkpoint.js';
+import { noteUndo } from './comments.js';
 import type { Config } from './config.js';
 import { AppError, errorMessage } from './errors.js';
 import { LogStore } from './logs.js';
@@ -35,6 +37,20 @@ export interface AgentRunInfo {
   costUsd: number | null;
   turns: number | null;
   error: string | null;
+  /** Snapshot folder sebelum/sesudah run (null bila checkpoint mati atau gagal dibuat). */
+  checkpoint: AgentCheckpoint | null;
+  /** Alasan checkpoint tidak dibuat (mis. git tidak ditemukan). */
+  checkpointError: string | null;
+}
+
+export interface AgentCheckpoint {
+  before: string;
+  /** Diisi saat run berakhir. */
+  after: string | null;
+  /** File yang diubah agent (before → after). */
+  changes: FileChange[];
+  /** Waktu perubahan dibatalkan lewat undo. */
+  undoneAt: string | null;
 }
 
 export interface AgentInfo {
@@ -395,18 +411,30 @@ interface ActiveRun {
   exited: Promise<void>;
   timer: NodeJS.Timeout;
   stopping: boolean;
+  /** Selesai setelah proses keluar dan checkpoint "sesudah" dibuat. */
+  finished: Promise<void>;
 }
 
 const VERSION_TIMEOUT_MS = 15_000;
 
+/** Isi balasan komentar saat perubahan sebuah run dibatalkan. */
+export function undoReplyText(agentName: string, changes: readonly FileChange[]): string {
+  const names = changes.slice(0, 8).map((c) => c.path).join(', ') + (changes.length > 8 ? `, +${changes.length - 8} lainnya` : '');
+  return `↶ Perubahan dari ${agentName} untuk komentar ini dibatalkan pengguna: ${changes.length} file dikembalikan ke keadaan sebelum agent bekerja (${names}). Permintaan ini belum diterapkan lagi; balas komentar ini dengan arahan baru bila ingin dicoba ulang.`;
+}
+
 export class AgentRunner {
   private readonly runs = new Map<string, ActiveRun>();
+  /** Prototype yang sedang disiapkan untuk run (checkpoint dibuat) atau sedang di-undo. */
+  private readonly busy = new Set<string>();
   private readonly last = new Map<string, AgentRunInfo>();
   private readonly logStores = new Map<string, Promise<LogStore>>();
   private readonly checks = new Map<AgentId, Promise<AgentInfo>>();
   readonly auth: 'login' | 'apikey';
   readonly timeoutMs: number;
   readonly defaultAgent: AgentId;
+  /** null bila PROTOTYPER_AGENT_CHECKPOINT=0. */
+  readonly checkpoints: Checkpoints | null;
   /** env untuk mencari/menjalankan agent: env proses + PATH terbaru dari registry (Windows). */
   private lookupEnv: NodeJS.ProcessEnv;
 
@@ -421,6 +449,7 @@ export class AgentRunner {
     this.timeoutMs = (Number.isFinite(min) && min > 0 ? min : 20) * 60_000;
     this.defaultAgent = isAgentId(env.PROTOTYPER_AGENT_DEFAULT) ? env.PROTOTYPER_AGENT_DEFAULT : 'claude';
     this.lookupEnv = env;
+    this.checkpoints = env.PROTOTYPER_AGENT_CHECKPOINT === '0' ? null : new Checkpoints(config.home);
     this.refreshPath();
   }
 
@@ -508,7 +537,16 @@ export class AgentRunner {
 
   async run(p: ResolvedPrototype, opts: AgentRunOptions = {}): Promise<AgentRunInfo> {
     if (!p.manifest) throw new AppError('INVALID_MANIFEST', `Prototype "${p.id}" tidak valid: ${p.error ?? ''}`);
-    if (this.runs.has(p.id)) throw new AppError('CONFLICT', `Agent sedang bekerja pada "${p.id}". Tunggu selesai atau hentikan dulu.`);
+    if (this.runs.has(p.id) || this.busy.has(p.id)) throw new AppError('CONFLICT', `Agent sedang bekerja pada "${p.id}". Tunggu selesai atau hentikan dulu.`);
+    this.busy.add(p.id);
+    try {
+      return await this.startRun(p, opts);
+    } finally {
+      this.busy.delete(p.id);
+    }
+  }
+
+  private async startRun(p: ResolvedPrototype, opts: AgentRunOptions): Promise<AgentRunInfo> {
     const agentId = opts.agent ?? this.defaultAgent;
     const preset = PRESETS[agentId];
     const avail = await this.check(agentId);
@@ -523,9 +561,22 @@ export class AgentRunner {
     const info: AgentRunInfo = {
       agent: agentId, status: 'running', startedAt: new Date().toISOString(), endedAt: null, exitCode: null,
       commentIds: opts.commentIds ?? [], summary: null, costUsd: null, turns: null, error: null,
+      checkpoint: null, checkpointError: null,
     };
     const authNote = agentId === 'claude' ? ` (${this.auth === 'apikey' ? 'API key, --bare' : 'login Claude Code'})` : preset.support === 'experimental' ? ' (eksperimental)' : '';
     logs.system(`agent: ${preset.name}${authNote}${info.commentIds.length ? ` · komentar ${info.commentIds.join(', ')}` : ''} · ${cmd.path}`);
+
+    if (this.checkpoints) {
+      try {
+        const label = info.commentIds.length ? ` · ${info.commentIds.join(', ')}` : '';
+        const before = await this.checkpoints.snapshot(p.id, p.path, `sebelum ${agentId}${label} · ${info.startedAt}`);
+        info.checkpoint = { before, after: null, changes: [], undoneAt: null };
+        logs.system(`checkpoint ${before.slice(0, 8)}: perubahan agent bisa dibatalkan setelah selesai`);
+      } catch (err) {
+        info.checkpointError = errorMessage(err);
+        logs.system(`checkpoint dilewati: ${info.checkpointError}`);
+      }
+    }
 
     const child = spawn(cmd.bin, [...cmd.prefixArgs, ...args], {
       cwd: p.path,
@@ -535,8 +586,9 @@ export class AgentRunner {
       detached: process.platform !== 'win32', // agar killTree bisa membunuh satu grup proses
     });
     const exited = new Promise<void>((resolve) => child.once('close', () => resolve()));
+    let finish!: () => void;
     const run: ActiveRun = {
-      info, child, exited, stopping: false,
+      info, child, exited, stopping: false, finished: new Promise<void>((r) => (finish = r)),
       timer: setTimeout(() => {
         logs.system(`agent melewati batas waktu ${Math.round(this.timeoutMs / 60_000)} menit — dihentikan`);
         info.error = 'Melewati batas waktu';
@@ -566,7 +618,7 @@ export class AgentRunner {
       info.error = err.message;
       logs.system(`agent gagal dijalankan: ${err.message}`);
     });
-    void exited.then(() => {
+    void exited.then(async () => {
       if (buf.trim()) this.onLine(preset, buf, p.path, info, logs, tail);
       logs.flush();
       clearTimeout(run.timer);
@@ -582,8 +634,10 @@ export class AgentRunner {
         logs.system(`${preset.name} keluar tanpa output apa pun. Coba jalankan \`${preset.exe}\` di terminal untuk melihat pesannya, atau set PROTOTYPER_AGENT_BIN_${agentId.toUpperCase()} ke path yang benar.`);
       }
       logs.system(`agent ${info.status === 'done' ? 'selesai' : info.status === 'stopped' ? 'dihentikan' : `gagal (exit ${child.exitCode ?? '-'})`}`);
+      await this.checkpointAfter(p, info, logs);
       this.runs.delete(p.id);
       this.last.set(p.id, info);
+      finish();
     });
     return info;
   }
@@ -617,8 +671,68 @@ export class AgentRunner {
     if (!run) return this.last.get(id) ?? null;
     run.stopping = true;
     await killTree(run.child, run.exited);
-    await run.exited;
+    await run.finished;
     return this.last.get(id) ?? run.info;
+  }
+
+  private async checkpointAfter(p: ResolvedPrototype, info: AgentRunInfo, logs: LogStore): Promise<void> {
+    const cp = info.checkpoint;
+    if (!cp || !this.checkpoints) return;
+    try {
+      cp.after = await this.checkpoints.snapshot(p.id, p.path, `sesudah ${info.agent} (${info.status}) · ${new Date().toISOString()}`);
+      cp.changes = await this.checkpoints.diff(p.id, p.path, cp.before, cp.after);
+      const n = cp.changes.length;
+      logs.system(n ? `${n} file diubah agent: ${cp.changes.slice(0, 5).map((c) => c.path).join(', ')}${n > 5 ? `, +${n - 5}` : ''}` : 'agent tidak mengubah file');
+    } catch (err) {
+      info.checkpointError = errorMessage(err);
+      logs.system(`checkpoint sesudah run gagal: ${info.checkpointError}`);
+    }
+  }
+
+  /**
+   * Batalkan perubahan file dari run terakhir: file yang diubah agent dikembalikan ke keadaan
+   * sebelum run, file baru dihapus. Komentar & balasan (.prototyper/) tidak ikut dibatalkan.
+   */
+  async undo(p: ResolvedPrototype, opts: { force?: boolean } = {}): Promise<{ run: AgentRunInfo; comments: string[] } & UndoResult> {
+    if (this.runs.has(p.id) || this.busy.has(p.id)) throw new AppError('CONFLICT', `Agent sedang bekerja pada "${p.id}". Tunggu selesai atau hentikan dulu.`);
+    const info = this.last.get(p.id);
+    const cp = info?.checkpoint;
+    if (!info || !cp?.after || !this.checkpoints) throw new AppError('BAD_REQUEST', 'Tidak ada checkpoint run agent untuk dibatalkan');
+    if (cp.undoneAt) throw new AppError('BAD_REQUEST', 'Perubahan run agent terakhir sudah dibatalkan');
+    if (!cp.changes.length) throw new AppError('BAD_REQUEST', 'Run agent terakhir tidak mengubah file');
+    this.busy.add(p.id);
+    let res: UndoResult;
+    try {
+      res = await this.checkpoints.undo(p.id, p.path, cp.before, cp.after, opts.force === true);
+    } finally {
+      this.busy.delete(p.id);
+    }
+    cp.undoneAt = new Date().toISOString();
+    const logs = await this.logs(p.id);
+    logs.system(`perubahan agent dibatalkan: ${res.restored.length} file dikembalikan, ${res.removed.length} file baru dihapus`);
+    // Beri tahu di komentar yang dikerjakan run ini bahwa perubahannya sudah tidak ada.
+    let comments: string[] = [];
+    try {
+      comments = await noteUndo(
+        p.path,
+        { since: info.startedAt, until: info.endedAt ?? cp.undoneAt, ids: info.commentIds },
+        undoReplyText(PRESETS[info.agent].name, cp.changes),
+      );
+      if (comments.length) logs.system(`balasan pembatalan ditambahkan ke komentar ${comments.join(', ')}`);
+    } catch (err) {
+      logs.system(`gagal menambahkan balasan pembatalan ke komentar: ${errorMessage(err)}`);
+    }
+    return { run: info, comments, ...res };
+  }
+
+  /**
+   * Prototype dihapus dari daftar: lupakan run terakhir dan hapus repo checkpoint-nya.
+   * Run yang masih berjalan dihentikan dulu.
+   */
+  async forget(id: string): Promise<void> {
+    if (this.runs.has(id)) await this.stop(id);
+    this.last.delete(id);
+    await removeCheckpoints(this.config.home, id);
   }
 
   async stopAll(): Promise<void> {

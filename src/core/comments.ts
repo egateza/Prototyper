@@ -291,14 +291,19 @@ export async function getComment(dir: string, id: string): Promise<Comment> {
 }
 
 /** Jalankan perubahan lalu simpan secara atomik. */
-function mutate(dir: string, fn: (data: CommentsFile, now: string) => StoredComment): Promise<Comment> {
+/** Baca-ubah-tulis comments.json di bawah kunci; ditulis hanya bila `changed`. */
+function update<T>(dir: string, fn: (data: CommentsFile, now: string) => { value: T; changed: boolean }): Promise<T> {
   const file = commentsPath(dir);
   return withLock(path.resolve(file).toLowerCase(), async () => {
     const data = await readFile(dir);
     const out = fn(data, new Date().toISOString());
-    await writeJsonAtomic(file, data);
-    return decorate(out);
+    if (out.changed) await writeJsonAtomic(file, data);
+    return out.value;
   });
+}
+
+function mutate(dir: string, fn: (data: CommentsFile, now: string) => StoredComment): Promise<Comment> {
+  return update(dir, (data, now) => ({ value: decorate(fn(data, now)), changed: true }));
 }
 
 export async function addComment(
@@ -425,6 +430,46 @@ export async function reopenComment(dir: string, id: string): Promise<Comment> {
     c.resolution = null;
     c.updatedAt = now;
     return c;
+  });
+}
+
+/**
+ * Catat di komentar bahwa perubahan dari sebuah run agent dibatalkan. Komentar yang disentuh:
+ * yang dibalas atau di-resolve agent dalam rentang waktu run, ditambah `ids` (komentar yang diminta
+ * dikerjakan). Komentar yang di-resolve dalam run dibuka lagi. Balasan berperan agent sehingga
+ * giliran kembali ke pengguna. Mengembalikan id komentar yang diberi balasan.
+ */
+export async function noteUndo(
+  dir: string,
+  run: { since: string; until: string; ids?: readonly string[] },
+  text: string,
+  author = 'prototyper',
+): Promise<string[]> {
+  const since = Date.parse(run.since);
+  const until = Date.parse(run.until) + 2000; // balasan yang ditulis tepat saat proses keluar
+  const inRun = (iso: string | null) => {
+    const t = iso ? Date.parse(iso) : NaN;
+    return t >= since && t <= until;
+  };
+  const wanted = new Set(run.ids ?? []);
+  return update(dir, (data, now) => {
+    const touched: string[] = [];
+    for (const c of data.comments) {
+      const resolvedInRun = c.status === 'resolved' && inRun(c.resolvedAt);
+      const repliedInRun = c.replies.some((r) => r.role === 'agent' && inRun(r.createdAt));
+      if (!resolvedInRun && !repliedInRun && !wanted.has(c.id)) continue;
+      if (resolvedInRun) {
+        c.status = 'open';
+        c.resolvedAt = null;
+        c.resolvedBy = null;
+        c.resolution = null;
+      }
+      if (c.status !== 'open') continue;
+      c.replies.push({ id: `${c.id}-r${c.replies.length + 1}`, author, role: 'agent', text, createdAt: now });
+      c.updatedAt = now;
+      touched.push(c.id);
+    }
+    return { value: touched, changed: touched.length > 0 };
   });
 }
 

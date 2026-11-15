@@ -17,6 +17,7 @@
 - [x] **#4 Agent dari Web UI**: Kerjakan dengan Claude (`claude -p`, izin terbatas, shim `prototyper`, log live, Stop, batas waktu), tombol per komentar, pratinjau static di-refresh setelah selesai (DESIGN.md §10f)
 - [x] **#4 Multi-agent**: deteksi agent lokal (`prototyper agents list`, dialog Agent lokal, `PROTOTYPER_AGENT_BIN_<ID>`), pilihan agent saat Kerjakan; Codex teruji (codex-cli 0.169); preset Gemini/Copilot eksperimental
 - [x] **Live-reload static**: `fs.watch` → SSE → `embed.js` memuat ulang halaman (CSS diganti tanpa muat ulang); `static.liveReload: false` untuk mematikan (DESIGN.md §7)
+- [x] **Checkpoint run agent + Batalkan**: snapshot sebelum/sesudah run di repo git bayangan, tombol Batalkan (N file), deteksi bentrok (DESIGN.md §10f)
 - [x] Tes jalan di Windows lewat `scripts/vitest.mjs` (normalisasi huruf drive)
 
 ## Perlu diverifikasi (oleh Ega, di Windows)

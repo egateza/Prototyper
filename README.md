@@ -101,6 +101,7 @@ Panel Komentar punya tombol **Kerjakan dengan [agent ▾]** (semua komentar yang
 - Izin dibatasi: baca/edit file + perintah `prototyper`; lainnya ditolak otomatis (`--permission-mode dontAsk`, `--permission-prompts none`). Agent tidak bisa bertanya lewat terminal — ia bertanya lewat komentar (`comments ask`).
 - Prototyper tidak membaca atau menyimpan kredensial; ia hanya menjalankan binary `claude` dengan login Claude Code Anda. Untuk memakai API key sebagai gantinya: set `ANTHROPIC_API_KEY` dan `PROTOTYPER_AGENT_AUTH=apikey` (Claude dijalankan dengan `--bare`). Lihat [aturan autentikasi Claude Code](https://code.claude.com/docs/en/legal-and-compliance.md).
 - Batas waktu per run: `PROTOTYPER_AGENT_TIMEOUT_MIN` (default 20). Log run: `<PROTOTYPER_HOME>/logs/<id>.agent.log`.
+- **Batalkan perubahan agent.** Sebelum dan sesudah run, Prototyper menyimpan checkpoint folder prototype (butuh Git; disimpan terpisah di `<PROTOTYPER_HOME>/checkpoints/`, repo Git Anda tidak disentuh). Bila run mengubah file, bar agent menampilkan **Batalkan (N file)**: file yang diubah agent dikembalikan, file baru buatan agent dihapus, sementara file lain yang Anda edit tetap. Komentar yang dikerjakan agent diberi balasan bahwa perubahannya dibatalkan (dan dibuka lagi bila sempat diselesaikan), sehingga agent berikutnya tahu riwayatnya. Bila file itu sudah Anda edit lagi, Prototyper bertanya dulu sebelum menimpanya. Matikan dengan `PROTOTYPER_AGENT_CHECKPOINT=0`.
 - Agent default: `PROTOTYPER_AGENT_DEFAULT` (`claude`/`codex`/`gemini`/`copilot`). Path agent bisa dipaksa: `PROTOTYPER_AGENT_BIN_<ID>` (mis. `PROTOTYPER_AGENT_BIN_CODEX`). Shim npm (`codex.cmd`) dijalankan langsung lewat Node, tanpa `cmd.exe`.
 - Izin per agent: Claude — baca/edit + `prototyper` saja (lainnya ditolak); Codex — sandbox `workspace-write` (tulis hanya di folder prototype, tanpa jaringan), `--ignore-user-config` agar model/MCP dari `config.toml` (mis. milik aplikasi Codex desktop) tidak ikut; hanya `[windows] sandbox` yang dibawa, model bisa dipilih lewat `PROTOTYPER_AGENT_CODEX_MODEL`; Gemini — `--approval-mode auto_edit` + shell `prototyper`; Copilot — `--allow-tool write` + `shell(prototyper)`.
 
@@ -170,6 +171,7 @@ URL LAN tampil di `prototyper info` dan Web UI. Dari perangkat lain hanya bisa m
 | `PROTOTYPER_UPDATE_REPO` | `egateza/Prototyper` | repo GitHub sumber pembaruan tray |
 | `PROTOTYPER_AGENT_AUTH` | `login` | `apikey` = jalankan Claude dengan `--bare` + `ANTHROPIC_API_KEY` |
 | `PROTOTYPER_AGENT_TIMEOUT_MIN` | `20` | batas waktu satu run agent |
+| `PROTOTYPER_AGENT_CHECKPOINT` | `1` | `0` = tanpa checkpoint/Batalkan untuk run agent |
 | `PROTOTYPER_AGENT_DEFAULT` | `claude` | agent default (`claude`, `codex`, `gemini`, `copilot`) |
 | `PROTOTYPER_AGENT_BIN_<ID>` | – | path executable agent, mis. `PROTOTYPER_AGENT_BIN_CODEX` |
 

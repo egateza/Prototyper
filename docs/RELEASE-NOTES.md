@@ -1,4 +1,13 @@
-## Yang baru di 0.3.8
+## Yang baru di 0.3.9
+
+- **Batalkan perubahan agent.** Sebelum agent mulai bekerja dari Web UI, Prototyper menyimpan checkpoint folder prototype. Bila agent mengubah file, bar agent menampilkan tombol **Batalkan (N file)** beserta daftar filenya. File yang diubah agent dikembalikan, file baru buatan agent dihapus. File lain yang Anda edit tidak ikut berubah.
+- Bila file yang diubah agent sudah Anda edit lagi, Prototyper menampilkan daftarnya dan bertanya dulu sebelum menimpa.
+- Komentar yang dikerjakan agent mendapat balasan bahwa perubahannya dibatalkan, lengkap dengan daftar file, dan giliran kembali ke Anda. Komentar yang sempat diselesaikan agent dibuka lagi. Agent berikutnya jadi tahu bahwa percobaan itu ditolak.
+- Checkpoint butuh Git dan disimpan terpisah di `<PROTOTYPER_HOME>/checkpoints/`, jadi repo Git Anda (index, stash, branch) tidak disentuh. Tanpa Git, agent tetap jalan tanpa checkpoint. Checkpoint ikut dihapus saat prototype dihapus dari daftar. Matikan dengan `PROTOTYPER_AGENT_CHECKPOINT=0`.
+
+Pembaruan ke 0.3.9 mengubah kode server, jadi Prototyper dimulai ulang sekali.
+
+## 0.3.8
 
 - **Live-reload untuk prototype static.** Halaman yang terbuka, di pratinjau Web UI maupun di tab browser biasa, dimuat ulang otomatis begitu file prototype berubah, misalnya saat agent selesai mengedit. Posisi scroll dipertahankan.
 - Bila yang berubah hanya file `.css`, stylesheet diganti tanpa memuat ulang halaman, jadi isian form dan state lain tetap.
