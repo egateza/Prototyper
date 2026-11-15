@@ -20,7 +20,7 @@ import { APP_MODE } from '../core/appfiles.js';
 import { DaemonClient } from './client.js';
 import { isExplorerLaunch, runLauncher, windowsParentImage } from './launcher.js';
 import { registerCommentCommands } from './comments.js';
-import { launchTray, runTray } from '../tray/index.js';
+import { launchTray, quitDeps, quitPrototyper, runTray } from '../tray/index.js';
 import { formatLogLine, printInfo, printJson, printTable, reportError } from './output.js';
 
 interface GlobalOpts {
@@ -453,6 +453,21 @@ program
   );
 
 program
+  .command('quit')
+  .description('tutup Prototyper sepenuhnya: tray, daemon, dan semua prototype (dipakai installer saat uninstall)')
+  .option('--remove-startup', 'hapus juga "jalankan saat startup" yang menunjuk ke exe ini')
+  .action(
+    act(async (ctx, _args, cmd) => {
+      const o = cmd.opts<{ removeStartup?: boolean }>();
+      const r = await quitPrototyper(quitDeps(ctx.config), { removeStartup: o.removeStartup === true });
+      if (ctx.json) return printJson({ ok: true, ...r });
+      console.log(r.daemon ? '✓ Daemon dan prototype dihentikan.' : 'Daemon tidak berjalan.');
+      console.log(r.tray ? `✓ Tray ditutup (PID ${r.tray}).` : 'Tray tidak berjalan.');
+      if (r.startupRemoved) console.log('✓ "Jalankan saat startup" dihapus.');
+    }),
+  );
+
+program
   .command('tray')
   .description('jalankan Prototyper di tray Windows (daemon ikut dinyalakan); bila sudah berjalan, buka Web UI')
   .option('--foreground', 'tetap di terminal ini (untuk debug); default: berjalan di latar')
@@ -460,12 +475,12 @@ program
   .action(
     act(async (ctx, _args, cmd) => {
       const o = cmd.opts<{ foreground?: boolean; restore?: string }>();
+      const restore = (o.restore ?? '').split(',').map((s) => s.trim()).filter(Boolean);
       if (o.foreground) {
-        const restore = (o.restore ?? '').split(',').map((s) => s.trim()).filter(Boolean);
         await runTray(ctx.config, { restore });
         return;
       }
-      const r = await launchTray(ctx.config);
+      const r = await launchTray(ctx.config, restore.length ? ['--restore', restore.join(',')] : []);
       if (ctx.json) return printJson(r);
       if (r.alreadyRunning) console.log(`Prototyper sudah berjalan di tray (PID ${r.pid}); Web UI dibuka di browser.`);
       else console.log(`✓ Prototyper berjalan di tray (log: ${r.log})`);

@@ -16,7 +16,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: windows-latest, label: win-x64, targets: 'exe portable' }
+          # paket aplikasi (app) sama untuk semua OS: cukup dibangun sekali di sini
+          - { os: windows-latest, label: win-x64, targets: 'exe portable app msi' }
           - { os: ubuntu-latest, label: linux-x64, targets: 'exe portable npm' }
           - { os: ubuntu-24.04-arm, label: linux-arm64, targets: 'exe portable' }
           - { os: macos-latest, label: macos-arm64, targets: 'exe portable' }
@@ -29,6 +30,9 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - name: WiX Toolset (MSI)
+        if: runner.os == 'Windows'
+        run: dotnet tool install --global wix --version 5.0.2
       - run: npm run typecheck
       - run: npm test
       - run: npm run release -- ${{ matrix.targets }}

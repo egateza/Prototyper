@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { STOPPED_INFO } from '../src/core/runtime.js';
 import type { UpdateCheck } from '../src/core/update.js';
 import type { PrototypeView } from '../src/core/views.js';
-import { TrayController, type DaemonApi, type TrayDeps } from '../src/tray/controller.js';
+import { TrayController, WHATSNEW_HASH, type DaemonApi, type TrayDeps } from '../src/tray/controller.js';
 import { asciiJson, parseHostLine, TrayHost, type HostEvent, type IconState, type TrayHostLike } from '../src/tray/host.js';
 import { parseAppsTheme, readAppsTheme, runningTrayPid, trayArgs, trayFiles } from '../src/tray/index.js';
 import { iconState, statusNotices, type TrayState, type UpdateState } from '../src/tray/menu.js';
@@ -109,8 +109,8 @@ describe('menu tray', () => {
   it('menu klik kanan: urutan & teks sama dengan menu konteks prototype, menutup setelah dipilih', () => {
     const m = menuLayout(state({ startup: true }));
     expect(m.w).toBe(MENU_W);
-    expect(hitIds(m)).toEqual(['open', 'startAll', 'stopAll', 'pause', 'startup', 'notif', 'update', 'quit']);
-    expect(texts(m)).toEqual(expect.arrayContaining(['🌐 Buka Prototyper di browser', '⏸ Jeda daemon', 'Tampilkan notifikasi', '⟳ Periksa pembaruan…', 'Keluar']));
+    expect(hitIds(m)).toEqual(['open', 'startAll', 'stopAll', 'pause', 'startup', 'notif', 'update', 'whatsnew', 'quit']);
+    expect(texts(m)).toEqual(expect.arrayContaining(['🌐 Buka Prototyper di browser', '⏸ Jeda daemon', 'Tampilkan notifikasi', '⟳ Periksa pembaruan…', '✨ Yang baru di 0.1.0', 'Keluar']));
     expect(menuRow(m, 'startup')!.checked).toBe(true);
     expect(menuRow(menuLayout(state({ startup: false })), 'startup')!.checked).toBe(false);
     expect(m.items.filter((i): i is Hit => i.k === 'hit').every((i) => i.close)).toBe(true);
@@ -129,6 +129,7 @@ describe('menu tray', () => {
     expect(menuRow(at({ status: 'ready', latest: '0.2.0' }), 'update')!.label).toBe('★ Mulai ulang untuk memperbarui');
     const paused = menuLayout(state({ daemonUp: false }));
     expect(hitIds(paused)).not.toContain('startAll');
+    expect(hitIds(paused)).not.toContain('whatsnew'); // halaman Web UI butuh daemon
     expect(menuRow(paused, 'pause')!.label).toBe('▶ Lanjutkan daemon');
   });
 
@@ -279,7 +280,8 @@ const release = (version: string, asset = true): UpdateCheck => ({
   current: '0.1.0',
   latest: { version, tag: `v${version}`, pageUrl: `https://github.com/x/y/releases/tag/v${version}`, assets: [] },
   available: version !== '0.1.0',
-  asset: asset ? { name: `prototyper-${version}-win-x64.exe`, url: 'u', size: 1 } : null,
+  asset: asset ? { name: `prototyper-${version}-app-r1.tar.gz`, url: 'u', size: 1 } : null,
+  kind: asset ? 'app' : null,
   checksums: null,
 });
 
@@ -289,7 +291,7 @@ function setup(o: Partial<TrayDeps> = {}) {
   api.views = [view('kasir'), view('landing')];
   const opened: string[] = [];
   const exits: number[] = [];
-  const installs: Array<[string, string[]]> = [];
+  const installs: Array<[string, string[], string | null]> = [];
   let startup = false;
   let nextCheck = release('0.2.0');
   const home = tmpDir('prototyper-tray-home-');
@@ -310,7 +312,7 @@ function setup(o: Partial<TrayDeps> = {}) {
     startup: { get: async () => startup, set: async (v) => void (startup = v) },
     openUrl: (u) => void opened.push(u),
     settingsFile: path.join(home, 'tray.json'),
-    install: async (file, restore) => void installs.push([file, restore]),
+    install: async (file, restore, check) => void installs.push([file, restore, check.kind]),
     exit: (code) => void exits.push(code),
     pollMs: 60_000,
     autoUpdate: null,
@@ -374,6 +376,18 @@ describe('TrayController', () => {
     expect(t.opened).toEqual(['http://localhost:4000']);
   });
 
+  it('Yang baru membuka halaman #!whatsnew di Web UI; diblokir saat daemon dijeda', async () => {
+    const t = setup();
+    await t.c.start();
+    await t.c.click('whatsnew');
+    expect(t.opened).toEqual([`http://localhost:4000/${WHATSNEW_HASH}`]);
+    expect(WHATSNEW_HASH).toBe('#!whatsnew');
+    await t.c.click('pause');
+    await t.c.click('whatsnew');
+    expect(t.opened).toHaveLength(1);
+    expect(t.host.balloons.at(-1)?.[0]).toBe('Daemon dijeda');
+  });
+
   it('daemon dimatikan dari luar terdeteksi saat polling', async () => {
     const t = setup();
     await t.c.start();
@@ -413,7 +427,7 @@ describe('TrayController', () => {
     expect(t.c.state.update.status).toBe('ready');
     await t.c.click('update');
     expect(t.api.calls.at(-1)).toBe('shutdown');
-    expect(t.installs).toEqual([[path.join(t.home, 'new.exe'), ['kasir']]]);
+    expect(t.installs).toEqual([[path.join(t.home, 'new.exe'), ['kasir'], 'app']]);
     expect(t.exits).toEqual([0]);
     expect(t.host.closed).toBe(true);
   });

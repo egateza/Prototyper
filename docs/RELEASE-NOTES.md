@@ -1,10 +1,10 @@
 ## Yang baru
 
-- **Tray Windows.** Dobel-klik `prototyper.exe` untuk menjalankan Prototyper sebagai ikon di tray, tanpa jendela konsol. Klik kiri membuka popup ringkas: status daemon, daftar prototype dengan toggle jalankan/hentikan, tombol buka di browser, jalankan saat startup, periksa pembaruan, dan jalankan/hentikan semua. Klik kanan membuka menu, dan klik dua kali membuka Web UI. Angka pada ikon menunjukkan jumlah prototype yang berjalan.
-- **Pembaruan dari tray.** Tray memeriksa GitHub Releases. Untuk `prototyper.exe`, pembaruan diunduh, dicocokkan dengan `SHA256SUMS.txt`, lalu dipasang lewat "Mulai ulang", dan prototype yang tadinya berjalan dinyalakan lagi. Fitur ini baru berlaku mulai 0.2.0: dari 0.1.0, unduh 0.2.0 secara manual sekali.
-- **Jalankan saat startup** (Windows) dari tray.
-- Icon Prototyper ("Blueprint") untuk exe, Web UI, dan tray.
-- Petunjuk agent di semua prototype disesuaikan otomatis saat daemon versi baru menyala.
+- **Installer MSI (Windows).** `prototyper-<versi>-win-x64.msi` memasang Prototyper per pengguna tanpa hak admin (default `%LOCALAPPDATA%\Programs\Prototyper`): shortcut Start Menu, PATH pengguna, dan tray langsung menyala setelah dipasang. Uninstall menutup tray, daemon, dan prototype lebih dulu, serta menghapus "jalankan saat startup".
+- **Pembaruan lebih kecil dari tray.** Bila exe tidak perlu diganti, tray cukup mengunduh paket aplikasi `prototyper-<versi>-app-r<runtime>.tar.gz` (sekitar 0,6 MB) alih-alih exe penuh. Aplikasi yang gagal dimuat otomatis kembali ke versi bawaan exe. Instalasi MSI diperbarui lewat MSI. Dari 0.2.0, tray mengunduh exe penuh sekali.
+- **Halaman Yang baru** di Web UI (item di sidebar, klik nomor versi, atau `Ctrl+K`) dan di menu klik kanan tray.
+- Perintah `prototyper quit`: tutup tray, daemon, dan semua prototype sekaligus.
+- Popup tray tertutup saat mengklik di luar popup, dan popup/menu tidak lagi muncul di Alt+Tab maupun taskbar.
 
 ## Pilih berkas unduhan
 
@@ -16,6 +16,7 @@
 | macOS Apple Silicon | `prototyper-<versi>-macos-arm64.tar.gz` | `prototyper-<versi>-macos-arm64-portable.tar.gz` | `prototyper-<versi>.tgz` |
 | macOS Intel | `prototyper-<versi>-macos-x64.tar.gz` | `prototyper-<versi>-macos-x64-portable.tar.gz` | `prototyper-<versi>.tgz` |
 
+- **Windows**: selain biner tunggal ada installer `prototyper-<versi>-win-x64.msi` (per pengguna, tanpa admin; menambahkan shortcut Start Menu dan PATH).
 - **Biner tunggal**: satu file berisi Node.js + Prototyper (sekitar 90 MB). Cukup diunduh lalu dijalankan.
 - **Portable**: folder berisi `node`, `app/`, dan peluncur `prototyper` / `prototyper.cmd`. Ukuran unduhan lebih kecil, isinya bisa dilihat, dan tidak perlu diinstal.
 - **npm**: untuk yang sudah punya Node. Perintah `prototyper` terpasang global.
@@ -25,6 +26,9 @@ Prototype mode command (template `vite-vanilla` / `vite-react`) tetap butuh Node
 ### Windows
 
 ```powershell
+# installer (disarankan): dobel-klik, atau tanpa wizard
+msiexec /i prototyper-<versi>-win-x64.msi /passive
+
 # biner tunggal: taruh di folder yang ada di PATH, misalnya D:\Tools
 Rename-Item prototyper-<versi>-win-x64.exe prototyper.exe
 prototyper --version

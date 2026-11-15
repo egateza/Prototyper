@@ -473,3 +473,18 @@ dialog.small p { margin: 0; }
   .kv { grid-template-columns: 1fr; } .kv dt { border-top: 1px solid var(--border); } .kv > :nth-child(2) { border-top: 0; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* ---------- Yang baru (#!whatsnew) ---------- */
+#meta { cursor: pointer; }
+#meta:hover { color: var(--accent); }
+.cm-badge.new { font-size: 10px; letter-spacing: .02em; text-transform: uppercase; }
+.whatsnew { max-width: 860px; }
+.wn-list { display: grid; gap: 14px; }
+.wn-rel { border: 1px solid var(--border); border-radius: var(--r-lg); padding: 16px 18px; background: var(--surface); box-shadow: var(--shadow-sm); }
+.wn-rel.current { border-color: var(--accent-line); }
+.wn-head { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.wn-ver { font-weight: 800; font-family: var(--mono); }
+.wn-rel h2 { margin: 8px 0 6px; font-size: 16px; letter-spacing: -.01em; }
+.wn-rel ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 13.5px; line-height: 1.55; }
+.wn-foot { font-size: 13px; margin: 4px 0 0; }
+.wn-foot a svg { width: 12px; height: 12px; vertical-align: -1px; }

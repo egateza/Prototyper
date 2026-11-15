@@ -16,8 +16,8 @@ import type { Popup } from './popup.js';
  *                · untuk tes: {t:'show', what} · {t:'clickAt', what, x, y} · {t:'snapshot', what, path}
  *   host → Node: {t:'ready'} · {t:'click', id} · {t:'open'} (klik dua kali ikon) · {t:'snapshot', path}
  * Klik kiri ikon membuka/menutup popup; klik kanan membuka menu. Keduanya jendela tanpa bingkai
- * yang digambar dari daftar bentuk (`Popup`). Popup tetap terbuka sampai ✕ / Esc / klik ikon;
- * menu tertutup setelah dipilih atau saat kehilangan fokus.
+ * yang digambar dari daftar bentuk (`Popup`). Popup tertutup lewat ✕ / Esc / klik ikon / klik di luar
+ * (kehilangan fokus); klik di dalam popup tidak menutupnya. Menu tertutup setelah dipilih atau saat kehilangan fokus.
  */
 
 export interface IconState {
@@ -138,8 +138,7 @@ export class TrayHost extends EventEmitter implements TrayHostLike {
   }
 }
 
-/** Skrip host. Membaca stdin secara asinkron (StreamReader + timer) agar UI tetap responsif. */
-export const HOST_SCRIPT = String.raw`param([string]$IconDir)
+const HOST_SCRIPT_SOURCE = String.raw`param([string]$IconDir)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -154,6 +153,9 @@ public static class PrototyperNative {
   [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
   [DllImport("dwmapi.dll")] public static extern int DwmSetWindowAttribute(IntPtr h, int attr, ref int val, int size);
+  [DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr h, int index);
+  [DllImport("user32.dll")] public static extern int SetWindowLong(IntPtr h, int index, int value);
+  [DllImport("shell32.dll", CharSet = CharSet.Unicode)] public static extern int SetCurrentProcessExplicitAppUserModelID(string id);
 }
 '@
   [void][PrototyperNative]::SetProcessDPIAware()
@@ -185,6 +187,20 @@ function Draw-Logo($g, $rect, $attrs) {
   if ($null -ne $attrs) { $g.DrawImage($img, $rect, 0, 0, $img.Width, $img.Height, [System.Drawing.GraphicsUnit]::Pixel, $attrs) }
   else { $g.DrawImage($img, $rect) }
 }
+# Ikon jendela popup/menu (jendela tool tidak tampil di Alt+Tab, tapi tetap diberi identitas Prototyper)
+$script:appIcon = [System.Drawing.Icon]::FromHandle((New-Object System.Drawing.Bitmap((Get-Logo 256))).GetHicon())
+
+# Identitas notifikasi. Windows 10/11 menampilkan balon tray sebagai toast yang dinamai menurut aplikasi
+# pemilik ikon; tanpa ini namanya "Windows PowerShell". AppUserModelID harus dipasang sebelum NotifyIcon dibuat,
+# dan nama + ikonnya didaftarkan per pengguna (HKCU, tanpa admin). Ikon diperbarui tiap start (folder app berganti).
+try {
+  $aumidKey = 'HKCU:\Software\Classes\AppUserModelId\__AUMID__'
+  if (-not (Test-Path -LiteralPath $aumidKey)) { [void](New-Item -Path $aumidKey -Force) }
+  $largest = Get-ChildItem -LiteralPath $IconDir -Filter 'tray-*.png' | Sort-Object { [int]$_.BaseName.Substring(5) } | Select-Object -Last 1
+  Set-ItemProperty -LiteralPath $aumidKey -Name 'DisplayName' -Value 'Prototyper'
+  Set-ItemProperty -LiteralPath $aumidKey -Name 'IconUri' -Value $largest.FullName
+  if ($script:native) { [void][PrototyperNative]::SetCurrentProcessExplicitAppUserModelID('__AUMID__') }
+} catch { Err $_ }
 
 $notify = New-Object System.Windows.Forms.NotifyIcon
 $notify.Text = 'Prototyper'
@@ -396,8 +412,10 @@ function New-Surface([string]$name, [bool]$autoClose) {
   $f.StartPosition = 'Manual'
   $f.KeyPreview = $true
   $f.Tag = $name
+  $f.Text = 'Prototyper'   # nama jendela (tidak terlihat: jendela tanpa bingkai)
+  $f.Icon = $script:appIcon
   [System.Windows.Forms.Control].GetProperty('DoubleBuffered', [System.Reflection.BindingFlags]'Instance,NonPublic').SetValue($f, $true, $null)
-  $script:surfaces[$name] = @{ name = $name; form = $f; model = $null; hovered = @(); spinner = $false; rounded = $false; anchor = [System.Drawing.Point]::Empty }
+  $script:surfaces[$name] = @{ name = $name; form = $f; model = $null; hovered = @(); spinner = $false; rounded = $false; anchor = [System.Drawing.Point]::Empty; hiding = $false; autoHiddenAt = -100000 }
   $f.add_Paint({ param($s, $e) try { Draw-Surface $e.Graphics $script:surfaces[[string]$s.Tag] } catch { Err $_ } })
   $f.add_MouseMove({ param($s, $e) try { Hover-At $script:surfaces[[string]$s.Tag] $e.Location } catch { Err $_ } })
   $f.add_MouseLeave({ param($s, $e) try { $script:surfaces[[string]$s.Tag].hovered = @(); $s.Invalidate() } catch { Err $_ } })
@@ -407,8 +425,19 @@ function New-Surface([string]$name, [bool]$autoClose) {
     try { Click-At $script:surfaces[[string]$s.Tag] ($e.X / $script:scale) ($e.Y / $script:scale) } catch { Err $_ }
   })
   $f.add_KeyDown({ param($s, $e) if ($e.KeyCode -eq [System.Windows.Forms.Keys]::Escape) { Hide-Surface $script:surfaces[[string]$s.Tag] } })
-  # Menu tertutup saat kehilangan fokus; popup sengaja tidak (tutup lewat ✕, Esc, atau klik ikon tray).
-  if ($autoClose) { $f.add_Deactivate({ param($s, $e) Hide-Surface $script:surfaces[[string]$s.Tag] }) }
+  # Popup & menu tertutup saat kehilangan fokus (klik di luar). Klik di dalam jendela tidak memindahkan fokus,
+  # jadi tidak menutup; yang menutup dari dalam hanya item ber-close (✕, item menu).
+  if ($autoClose) {
+    $f.add_Deactivate({
+      param($s, $e)
+      try {
+        $sf = $script:surfaces[[string]$s.Tag]
+        if ($sf.hiding -or -not $s.Visible) { return }
+        $sf.autoHiddenAt = [Environment]::TickCount
+        Hide-Surface $sf
+      } catch { Err $_ }
+    })
+  }
 }
 
 function Place-Surface($sf) {
@@ -436,9 +465,19 @@ function Place-Surface($sf) {
   if (-not $sf.rounded) { $f.Region = New-Object System.Drawing.Region((RoundPath 0 0 $w $h ([double]$sf.model.r * $s))) }
 }
 
+# Flyout tray, bukan aplikasi: WS_EX_TOOLWINDOW membuat jendela tidak muncul di Alt+Tab / recent apps / taskbar.
+# Dipasang sebelum setiap Show karena WinForms bisa membuat ulang handle.
+function Set-ToolWindow($f) {
+  if (-not $script:native) { return }
+  $ex = [PrototyperNative]::GetWindowLong($f.Handle, -20)  # GWL_EXSTYLE
+  $want = ($ex -bor 0x80) -band (-bnot 0x40000)            # + WS_EX_TOOLWINDOW, - WS_EX_APPWINDOW
+  if ($want -ne $ex) { [void][PrototyperNative]::SetWindowLong($f.Handle, -20, $want) }
+}
+
 function Show-Surface($sf) {
   if ($null -eq $sf.model) { return }
   $f = $sf.form
+  Set-ToolWindow $f
   $sf.anchor = [System.Windows.Forms.Cursor]::Position
   $sf.hovered = @()
   Place-Surface $sf
@@ -459,7 +498,9 @@ function Show-Surface($sf) {
 }
 
 function Hide-Surface($sf) {
-  if ($sf.form.Visible) { $sf.form.Hide() }
+  if (-not $sf.form.Visible) { return }
+  $sf.hiding = $true
+  try { $sf.form.Hide() } finally { $sf.hiding = $false }
 }
 
 function Set-Model([string]$name, $msg) {
@@ -469,7 +510,7 @@ function Set-Model([string]$name, $msg) {
   if ($sf.form.Visible) { Place-Surface $sf; $sf.form.Invalidate() }
 }
 
-New-Surface 'popup' $false
+New-Surface 'popup' $true
 New-Surface 'menu' $true
 $popupSf = $script:surfaces['popup']
 $menuSf = $script:surfaces['menu']
@@ -584,7 +625,10 @@ $notify.add_MouseUp({
   param($s, $e)
   try {
     if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
-      $script:wasOpen = $popupSf.form.Visible
+      # Menekan ikon tray memindahkan fokus ke taskbar, jadi popup sudah tertutup (Deactivate) sebelum MouseUp;
+      # anggap masih terbuka bila baru saja tertutup karena itu, agar klik ikon tetap berarti "tutup".
+      $recent = ([Environment]::TickCount - $popupSf.autoHiddenAt) -lt 600
+      $script:wasOpen = $popupSf.form.Visible -or $recent
       $clickTimer.Stop(); $clickTimer.Start()
     } elseif ($e.Button -eq [System.Windows.Forms.MouseButtons]::Right) {
       Hide-Surface $popupSf
@@ -621,3 +665,9 @@ $notify.Visible = $true
 Send @{ t = 'ready' }
 [System.Windows.Forms.Application]::Run()
 `;
+
+/** AppUserModelID host tray: nama & ikon notifikasi (didaftarkan per pengguna di registry: HKCU, Software\Classes\AppUserModelId). */
+export const TRAY_AUMID = 'Prototyper.Tray';
+
+/** Skrip host. Membaca stdin secara asinkron (StreamReader + timer) agar UI tetap responsif. */
+export const HOST_SCRIPT = HOST_SCRIPT_SOURCE.replaceAll('__AUMID__', TRAY_AUMID);

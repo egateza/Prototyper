@@ -41,8 +41,8 @@ export interface TrayDeps {
   openUrl: (url: string) => void;
   /** File pengaturan tray (notifikasi). */
   settingsFile: string;
-  /** Pasang `file` lalu jalankan ulang tray yang kemudian menyalakan lagi `restore`. Tidak kembali bila berhasil. */
-  install: (file: string, restore: string[]) => Promise<void>;
+  /** Pasang `file` (jenisnya dari `check.kind`) lalu jalankan ulang tray yang menyalakan lagi `restore`. */
+  install: (file: string, restore: string[], check: UpdateCheck) => Promise<void>;
   /** Dipanggil saat tray selesai (Keluar, host tertutup). */
   exit: (code: number) => void;
   /** Tema aplikasi Windows untuk menu klik kanan (default terang). */
@@ -56,6 +56,9 @@ export interface TrayDeps {
 interface Settings {
   notifications: boolean;
 }
+
+/** Hash halaman "Yang baru" di Web UI (lihat `WHATSNEW` di web/app.js). */
+export const WHATSNEW_HASH = '#!whatsnew';
 
 export class TrayController {
   readonly state: TrayState;
@@ -166,17 +169,20 @@ export class TrayController {
         return this.toggleNotifications();
       case 'update':
         return this.updateAction();
+      case 'whatsnew':
+        return this.openUi(WHATSNEW_HASH);
       case 'quit':
         return this.quit();
     }
   }
 
-  private openUi(): void {
+  /** `hash`: halaman tertentu di Web UI, mis. `WHATSNEW_HASH`. */
+  private openUi(hash = ''): void {
     if (!this.state.daemonUp) {
       this.notify('Daemon dijeda', 'Lanjutkan daemon dulu untuk membuka Prototyper.', true);
       return;
     }
-    this.d.openUrl(this.state.url);
+    this.d.openUrl(`${this.state.url}${hash ? `/${hash}` : ''}`);
   }
 
   private async prototypeAction(action: 'start' | 'stop' | 'restart' | 'open', id: string): Promise<void> {
@@ -302,7 +308,7 @@ export class TrayController {
       if (!u.selfUpdate) return this.d.openUrl(c.latest.pageUrl);
       return this.downloadUpdate(c);
     }
-    if (u.status === 'ready' && this.downloaded) return this.installUpdate(this.downloaded);
+    if (u.status === 'ready' && this.downloaded && c) return this.installUpdate(this.downloaded, c);
     return this.checkUpdate(false);
   }
 
@@ -329,13 +335,13 @@ export class TrayController {
     this.render();
   }
 
-  private async installUpdate(file: string): Promise<void> {
+  private async installUpdate(file: string, check: UpdateCheck): Promise<void> {
     const restore = this.state.prototypes.filter((p) => p.status === 'running').map((p) => p.id);
     this.notify('Memasang pembaruan…', 'Prototyper akan dimulai ulang.', true);
     this.stopTimers();
     if (this.state.daemonUp) await this.d.api.shutdown(); // daemon versi lama harus berhenti dulu
     try {
-      await this.d.install(file, restore);
+      await this.d.install(file, restore, check);
     } catch (err) {
       this.notify('Gagal memasang pembaruan', errorMessage(err), true);
       await this.resumeDaemon(false);

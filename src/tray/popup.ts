@@ -148,7 +148,7 @@ export function popupLayout(s: TrayState): Popup {
   const dot = busy || !s.daemonUp ? C.warn : C.ok;
   items.push({ k: 'circle', x: 46, y: 30, d: 8, fill: dot, ...(dot === C.ok ? { ring: C.okRing, ringW: 3 } : {}) });
   items.push({ k: 'text', x: 59, y: 26, w: pbx - 8 - 59, h: 16, runs: [{ text: popupSummary(s), size: 11, color: C.muted }] });
-  // tutup: ditangani host sendiri (tanpa id), popup tidak menutup otomatis saat kehilangan fokus
+  // tutup: ditangani host sendiri (tanpa id), popup juga tertutup saat kehilangan fokus (klik di luar)
   items.push({ k: 'hit', x: cbx, y: 10, w: 30, h: 30, r: 6, hover: C.hover, close: true });
   items.push({ k: 'text', x: cbx, y: 10, w: 30, h: 30, align: 'center', runs: [{ text: '✕', size: 13, color: C.muted, symbol: true }] });
   items.push({ k: 'rect', x: pbx, y: 10, w: 30, h: 30, r: 6, stroke: C.line });
@@ -287,6 +287,7 @@ export function menuLayout(s: TrayState): Popup {
     { id: 'notif', text: 'Tampilkan notifikasi', check: true, checked: s.notifications },
     { sep: true },
     { id: 'update', ...menuUpdateRow(s.update) },
+    { id: 'whatsnew', text: `✨ Yang baru di ${s.update.current}`, disabled: !s.daemonUp || busy },
     { sep: true },
     { id: 'quit', text: 'Keluar' },
   ];

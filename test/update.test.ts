@@ -12,7 +12,8 @@ import {
   parseRelease,
   parseSha256Sums,
   replaceExecutable,
-  selfUpdateAssetName,
+  updateCandidates,
+  type InstallContext,
 } from '../src/core/update.js';
 import { loadConfig } from '../src/core/config.js';
 import { tmpDir } from './helpers.js';
@@ -26,10 +27,30 @@ describe('versi & berkas rilis', () => {
     expect(compareVersions('0.10.0', '0.9.0')).toBeGreaterThan(0);
   });
 
-  it('pemasangan otomatis hanya untuk biner tunggal Windows', () => {
-    expect(selfUpdateAssetName('0.2.0', 'win32', 'x64', 'sea')).toBe('prototyper-0.2.0-win-x64.exe');
-    expect(selfUpdateAssetName('0.2.0', 'win32', 'x64', 'bundle')).toBeNull();
-    expect(selfUpdateAssetName('0.2.0', 'linux', 'x64', 'sea')).toBeNull();
+  it('updateCandidates: paket aplikasi dulu, lalu MSI (instalasi MSI) atau exe; hanya biner tunggal Windows', () => {
+    const ctx: InstallContext = { platform: 'win32', arch: 'x64', mode: 'sea', runtime: 1, installer: null };
+    expect(updateCandidates('0.3.0', ctx)).toEqual([
+      { kind: 'app', name: 'prototyper-0.3.0-app-r1.tar.gz' },
+      { kind: 'exe', name: 'prototyper-0.3.0-win-x64.exe' },
+    ]);
+    expect(updateCandidates('0.3.0', { ...ctx, installer: 'msi' })).toEqual([
+      { kind: 'app', name: 'prototyper-0.3.0-app-r1.tar.gz' },
+      { kind: 'msi', name: 'prototyper-0.3.0-win-x64.msi' },
+    ]);
+    // exe ≤ 0.2 / tanpa bootstrap: tidak bisa memakai paket aplikasi
+    expect(updateCandidates('0.3.0', { ...ctx, runtime: null })).toEqual([{ kind: 'exe', name: 'prototyper-0.3.0-win-x64.exe' }]);
+    expect(updateCandidates('0.3.0', { ...ctx, mode: 'bundle' })).toEqual([]);
+    expect(updateCandidates('0.3.0', { ...ctx, platform: 'linux' })).toEqual([]);
+  });
+
+  it('evaluateRelease memilih kandidat pertama yang ada di rilis (runtime naik → tanpa paket r1)', () => {
+    const rel = (names: string[]) => parseRelease({ tag_name: 'v0.3.0', html_url: 'h', assets: names.map((n) => ({ name: n, browser_download_url: `https://x/${n}` })) });
+    const cands = updateCandidates('0.3.0', { platform: 'win32', arch: 'x64', mode: 'sea', runtime: 1, installer: 'msi' });
+    const both = evaluateRelease('0.2.0', rel(['prototyper-0.3.0-app-r1.tar.gz', 'prototyper-0.3.0-win-x64.msi']), cands);
+    expect(both).toMatchObject({ kind: 'app', asset: { name: 'prototyper-0.3.0-app-r1.tar.gz' } });
+    const runtimeBump = evaluateRelease('0.2.0', rel(['prototyper-0.3.0-app-r2.tar.gz', 'prototyper-0.3.0-win-x64.msi']), cands);
+    expect(runtimeBump).toMatchObject({ kind: 'msi', asset: { name: 'prototyper-0.3.0-win-x64.msi' } });
+    expect(evaluateRelease('0.2.0', rel(['lain.zip']), cands)).toMatchObject({ kind: null, asset: null, available: true });
   });
 
   it('parseSha256Sums membaca format sha256sum', () => {
@@ -52,11 +73,12 @@ describe('versi & berkas rilis', () => {
     });
     expect(r.version).toBe('0.2.0');
     expect(r.assets).toHaveLength(2);
-    const c = evaluateRelease('0.1.0', r, 'prototyper-0.2.0-win-x64.exe');
+    const c = evaluateRelease('0.1.0', r, [{ kind: 'exe', name: 'prototyper-0.2.0-win-x64.exe' }]);
     expect(c.available).toBe(true);
     expect(c.asset?.url).toBe('https://x/exe');
+    expect(c.kind).toBe('exe');
     expect(c.checksums?.url).toBe('https://x/sums');
-    expect(evaluateRelease('0.2.0', r, null)).toMatchObject({ available: false, asset: null });
+    expect(evaluateRelease('0.2.0', r, [])).toMatchObject({ available: false, asset: null, kind: null });
     expect(() => parseRelease({ message: 'Not Found' })).toThrow(/tidak dikenali/);
   });
 
@@ -86,7 +108,7 @@ describe('downloadUpdate', () => {
           { name: 'SHA256SUMS.txt', url: 'https://x/sums', size: 1 },
         ],
       },
-      'a.exe',
+      [{ kind: 'exe', name: 'a.exe' }],
     ),
     _sums: sums,
   });

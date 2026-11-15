@@ -2,28 +2,34 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { build } from 'esbuild';
 import { inject } from 'postject';
 import { rcedit } from 'rcedit';
-import { BUNDLE_FILE, SEA_MANIFEST_ASSET, type SeaManifest } from '../src/core/appfiles.js';
+import { APP_INFO_FILE, BROKEN_MARK, BUNDLE_FILE, RUNTIME, SEA_MANIFEST_ASSET, writeCurrent, type AppInfo, type SeaManifest } from '../src/core/apphost.js';
+import { packFiles } from '../src/core/apppack.js';
+import { appPackName, msiName } from '../src/core/update.js';
 import { bundleApp, readPackage, ROOT } from './bundle.js';
+import { buildWxs, installerJson, MSI_EXTENSIONS, WIX_VERSION } from './msi.js';
 import { windowsFileVersion } from './winres.js';
 
 /**
  * Buat berkas rilis untuk OS + arsitektur mesin ini (Node yang menjalankan skrip ini ikut dikemas).
  *
- *   npm run release                      # semua: exe + portable + npm
+ *   npm run release                      # semua: exe + portable + npm + app (+ msi di Windows bila WiX ada)
  *   npm run release -- exe portable      # pilih target
  *   npm run release -- --out D:\rilis    # folder hasil (default: release/)
  *
  * Hasil (contoh Windows x64, versi 0.1.0):
  *   prototyper-0.1.0-win-x64.exe            biner tunggal (Node SEA), tanpa perlu Node
+ *   prototyper-0.1.0-win-x64.msi            installer per-user berisi exe di atas (butuh WiX: docs/RELEASE.md)
+ *   prototyper-0.1.0-app-r1.tar.gz          paket aplikasi untuk pembaruan kecil dari tray (lintas OS)
  *   prototyper-0.1.0-win-x64-portable.zip   node.exe + app + prototyper.cmd, cukup diekstrak
  *   prototyper-0.1.0.tgz                    paket npm (butuh Node ≥ 22.12): npm i -g <file>
  * Linux/macOS: biner tunggal & portable dikemas .tar.gz agar izin eksekusi terjaga.
  */
 
-type Target = 'exe' | 'portable' | 'npm';
-const TARGETS: Target[] = ['exe', 'portable', 'npm'];
+type Target = 'exe' | 'portable' | 'npm' | 'app' | 'msi';
+const TARGETS: Target[] = ['exe', 'portable', 'npm', 'app', 'msi'];
 const SEA_FUSE = 'NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2';
 
 const isWin = process.platform === 'win32';
@@ -142,16 +148,76 @@ async function brandWindowsExe(exe: string, version: string): Promise<void> {
   });
 }
 
-async function buildExe(appDir: string, bundle: string, version: string, work: string, out: string): Promise<string> {
+/**
+ * Beri aplikasi identitas (`app.json`): id = versi + hash isi folder. Dipakai aplikasi bawaan exe
+ * dan paket aplikasi agar keduanya bernama folder yang sama di app store.
+ */
+function stampApp(appDir: string, version: string): AppInfo {
+  rmSync(path.join(appDir, APP_INFO_FILE), { force: true });
+  const hash = createHash('sha256');
+  for (const f of listFiles(appDir).sort()) hash.update(f).update(readFileSync(path.join(appDir, ...f.split('/'))));
+  const info: AppInfo = { id: `${version}-${hash.digest('hex').slice(0, 12)}`, version, runtime: RUNTIME };
+  writeFileSync(path.join(appDir, APP_INFO_FILE), `${JSON.stringify(info, null, 2)}\n`);
+  return info;
+}
+
+/** Bootstrap exe (src/boot/sea.ts) → satu skrip CommonJS untuk main SEA. */
+async function buildBoot(outFile: string): Promise<string> {
+  await build({
+    entryPoints: [path.join(ROOT, 'src', 'boot', 'sea.ts')],
+    outfile: outFile,
+    bundle: true,
+    platform: 'node',
+    format: 'cjs',
+    target: 'node22',
+    legalComments: 'none',
+    logLevel: 'warning',
+  });
+  return outFile;
+}
+
+function runVersion(exe: string, home: string): string {
+  const r = spawnSync(exe, ['--version'], { encoding: 'utf8', env: { ...process.env, PROTOTYPER_HOME: home } });
+  if (r.status !== 0) throw new Error(`Uji biner gagal: exit ${r.status}, stderr "${r.stderr}"`);
+  return r.stdout.trim();
+}
+
+/**
+ * Uji asap biner: aplikasi bawaan jalan; aplikasi di app store yang lebih baru dipilih; aplikasi
+ * yang gagal dimuat ditandai .broken lalu kembali ke aplikasi bawaan.
+ */
+function smokeTestExe(exe: string, appDir: string, info: AppInfo, seaDir: string): void {
+  const v = runVersion(exe, path.join(seaDir, 'home'));
+  if (v !== info.version) throw new Error(`Uji biner gagal: versi "${v}", seharusnya ${info.version}`);
+
+  const home = path.join(seaDir, 'home-update');
+  const root = path.join(home, 'app');
+  const fake: AppInfo = { id: '999.0.0-smoke', version: '999.0.0', runtime: RUNTIME };
+  const fakeDir = path.join(root, fake.id);
+  copyDir(appDir, fakeDir);
+  const pkgFile = path.join(fakeDir, 'package.json');
+  writeFileSync(pkgFile, JSON.stringify({ ...JSON.parse(readFileSync(pkgFile, 'utf8')), version: fake.version }));
+  writeCurrent(root, { ...fake, previous: null });
+  const updated = runVersion(exe, home);
+  if (updated !== fake.version) throw new Error(`Uji app store gagal: versi "${updated}", seharusnya ${fake.version}`);
+
+  writeFileSync(path.join(fakeDir, BUNDLE_FILE), 'throw new Error("uji aplikasi rusak");');
+  const fallback = runVersion(exe, home);
+  if (fallback !== info.version || !existsSync(path.join(fakeDir, BROKEN_MARK))) {
+    throw new Error(`Uji fallback gagal: versi "${fallback}", seharusnya ${info.version} dengan penanda ${BROKEN_MARK}`);
+  }
+}
+
+async function buildExe(appDir: string, info: AppInfo, work: string, out: string): Promise<{ file: string; exe: string }> {
+  const { version } = info;
   const seaDir = path.join(work, 'sea');
   rmSync(seaDir, { recursive: true, force: true });
   mkdirSync(seaDir, { recursive: true });
 
-  // aset yang tertanam: semua isi folder aplikasi kecuali bundle-nya sendiri
-  const files = listFiles(appDir).filter((f) => f !== BUNDLE_FILE).sort();
-  const hash = createHash('sha256');
-  for (const f of [BUNDLE_FILE, ...files]) hash.update(f).update(readFileSync(path.join(appDir, ...f.split('/'))));
-  const manifest: SeaManifest = { id: `${version}-${hash.digest('hex').slice(0, 12)}`, files };
+  // main = bootstrap kecil; seluruh aplikasi (termasuk bundle) tertanam sebagai aset
+  const boot = await buildBoot(path.join(seaDir, 'boot.cjs'));
+  const files = listFiles(appDir).sort();
+  const manifest: SeaManifest = { ...info, files };
   const manifestFile = path.join(seaDir, SEA_MANIFEST_ASSET);
   writeFileSync(manifestFile, JSON.stringify(manifest));
 
@@ -159,7 +225,7 @@ async function buildExe(appDir: string, bundle: string, version: string, work: s
   for (const f of files) assets[f] = path.join(appDir, ...f.split('/'));
   const blob = path.join(seaDir, 'sea-prep.blob');
   const config = path.join(seaDir, 'sea-config.json');
-  writeFileSync(config, JSON.stringify({ main: bundle, output: blob, disableExperimentalSEAWarning: true, useSnapshot: false, useCodeCache: false, assets }, null, 2));
+  writeFileSync(config, JSON.stringify({ main: boot, output: blob, disableExperimentalSEAWarning: true, useSnapshot: false, useCodeCache: false, assets }, null, 2));
   run(process.execPath, ['--experimental-sea-config', config]);
 
   const exeName = isWin ? 'prototyper.exe' : 'prototyper';
@@ -174,20 +240,46 @@ async function buildExe(appDir: string, bundle: string, version: string, work: s
   });
   if (isMac) run('codesign', ['--sign', '-', exe]); // tanda tangan ad-hoc (wajib di Apple Silicon)
 
-  // uji asap: biner harus bisa jalan
-  const check = spawnSync(exe, ['--version'], { encoding: 'utf8', env: { ...process.env, PROTOTYPER_HOME: path.join(seaDir, 'home') } });
-  if (check.status !== 0 || check.stdout.trim() !== version) {
-    throw new Error(`Uji biner gagal: exit ${check.status}, stdout "${check.stdout}", stderr "${check.stderr}"`);
-  }
+  smokeTestExe(exe, appDir, info, seaDir);
 
   const base = `prototyper-${version}-${platformLabel()}`;
   if (isWin) {
     const file = path.join(out, `${base}.exe`);
     copyFileSync(exe, file);
-    return file;
+    return { file, exe };
   }
   const file = path.join(out, `${base}.tar.gz`);
   archive(seaDir, exeName, file);
+  return { file, exe };
+}
+
+/** Paket aplikasi untuk pembaruan dari tray: isi folder aplikasi (termasuk app.json) dalam tar.gz. */
+function buildAppPack(appDir: string, info: AppInfo, out: string): string {
+  const files = new Map<string, Buffer>();
+  for (const f of listFiles(appDir)) files.set(f, readFileSync(path.join(appDir, ...f.split('/'))));
+  const file = path.join(out, appPackName(info.version, info.runtime));
+  writeFileSync(file, packFiles(files));
+  return file;
+}
+
+/** WiX Toolset v4+ (`wix`, dotnet tool) di PATH, atau null. */
+function findWix(): string | null {
+  const r = spawnSync('wix', ['--version'], { encoding: 'utf8' });
+  return r.status === 0 ? 'wix' : null;
+}
+
+function buildMsi(exe: string, version: string, work: string, out: string): string {
+  const dir = path.join(work, 'msi');
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir, { recursive: true });
+  const installer = path.join(dir, 'installer.json');
+  writeFileSync(installer, installerJson(version));
+  const wxs = path.join(dir, 'prototyper.wxs');
+  writeFileSync(wxs, buildWxs({ version, exe, installerJson: installer, icon: path.join(ROOT, 'assets', 'icon.ico'), url: 'https://github.com/egateza/Prototyper' }));
+  const file = path.join(out, msiName(version, process.arch));
+  rmSync(file, { force: true });
+  for (const ext of MSI_EXTENSIONS) run('wix', ['extension', 'add', '-g', `${ext}/${WIX_VERSION}`]); // aman diulang
+  run('wix', ['build', '-arch', process.arch, ...MSI_EXTENSIONS.flatMap((e) => ['-ext', e]), '-o', file, wxs]);
   return file;
 }
 
@@ -216,15 +308,26 @@ async function main(): Promise<void> {
   const out = path.resolve(outIdx >= 0 && argv[outIdx + 1] ? argv[outIdx + 1]! : path.join(ROOT, 'release'));
   const picked = argv.filter((a, i) => !a.startsWith('--') && !(outIdx >= 0 && i === outIdx + 1));
   for (const t of picked) if (!TARGETS.includes(t as Target)) throw new Error(`Target tidak dikenal: ${t} (pilih: ${TARGETS.join(', ')})`);
-  const targets = picked.length ? (picked as Target[]) : TARGETS;
+  const targets = picked.length ? (picked as Target[]) : TARGETS.filter((t) => t !== 'msi' || (isWin && findWix()));
+  if (!picked.length && isWin && !targets.includes('msi')) console.warn('Lewati msi: WiX Toolset tidak ditemukan (lihat docs/RELEASE.md).');
+  if (targets.includes('msi')) {
+    if (!isWin) throw new Error('MSI hanya bisa dibangun di Windows');
+    if (!findWix()) throw new Error(`WiX Toolset tidak ditemukan. Pasang: dotnet tool install --global wix --version ${WIX_VERSION}`);
+  }
 
   mkdirSync(out, { recursive: true });
   const work = path.join(ROOT, 'build');
   const produced: string[] = [];
 
-  if (targets.includes('exe') || targets.includes('portable')) {
-    const { dir, bundle, version } = await bundleApp(path.join(work, 'app'));
-    if (targets.includes('exe')) produced.push(await buildExe(dir, bundle, version, work, out));
+  if (targets.some((t) => t === 'exe' || t === 'portable' || t === 'app' || t === 'msi')) {
+    const { dir, version } = await bundleApp(path.join(work, 'app'));
+    const info = stampApp(dir, version);
+    if (targets.includes('exe') || targets.includes('msi')) {
+      const { file, exe } = await buildExe(dir, info, work, out);
+      if (targets.includes('exe')) produced.push(file);
+      if (targets.includes('msi')) produced.push(buildMsi(exe, version, work, out));
+    }
+    if (targets.includes('app')) produced.push(buildAppPack(dir, info, out));
     if (targets.includes('portable')) produced.push(await buildPortable(dir, version, work, out));
   }
   if (targets.includes('npm')) produced.push(buildNpm(out));

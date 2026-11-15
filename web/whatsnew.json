@@ -1,0 +1,42 @@
+{
+  "releasesUrl": "https://github.com/egateza/Prototyper/releases",
+  "releases": [
+    {
+      "version": "0.3.0",
+      "date": "2026-11-15",
+      "title": "Installer MSI, pembaruan kecil, dan halaman Yang baru",
+      "items": [
+        "**Installer MSI (Windows).** `prototyper-<versi>-win-x64.msi` memasang Prototyper per pengguna tanpa hak admin: shortcut Start Menu, PATH, dan tray langsung menyala. Uninstall menutup tray, daemon, dan prototype lebih dulu.",
+        "**Pembaruan lebih kecil.** Bila exe tidak perlu diganti, tray cukup mengunduh paket aplikasi (sekitar 0,6 MB) alih-alih exe penuh. Aplikasi yang gagal dimuat otomatis kembali ke versi bawaan exe.",
+        "**Halaman Yang baru** di Web UI (item di sidebar, klik nomor versi, atau `Ctrl+K`) dan di menu klik kanan tray.",
+        "Perintah `prototyper quit` untuk menutup tray, daemon, dan semua prototype sekaligus.",
+        "Popup tray kini tertutup saat mengklik di luar popup, dan tidak muncul di Alt+Tab maupun taskbar."
+      ]
+    },
+    {
+      "version": "0.2.0",
+      "date": "2026-11-15",
+      "title": "Tray Windows dan pembaruan dari tray",
+      "items": [
+        "**Tray Windows.** Dobel-klik `prototyper.exe` untuk menjalankan Prototyper sebagai ikon di tray, tanpa jendela konsol. Klik kiri membuka popup ringkas (status daemon, daftar prototype dengan toggle jalankan/hentikan, jalankan/hentikan semua), klik kanan membuka menu, dan klik dua kali membuka Web UI.",
+        "**Pembaruan dari tray.** Tray memeriksa GitHub Releases. Untuk `prototyper.exe`, pembaruan diunduh, dicocokkan dengan `SHA256SUMS.txt`, lalu dipasang lewat \"Mulai ulang\"; prototype yang tadinya berjalan dinyalakan lagi.",
+        "**Jalankan saat startup** (Windows) dari tray.",
+        "Icon Prototyper (\"Blueprint\") untuk exe, Web UI, dan tray.",
+        "Petunjuk agent di semua prototype disesuaikan otomatis saat daemon versi baru menyala."
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "date": "2026-11-15",
+      "title": "Rilis pertama",
+      "items": [
+        "**Daemon + CLI.** Daftarkan, jalankan, dan hentikan prototype lokal (mode static atau command) dengan port otomatis; semua perintah punya `--json` untuk agent.",
+        "**Web UI** di http://localhost:4000: beranda, pratinjau dengan ukuran perangkat, log live, editor `prototyper.json`, dan palet perintah `Ctrl+K`.",
+        "**Komentar** per prototype, termasuk klik elemen di pratinjau static dan pertanyaan berpilihan dari agent.",
+        "**Agent dari Web UI**: kerjakan komentar dengan Claude Code, Codex, Gemini CLI, atau Copilot CLI.",
+        "`prototyper new` dari template `static`, `vite-vanilla`, atau `vite-react`, dan petunjuk agent (`AGENTS.md`/`CLAUDE.md`) otomatis.",
+        "Rilis untuk Windows, Linux, dan macOS: biner tunggal, portable, dan paket npm."
+      ]
+    }
+  ]
+}

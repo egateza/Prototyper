@@ -35,6 +35,7 @@ const ICON = {
   plus: svg('M12 5v14M5 12h14', 'fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"'),
   chev: svg('M6 9l6 6 6-6', 'fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"'),
   pick: svg('M4 4l7 17 2.5-7.5L21 11 4 4Z', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"'),
+  spark: svg('M12 3l1.9 5.6L19.5 10l-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.4L12 3ZM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15Z', 'fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"'),
 };
 
 // Request yang mengubah state hanya diterima dari mesin lokal (lihat app.ts).
@@ -108,6 +109,8 @@ function readPref(k, def) { try { return localStorage.getItem(k) ?? def; } catch
 function writePref(k, v) { try { localStorage.setItem(k, v); } catch { /* abaikan */ } }
 
 const byId = (id) => list.find((p) => p.id === id);
+/** Halaman "Yang baru" (`/#!whatsnew`); `!` tidak mungkin ada di id prototype. Tray membuka URL ini. */
+const WHATSNEW = '!whatsnew';
 const st = (p) => (p.valid ? p.status : 'invalid');
 const isActive = (p) => p.valid && ACTIVE.includes(p.status);
 const isProblem = (p) => ['crashed', 'failed', 'invalid'].includes(st(p));
@@ -190,7 +193,10 @@ function renderSide() {
   const home = loaded && list.length ? `<button type="button" class="ws-item ws-home" data-act="select" data-id="" aria-current="${!ui.selected}">
       <span class="home-ic">${ICON.home}</span><span class="t"><b>Beranda</b><span>ringkasan semua prototype</span></span>${totalWaitingUser() ? `<span class="cm-badge wait" title="Komentar menunggu jawaban Anda">${totalWaitingUser()}</span>` : ''}
     </button>` : '';
-  const fullHtml = home + html;
+  const news = loaded ? `<button type="button" class="ws-item ws-home ws-news" data-act="select" data-id="${WHATSNEW}" aria-current="${ui.selected === WHATSNEW}">
+      <span class="home-ic">${ICON.spark}</span><span class="t"><b>Yang baru</b><span>${wn.version ? `perubahan di v${esc(wn.version)}` : 'perubahan tiap versi'}</span></span>${wnUnseen() ? '<span class="cm-badge new" title="Ada perubahan yang belum Anda lihat">baru</span>' : ''}
+    </button>` : '';
+  const fullHtml = home + news + html;
   if (fullHtml !== lastSide) { $('#side-list').innerHTML = fullHtml; lastSide = fullHtml; }
   for (const b of $$('#filter button')) b.setAttribute('aria-pressed', String(b.dataset.f === ui.filter));
 }
@@ -209,7 +215,7 @@ function patch(sel, html) {
 
 function renderMain() {
   const p = byId(ui.selected);
-  const key = p ? p.id : loaded ? (list.length ? 'none' : 'empty') : 'loading';
+  const key = ui.selected === WHATSNEW ? 'whatsnew' : p ? p.id : loaded ? (list.length ? 'none' : 'empty') : 'loading';
   if (key !== mainFor) {
     mainFor = key;
     for (const k of Object.keys(last)) delete last[k];
@@ -222,6 +228,7 @@ function renderMain() {
     if (key === 'none' && !ag.agents && !ag.loading) loadAgents();
   }
   if (key === 'none') return renderHome();
+  if (key === 'whatsnew') return renderWhatsNew();
   if (!p) return;
 
   patch('#d-head', `${avatar(p)}
@@ -295,6 +302,7 @@ function skeleton(p) {
 function placeholderMain(key) {
   if (key === 'loading') return '<div class="ws-empty"><div class="empty">Memuat…</div></div>';
   if (key === 'none') return homeSkeleton();
+  if (key === 'whatsnew') return whatsNewSkeleton();
   return `<div class="ws-empty"><div class="empty welcome">
     <b>Belum ada prototype terdaftar</b>
     <p>Buat prototype baru dari template, daftarkan folder yang sudah ada, atau dari terminal:</p>
@@ -373,7 +381,7 @@ function infoHtml(p) {
 }
 
 function render() {
-  if (ui.selected && !byId(ui.selected) && loaded) ui.selected = null;
+  if (ui.selected && ui.selected !== WHATSNEW && !byId(ui.selected) && loaded) ui.selected = null;
   const hash = ui.selected ? `#${enc(ui.selected)}` : '';
   if (location.hash !== hash) history.replaceState(null, '', hash || location.pathname);
   renderSide();
@@ -591,6 +599,7 @@ $('#btn-add').addEventListener('click', () => openAdd());
 $('#btn-new').addEventListener('click', () => openNew());
 $('#btn-shutdown').addEventListener('click', () => confirmShutdown());
 $('#btn-palette').addEventListener('click', () => openPalette());
+$('#meta').addEventListener('click', () => select(WHATSNEW));
 $('#btn-theme').addEventListener('click', () => setTheme({ auto: 'light', light: 'dark', dark: 'auto' }[ui.theme] ?? 'auto'));
 window.addEventListener('hashchange', () => select(decodeURIComponent(location.hash.slice(1))));
 
@@ -604,7 +613,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === '[') { e.preventDefault(); return setSidePinned(!ui.sidePinned); }
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'j' || e.key === 'k') {
     // Urutan sama dengan sidebar (dikelompokkan).
-    const order = $$('#side-list .ws-item').map((b) => b.dataset.id);
+    const order = $$('#side-list .ws-item:not(.ws-news)').map((b) => b.dataset.id);
     if (!order.length) return;
     const i = order.indexOf(ui.selected ?? '');
     const step = e.key === 'ArrowDown' || e.key === 'j' ? 1 : -1;
@@ -810,6 +819,55 @@ $('#add-type').addEventListener('click', async (e) => {
 });
 $$('#dlg-add [data-close]').forEach((b) => b.addEventListener('click', () => $('#dlg-add').close()));
 $('#dlg-add').addEventListener('close', () => { $('#add-type-row').hidden = false; });
+
+// ---------- Yang baru ----------
+// Isi dari web/whatsnew.json (ikut terkirim bersama web/, jadi selalu cocok dengan versi daemon).
+const wn = { version: null, data: null, loading: false, error: null };
+const SEEN_KEY = 'prototyper:seen-version';
+const wnUnseen = () => !!wn.version && readPref(SEEN_KEY, '') !== wn.version;
+function wnInline(t) {
+  return esc(t).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+}
+function wnDate(d) {
+  const x = new Date(`${d}T00:00:00`);
+  return Number.isNaN(x.getTime()) ? esc(d) : x.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+function whatsNewSkeleton() {
+  return `<div class="home whatsnew">
+    <header class="home-head">
+      <div><h1>Yang baru</h1><p class="muted">Perubahan di setiap versi Prototyper.</p></div>
+    </header>
+    <section id="wn-body"></section>
+  </div>`;
+}
+async function loadWhatsNew() {
+  wn.loading = true; wn.error = null;
+  try {
+    const res = await fetch('/whatsnew.json', { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    wn.data = await res.json();
+  } catch (err) {
+    wn.error = err.message;
+  } finally {
+    wn.loading = false;
+    render();
+  }
+}
+function renderWhatsNew() {
+  if (wn.version && readPref(SEEN_KEY, '') !== wn.version) { writePref(SEEN_KEY, wn.version); renderSide(); }
+  if (!wn.data && !wn.error) {
+    if (!wn.loading) loadWhatsNew();
+    return patch('#wn-body', '<p class="muted">Memuat…</p>');
+  }
+  if (!wn.data) return patch('#wn-body', `<div class="callout err">Gagal memuat daftar perubahan: ${esc(wn.error)}</div>`);
+  const rel = Array.isArray(wn.data.releases) ? wn.data.releases : [];
+  patch('#wn-body', `<div class="wn-list">${rel.map((r) => `<article class="wn-rel${r.version === wn.version ? ' current' : ''}">
+      <div class="wn-head"><span class="wn-ver">v${esc(r.version)}</span>${r.version === wn.version ? '<span class="h-chip accent">versi Anda</span>' : ''}<span class="spacer"></span><span class="muted">${r.date ? wnDate(r.date) : ''}</span></div>
+      ${r.title ? `<h2>${esc(r.title)}</h2>` : ''}
+      <ul>${(r.items ?? []).map((i) => `<li>${wnInline(i)}</li>`).join('')}</ul>
+    </article>`).join('')}</div>
+    ${wn.data.releasesUrl ? `<p class="muted wn-foot">Semua rilis dan berkas unduhan: <a href="${esc(wn.data.releasesUrl)}" target="_blank" rel="noopener">GitHub Releases ${ICON.ext}</a></p>` : ''}`);
+}
 
 // ---------- Beranda ----------
 const sum = (f) => list.reduce((n, p) => n + (f(p) || 0), 0);
@@ -1586,6 +1644,7 @@ function commands() {
   out.push({ ic: '⇤', label: ui.sidePinned ? 'Sidebar: sembunyi otomatis' : 'Sidebar: sematkan', grp: 'Tampilan', run: () => setSidePinned(!ui.sidePinned) });
   if (LOCAL) out.push({ ic: '⏻', label: 'Matikan Prototyper', grp: 'Umum', run: () => confirmShutdown() });
   out.push({ ic: '✦', label: 'Agent lokal: cek agent yang tersedia', grp: 'Umum', run: () => openAgentsDialog() });
+  out.push({ ic: '✧', label: 'Yang baru: perubahan tiap versi', grp: 'Umum', run: () => select(WHATSNEW) });
   if (LOCAL && list.length) out.push({ ic: '↻', label: 'Sinkronkan petunjuk agent (semua prototype)', grp: 'Umum', run: () => syncAllInstructions() });
   for (const [k, d] of Object.entries(DEVICES)) {
     if (k !== ui.device) out.push({ ic: '▭', label: `Pratinjau: ${d.label}${d.w ? ` (${d.w}×${d.h})` : ''}`, grp: 'Tampilan', run: () => setDevice(k) });
@@ -1628,7 +1687,12 @@ applyTheme();
 applySide();
 render();
 api('GET', '/api/health')
-  .then((h) => { nw.workspace = h.workspace ?? ''; $('#meta').textContent = `v${h.version}${h.lan ? ' · LAN' : ''}${LOCAL ? '' : ' · baca saja'}`; })
+  .then((h) => {
+    nw.workspace = h.workspace ?? ''; wn.version = h.version;
+    $('#meta').textContent = `v${h.version}${h.lan ? ' · LAN' : ''}${LOCAL ? '' : ' · baca saja'}`;
+    $('#meta').title = 'Yang baru di versi ini';
+    render();
+  })
   .catch(() => undefined);
 refresh(true);
 setInterval(refresh, 2000);

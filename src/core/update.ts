@@ -1,15 +1,20 @@
+import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyFileSync, createWriteStream, existsSync, mkdirSync, promises as fs, renameSync, rmSync } from 'node:fs';
+import { copyFileSync, createWriteStream, existsSync, mkdirSync, promises as fs, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import { APP_INFO_FILE, BUNDLE_FILE, CURRENT_FILE, parseAppInfo, pruneAppStore, writeCurrent, type AppInfo } from './apphost.js';
 import type { AppMode } from './appfiles.js';
+import { unpackFiles } from './apppack.js';
+import { compareVersions } from './semver.js';
 import { AppError, errorMessage } from './errors.js';
+import { windowsCommandLine } from './startup.js';
 
 /**
  * Pemeriksaan & pemasangan pembaruan dari GitHub Releases (dipakai tray).
- * Pemasangan otomatis hanya untuk biner tunggal Windows (`prototyper-<versi>-win-<arch>.exe`);
- * bentuk lain cukup diberi tahu dan diarahkan ke halaman rilis.
+ * Pemasangan otomatis hanya untuk biner tunggal Windows (lihat updateCandidates); bentuk lain
+ * cukup diberi tahu dan diarahkan ke halaman rilis.
  */
 
 export interface ReleaseAsset {
@@ -27,28 +32,46 @@ export interface ReleaseInfo {
 
 type FetchFn = typeof fetch;
 
-/** Bandingkan versi semver (`1.2.3`, `1.2.3-beta.1`, boleh berawalan `v`): negatif bila a < b. */
-export function compareVersions(a: string, b: string): number {
-  const parse = (v: string) => {
-    const [core = '', pre] = v.trim().replace(/^v/i, '').split('-', 2) as [string, string | undefined];
-    return { nums: core.split('.').map((n) => Number.parseInt(n, 10) || 0), pre };
-  };
-  const x = parse(a);
-  const y = parse(b);
-  for (let i = 0; i < Math.max(x.nums.length, y.nums.length, 3); i++) {
-    const d = (x.nums[i] ?? 0) - (y.nums[i] ?? 0);
-    if (d !== 0) return d;
-  }
-  if (x.pre === y.pre) return 0;
-  if (x.pre === undefined) return 1; // rilis final > prerelease
-  if (y.pre === undefined) return -1;
-  return x.pre.localeCompare(y.pre, 'en', { numeric: true });
+export { compareVersions } from './semver.js';
+
+/**
+ * Jenis pembaruan yang bisa dipasang dari tray:
+ * - `app`: paket aplikasi kecil (`prototyper-<versi>-app-r<runtime>.tar.gz`) untuk exe dengan RUNTIME
+ *   yang sama; dipasang ke app store tanpa mengganti exe.
+ * - `msi`: installer Windows; untuk instalasi MSI saat RUNTIME naik.
+ * - `exe`: biner tunggal pengganti exe yang sedang berjalan (instalasi tanpa MSI).
+ */
+export type UpdateKind = 'app' | 'msi' | 'exe';
+
+export interface UpdateCandidate {
+  kind: UpdateKind;
+  name: string;
 }
 
-/** Nama berkas rilis yang bisa dipasang otomatis untuk instalasi ini, atau null (lihat scripts/release.ts). */
-export function selfUpdateAssetName(version: string, platform: NodeJS.Platform, arch: string, mode: AppMode): string | null {
-  if (platform !== 'win32' || mode !== 'sea') return null;
-  return `prototyper-${version}-win-${arch}.exe`;
+export interface InstallContext {
+  platform: NodeJS.Platform;
+  arch: string;
+  mode: AppMode;
+  /** RUNTIME milik exe (dari bootstrap), atau null bila tidak dijalankan lewat bootstrap. */
+  runtime: number | null;
+  /** Cara Prototyper dipasang (lihat detectInstaller). */
+  installer: 'msi' | null;
+}
+
+export const appPackName = (version: string, runtime: number) => `prototyper-${version}-app-r${runtime}.tar.gz`;
+export const msiName = (version: string, arch: string) => `prototyper-${version}-win-${arch}.msi`;
+export const exeName = (version: string, arch: string) => `prototyper-${version}-win-${arch}.exe`;
+
+/**
+ * Berkas rilis yang bisa dipasang otomatis untuk instalasi ini, urut dari yang paling diutamakan
+ * (lihat scripts/release.ts). Kosong = arahkan pengguna ke halaman rilis.
+ */
+export function updateCandidates(version: string, ctx: InstallContext): UpdateCandidate[] {
+  if (ctx.platform !== 'win32' || ctx.mode !== 'sea') return [];
+  const out: UpdateCandidate[] = [];
+  if (ctx.runtime !== null) out.push({ kind: 'app', name: appPackName(version, ctx.runtime) });
+  out.push(ctx.installer === 'msi' ? { kind: 'msi', name: msiName(version, ctx.arch) } : { kind: 'exe', name: exeName(version, ctx.arch) });
+  return out;
 }
 
 /** Baca `SHA256SUMS.txt` (format `sha256sum`: `<hash>  <nama>` atau `<hash> *<nama>`). */
@@ -107,16 +130,27 @@ export interface UpdateCheck {
   available: boolean;
   /** Berkas yang bisa dipasang otomatis, atau null (arahkan pengguna ke `latest.pageUrl`). */
   asset: ReleaseAsset | null;
+  /** Jenis `asset`. */
+  kind: UpdateKind | null;
   checksums: ReleaseAsset | null;
 }
 
-export function evaluateRelease(current: string, latest: ReleaseInfo, assetName: string | null): UpdateCheck {
-  const asset = assetName ? (latest.assets.find((a) => a.name === assetName) ?? null) : null;
+export function evaluateRelease(current: string, latest: ReleaseInfo, candidates: UpdateCandidate[]): UpdateCheck {
+  let asset: ReleaseAsset | null = null;
+  let kind: UpdateKind | null = null;
+  for (const c of candidates) {
+    asset = latest.assets.find((a) => a.name === c.name) ?? null;
+    if (asset) {
+      kind = c.kind;
+      break;
+    }
+  }
   return {
     current,
     latest,
     available: compareVersions(latest.version, current) > 0,
     asset,
+    kind,
     checksums: latest.assets.find((a) => a.name === 'SHA256SUMS.txt') ?? null,
   };
 }
@@ -198,4 +232,124 @@ export async function cleanupOldExecutable(exe: string): Promise<void> {
   const old = oldExePath(exe);
   if (!existsSync(old)) return;
   await fs.rm(old, { force: true }).catch(() => undefined);
+}
+
+// ===== Pembaruan aplikasi (tanpa mengganti exe) =====
+
+export interface AppInstallOptions {
+  /** Folder app store (`HostInfo.root`). */
+  root: string;
+  /** RUNTIME milik exe. */
+  runtime: number;
+  /** Aplikasi yang sedang berjalan dan aplikasi bawaan exe: tidak ikut dibersihkan. */
+  active: AppInfo;
+  embedded: AppInfo;
+  /** Pastikan exe menjalankan aplikasi baru (mis. `prototyper --version`); melempar bila gagal. */
+  verify: (info: AppInfo) => Promise<void> | void;
+}
+
+/**
+ * Pasang paket aplikasi: ekstrak ke `<root>/<id>/`, arahkan `current.json` ke sana, lalu verifikasi.
+ * Verifikasi gagal → `current.json` dikembalikan seperti semula.
+ */
+export async function installAppUpdate(pack: string, o: AppInstallOptions): Promise<AppInfo> {
+  const files = unpackFiles(readFileSync(pack));
+  const infoFile = files.get(APP_INFO_FILE);
+  let info: AppInfo | null = null;
+  try {
+    info = infoFile ? parseAppInfo(JSON.parse(infoFile.toString('utf8'))) : null;
+  } catch {
+    info = null;
+  }
+  if (!info || !files.has(BUNDLE_FILE) || !files.has('package.json')) {
+    throw new AppError('BAD_REQUEST', `${path.basename(pack)} bukan paket aplikasi Prototyper`);
+  }
+  if (info.runtime !== o.runtime) {
+    throw new AppError('BAD_REQUEST', `Paket aplikasi butuh runtime ${info.runtime}, exe ini runtime ${o.runtime}`);
+  }
+
+  const dir = path.join(o.root, info.id);
+  const tmp = `${dir}.${process.pid}.tmp`;
+  rmSync(tmp, { recursive: true, force: true });
+  for (const [name, data] of files) {
+    const target = path.join(tmp, ...name.split('/'));
+    mkdirSync(path.dirname(target), { recursive: true });
+    writeFileSync(target, data);
+  }
+  rmSync(dir, { recursive: true, force: true }); // termasuk sisa pemasangan gagal / penanda .broken
+  renameSync(tmp, dir);
+
+  const pointerFile = path.join(o.root, CURRENT_FILE);
+  const before = existsSync(pointerFile) ? readFileSync(pointerFile) : null;
+  writeCurrent(o.root, { ...info, previous: o.active });
+  try {
+    await o.verify(info);
+  } catch (err) {
+    if (before) writeFileSync(pointerFile, before);
+    else rmSync(pointerFile, { force: true });
+    rmSync(dir, { recursive: true, force: true });
+    throw new AppError('INTERNAL', `Aplikasi ${info.version} gagal dijalankan, pembaruan dibatalkan: ${errorMessage(err)}`);
+  }
+  pruneAppStore(o.root, [info.id, o.active.id, o.embedded.id]);
+  rmSync(pack, { force: true });
+  return info;
+}
+
+// ===== Instalasi MSI =====
+
+/** File penanda yang dipasang MSI di sebelah prototyper.exe (lihat scripts/msi.ts). */
+export const INSTALLER_FILE = 'installer.json';
+
+/** `msi` bila exe ini dipasang lewat MSI, selain itu null. */
+export function detectInstaller(execPath: string): 'msi' | null {
+  try {
+    const data = JSON.parse(readFileSync(path.join(path.dirname(execPath), INSTALLER_FILE), 'utf8')) as { kind?: unknown };
+    return data.kind === 'msi' ? 'msi' : null;
+  } catch {
+    return null;
+  }
+}
+
+export interface MsiScriptOptions {
+  msi: string;
+  log: string;
+  /** Proses yang ditunggu selesai sebelum msiexec dijalankan (tray yang sedang keluar). */
+  waitPid: number;
+  /** Perintah untuk menyalakan Prototyper lagi setelah pemasangan (exe + argumen). */
+  relaunch: string[];
+}
+
+const psQuote = (s: string) => `'${s.replace(/'/g, "''")}'`;
+
+/**
+ * Skrip PowerShell pemasang MSI: tunggu tray keluar, jalankan msiexec tanpa dialog (`/passive`,
+ * per-user sehingga tanpa UAC), lalu nyalakan Prototyper lagi, baik pemasangan berhasil maupun gagal
+ * (MSI mengembalikan versi lama bila gagal).
+ */
+export function msiInstallScript(o: MsiScriptOptions): string {
+  const msiArgs = `/i "${o.msi}" /passive /norestart LAUNCHAPP=0 /l*v "${o.log}"`;
+  const [exe, ...args] = o.relaunch;
+  return [
+    "$ErrorActionPreference = 'Continue'",
+    `Wait-Process -Id ${o.waitPid} -Timeout 30 -ErrorAction SilentlyContinue`,
+    `$p = Start-Process -FilePath 'msiexec.exe' -ArgumentList ${psQuote(msiArgs)} -Wait -PassThru`,
+    `Set-Content -LiteralPath ${psQuote(`${o.log}.exitcode`)} -Value $p.ExitCode`,
+    `Start-Process -FilePath ${psQuote(exe!)} -ArgumentList ${psQuote(windowsCommandLine(args))} -WindowStyle Hidden`,
+    '',
+  ].join('\r\n');
+}
+
+/** Jalankan skrip pemasang MSI terlepas dari proses ini. */
+export function launchMsiInstall(o: MsiScriptOptions, dir: string): string {
+  mkdirSync(dir, { recursive: true });
+  const script = path.join(dir, 'install-msi.ps1');
+  // BOM: PowerShell 5.1 membaca skrip tanpa BOM sebagai ANSI (path ber-karakter non-ASCII rusak)
+  writeFileSync(script, `\uFEFF${msiInstallScript(o)}`, 'utf8');
+  const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', script], {
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: true,
+  });
+  child.unref();
+  return script;
 }

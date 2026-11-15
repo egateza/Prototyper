@@ -14,8 +14,8 @@ import { buildIco } from './winres.js';
  *   npm run icon
  */
 const ICO_SIZES = [16, 24, 32, 48, 64, 128, 256];
-/** Ikon tray: ukuran ikon kecil pada 100–250% + logo popup. */
-const TRAY_SIZES = [16, 20, 24, 32, 40, 48, 64];
+/** Ikon tray (100–250%), logo popup, dan ikon jendela di Alt+Tab. */
+const TRAY_SIZES = [16, 20, 24, 32, 40, 48, 64, 128, 256];
 
 export function renderPng(svg: string, size: number): Buffer {
   return Buffer.from(new Resvg(svg, { fitTo: { mode: 'width', value: size } }).render().asPng());
