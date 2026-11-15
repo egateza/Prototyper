@@ -117,6 +117,8 @@ describe('noteUndo', () => {
     const dir = tmpDir();
     for (const t of ['dibalas', 'diselesaikan', 'diminta', 'lama', 'tidak terkait']) await addComment(dir, { text: t });
     await replyComment(dir, 'c4', { text: 'balasan lama', role: 'agent' });
+    // Jeda di kedua sisi `since`: tanpa ini balasan lama bisa jatuh di milidetik yang sama (runner cepat).
+    await new Promise((r) => setTimeout(r, 20));
     const since = new Date().toISOString();
     await new Promise((r) => setTimeout(r, 20));
     await replyComment(dir, 'c1', { text: 'sudah diubah', role: 'agent' });
