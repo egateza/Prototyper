@@ -11,13 +11,14 @@ prototyper info <id> --json            # path, url, status, instructions.path
 prototyper start <id> --json           # atau restart; cetak url
 prototyper logs <id> -n 100 --json     # debug
 prototyper comments <id> --waiting agent --json   # komentar yang giliran agent
+prototyper comments context <id> <commentId> --json   # riwayat: komentar selesai terkait + keputusan (DECISIONS.md)
 prototyper comments reply <id> <commentId> "apa yang diubah"   # lapor hasil; komentar tetap open
 prototyper comments ask <id> <commentId> "pertanyaan" --option "A" --option "B" [--multi]
 ```
 
 - Jangan menyalin kode prototype ke repo ini; prototype tinggal di foldernya sendiri.
 - Folder prototype biasanya sudah punya bagian `<!-- prototyper:start -->` di `AGENTS.md` (dan `CLAUDE.md` → `@AGENTS.md`) yang ditulis Prototyper saat didaftarkan; ikuti itu. Bila belum ada: `prototyper agents sync <id>`.
-- "Kerjakan komentar di prototype X": ambil komentar dengan `--waiting agent`, kerjakan satu per satu (perhatikan `page`, balasan, dan `answer` pada pertanyaan berpilihan), lalu laporkan hasilnya dengan `comments reply` dan biarkan komentar tetap open. **Jangan `resolve`**: pengguna yang memeriksa hasil dan menutup komentar (kecuali pengguna eksplisit meminta agent menutupnya). Bila ada beberapa kemungkinan, pakai `comments ask` dengan `--option` (tampil sebagai radio/checkbox di Web UI) dan biarkan tetap open; pertanyaan balik dari pengguna dijawab dengan `comments reply`. Komentar `waitingFor: "user"` jangan dikerjakan dulu. Komentar disimpan di `<folder>/.prototyper/comments.json` (boleh dibaca langsung).
+- "Kerjakan komentar di prototype X": ambil komentar dengan `--waiting agent`, kerjakan satu per satu (perhatikan `page`, balasan, dan `answer` pada pertanyaan berpilihan), lalu laporkan hasilnya dengan `comments reply` dan biarkan komentar tetap open. **Jangan `resolve`**: pengguna yang memeriksa hasil dan menutup komentar (kecuali pengguna eksplisit meminta agent menutupnya). Bila ada beberapa kemungkinan, pakai `comments ask` dengan `--option` (tampil sebagai radio/checkbox di Web UI) dan biarkan tetap open; pertanyaan balik dari pengguna dijawab dengan `comments reply`. Komentar `waitingFor: "user"` jangan dikerjakan dulu. Sebelum mengerjakan tiap komentar, jalankan `comments context` agar tidak mengulang revisi yang sudah ditolak. Komentar disimpan di `<folder>/.prototyper/comments.json`, log keputusan di `DECISIONS.md`, komentar selesai lama di `comments-archive/` (semua boleh dibaca langsung).
 - Prototype baru: `prototyper new <id> --template static|vite-vanilla|vite-react --json` → dapat `path`; isi file di sana (impor HTML: `--from <file.html>`). Folder yang sudah ada: `prototyper add <folder>` (manifest dideteksi bila belum ada), lalu periksa `prototyper.json`.
 - Mode static mengirim `Cache-Control: no-store` dan live-reload (halaman terbuka dimuat ulang sendiri setelah file berubah; `static.liveReload: false` untuk mematikan). Mode command biasanya punya HMR; bila tidak, `restart`.
 - Tanpa `npm link`, pakai `npm run cli -- <perintah>` dari repo ini.
@@ -43,7 +44,7 @@ Struktur:
 
 ```
 src/boot/    sea.ts (main biner tunggal: pilih aplikasi di app store lalu muat; mengubahnya = naikkan RUNTIME)
-src/core/    appfiles (APP_DIR/APP_MODE: source|dist|bundle|sea, cliCommand), apphost (RUNTIME, app store, bootApp), apppack (tar.gz paket aplikasi), semver, config, manifest (zod), detect (init), scaffold (new + template), agentfiles (AGENTS.md/CLAUDE.md), comments, embed (sisip skrip pratinjau), agent (menjalankan claude -p), registry, state, ports, logs, runtime, views, startup (Run key Windows), update (GitHub Releases), open (buka browser)
+src/core/    appfiles (APP_DIR/APP_MODE: source|dist|bundle|sea, cliCommand), apphost (RUNTIME, app store, bootApp), apppack (tar.gz paket aplikasi), semver, config, manifest (zod), detect (init), scaffold (new + template), agentfiles (AGENTS.md/CLAUDE.md), comments (+ DECISIONS.md, arsip, context), embed (sisip skrip pratinjau), agent (menjalankan claude -p), registry, state, ports, logs, runtime, views, startup (Run key Windows), update (GitHub Releases), open (buka browser)
 src/server/  app.ts (buildApp), routes/health.ts, routes/prototypes.ts, routes/comments.ts, routes/agent.ts
 src/cli/     index.ts (perintah), comments.ts (prototyper comments …), client.ts (HTTP + auto-start daemon), launcher.ts (dobel-klik exe), output.ts
 src/tray/    tray Windows: index.ts (proses, lock, install), controller.ts (logika, diuji dgn host tiruan), popup.ts (tata letak popup klik kiri, varian B Ringkas), menu.ts (menu klik kanan), host.ts (skrip PowerShell: NotifyIcon + popup)

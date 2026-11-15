@@ -344,18 +344,16 @@ Error validasi ditampilkan per field (`details`). File baru tidak ditulis bila m
 - Selector: `#id` bila unik, selain itu jalur `tag:nth-of-type(n)` (atau `[data-testid]`) sampai id unik/`body`. Bisa usang bila struktur halaman berubah; `text`/`quote` membantu agent menemukan elemen.
 - Mode command belum didukung (butuh reverse proxy di depan dev server, lihat ROADMAP).
 
-## 10d. Konteks komentar (rencana)
+## 10d. Konteks komentar
 
-Tujuan: agent yang mengerjakan sebuah komentar tahu riwayat dan keputusan sebelumnya tanpa membaca seluruh `comments.json`, sehingga tidak keluar konteks atau mengulang revisi yang sudah ditolak.
+Tujuan: agent yang mengerjakan sebuah komentar tahu riwayat dan keputusan sebelumnya tanpa membaca seluruh `comments.json`, sehingga tidak keluar konteks atau mengulang revisi yang sudah ditolak. Kode: `src/core/comments.ts`.
 
-- **Thread** (sudah ada): `comments <id> --waiting agent --json` memuat balasan, pertanyaan berpilihan, `answer`, dan `anchor`.
-- **Ringkasan wajib saat selesai**: untuk role `agent`, `resolve` wajib membawa `--note` (satu kalimat apa yang diubah). Catatan ini sumber log keputusan. (Saat ini `--note` masih opsional.)
-- **Log keputusan** `<folder>/.prototyper/DECISIONS.md`: setiap `resolve` menambahkan satu baris `YYYY-MM-DD · c12 · /kasir · <selector anchor bila ada> · <note>` (append-only, atomik). Blok `AGENTS.md` meminta agent membacanya sebelum mulai.
-- **Perintah konteks**: `prototyper comments context <id> <cid> [--json]` dan `GET /prototypes/:id/comments/:cid/context` → `{ comment, related, decisions }`: komentar beserta thread, komentar resolved di `page` yang sama dan anchor yang sama, serta baris `DECISIONS.md` yang relevan. Dibatasi (mis. 10 `related`, 20 `decisions`) agar hemat token.
-- **Snapshot elemen**: `anchor` ditambah potongan `outerHTML` saat komentar dibuat, agar komentar tetap bermakna setelah selector usang.
-- **Arsip**: agar `comments.json` tidak terus membesar, komentar resolved yang lebih tua dari N hari (default 30, `comments.archiveDays` di manifest) dipindah ke `.prototyper/comments-archive/YYYY-MM.json` saat file ditulis. `--all` dan `context` membaca arsip bila diminta (`--include-archive`); ringkasannya tetap ada di `DECISIONS.md`.
-- **Jejak git** (opsional): bila agent commit, pesan memuat trailer `Prototyper-Comment: c12` agar bisa dilacak lewat `git log --grep`.
-- **Nanti**: `comments search <id> "<kata>"`, `prototyper decisions compact <id>` untuk merangkum `DECISIONS.md` yang panjang, dan tool MCP `get_comment_context`.
+- **Thread**: `comments <id> --waiting agent --json` memuat balasan, pertanyaan berpilihan, `answer`, dan `anchor`.
+- **Log keputusan** `<folder>/.prototyper/DECISIONS.md` (append-only, ditulis di bawah kunci yang sama dengan `comments.json`, setelah file itu ditulis). Satu baris per kejadian: `- YYYY-MM-DD · c12 · /kasir · <selector atau -> · <permintaan> → <hasil>`. Hasil saat `resolve` = `--note`, atau balasan teks terakhir agent bila catatannya kosong. `--note` tetap opsional karena agent tidak me-resolve; pengguna menyelesaikan dari Web UI tanpa catatan, dan laporan agent sudah berisi ringkasan perubahan. `reopen` komentar yang selesai menulis `↺ dibuka lagi`; pembatalan run agent (`noteUndo`) menulis `↺ perubahan agent dibatalkan (<laporan agent>)`. Teks dibuat satu baris dan dipotong; ` · ` di dalam teks diganti agar baris tetap bisa diurai (`parseDecision`).
+- **Perintah konteks**: `prototyper comments context <id> <cid> [--json] [--include-archive]` dan `GET /prototypes/:id/comments/:cid/context[?archive=1]` → `{ comment, related, decisions }`. `related` = komentar resolved di `page` yang sama, yang `anchor.selector`-nya sama lebih dulu (`sameAnchor: true`) lalu terbaru, maks. 10. `decisions` = baris `DECISIONS.md` untuk komentar itu, komentar `related`, atau halaman yang sama, maks. 20 terakhir (kronologis). Blok `AGENTS.md` dan prompt run agent memintanya dijalankan sebelum mengerjakan tiap komentar.
+- **Snapshot elemen**: `web/embed.js` menambahkan `anchor.html` = `outerHTML` elemen (tanpa elemen milik Prototyper, spasi dirapatkan, maks. 1500 karakter; server memotong di 2000), agar komentar tetap bermakna setelah selector usang.
+- **Arsip**: setiap kali `comments.json` ditulis, komentar resolved yang `resolvedAt`-nya lebih tua dari N hari (default 30, `comments.archiveDays` di manifest, 0 = mati) dipindah ke `.prototyper/comments-archive/YYYY-MM.json` (bulan `resolvedAt`). Arsip ditulis lebih dulu; bila id ada di keduanya, yang di `comments.json` menang. `archiveDays` dibaca longgar dari `prototyper.json` agar manifest rusak tidak menggagalkan penyimpanan komentar. `comments list --include-archive` / `?archive=1` dan `context --include-archive` membaca arsip; komentar dari arsip diberi `archived: true`. Web UI belum menampilkan arsip; ringkasannya tetap ada di `DECISIONS.md`.
+- **Belum**: jejak git (trailer `Prototyper-Comment: c12` bila agent commit), `comments search <id> "<kata>"`, `prototyper decisions compact <id>` untuk merangkum `DECISIONS.md` yang panjang, tool MCP `get_comment_context`, dan menampilkan arsip di Web UI.
 
 ## 10e. Petunjuk agent di folder prototype
 

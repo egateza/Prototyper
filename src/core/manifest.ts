@@ -83,6 +83,18 @@ const baseShape = {
     })
     .strict()
     .optional(),
+  comments: z
+    .object({
+      archiveDays: z
+        .number()
+        .int()
+        .min(0)
+        .max(3650)
+        .optional()
+        .describe('Komentar selesai yang lebih tua dari N hari dipindah ke .prototyper/comments-archive/ (default 30; 0 = tidak diarsipkan)'),
+    })
+    .strict()
+    .optional(),
 };
 
 export const manifestSchema = z.discriminatedUnion('type', [

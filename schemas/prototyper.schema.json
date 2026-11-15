@@ -42,6 +42,18 @@
           },
           "additionalProperties": false
         },
+        "comments": {
+          "type": "object",
+          "properties": {
+            "archiveDays": {
+              "description": "Komentar selesai yang lebih tua dari N hari dipindah ke .prototyper/comments-archive/ (default 30; 0 = tidak diarsipkan)",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3650
+            }
+          },
+          "additionalProperties": false
+        },
         "type": {
           "type": "string",
           "const": "static"
@@ -125,6 +137,18 @@
             "syncInstructions": {
               "description": "false = Prototyper tidak menulis bagian petunjuk di file instruksi dan CLAUDE.md (default true)",
               "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "comments": {
+          "type": "object",
+          "properties": {
+            "archiveDays": {
+              "description": "Komentar selesai yang lebih tua dari N hari dipindah ke .prototyper/comments-archive/ (default 30; 0 = tidak diarsipkan)",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3650
             }
           },
           "additionalProperties": false

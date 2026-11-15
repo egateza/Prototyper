@@ -37,7 +37,7 @@
 Urutan yang disarankan:
 
 1. **Commit baseline** + verifikasi yang tersisa di atas.
-2. **#3 tahap 3 — konteks komentar** (DECISIONS.md, `comments context`, arsip). Paling berdampak untuk kualitas kerja agent, dan sekarang komentar elemen sudah ada sehingga `related` bisa memakai anchor.
+2. ~~**#3 tahap 3 — konteks komentar**~~ ✓ (0.3.10).
 3. **Lanjutan #4** (agent): `--resume` sesi Claude, uji preset lain.
 4. ~~**Live-reload static**~~ ✓ (0.3.8).
 5. **MCP server**.
@@ -63,13 +63,10 @@ Tahap 1 (komentar per halaman + pertanyaan berpilihan) dan tahap 2 untuk mode st
 - Mode **command**: butuh reverse proxy di depan dev server (risiko bentrok dengan HMR/WebSocket), atau tag skrip manual ke `http://localhost:4000/...`. Ditunda.
 - Selector bisa usang bila struktur halaman berubah; pertimbangkan beberapa kandidat selector / posisi relatif, plus snapshot `outerHTML` (tahap 3).
 
-**Tahap 3 — konteks komentar** (belum dikerjakan, rincian di DESIGN.md §10d):
+**Tahap 3 — konteks komentar** ✓ (0.3.10, rincian di DESIGN.md §10d): `DECISIONS.md`, `comments context`, snapshot `anchor.html`, arsip otomatis, petunjuk agent diperbarui. Sisa:
 
-- `resolve --note` wajib untuk role agent; setiap `resolve` menambah satu baris ke `.prototyper/DECISIONS.md`.
-- `prototyper comments context <id> <cid>` + `GET /prototypes/:id/comments/:cid/context`: thread, komentar resolved terkait (page/anchor sama), dan keputusan relevan, dibatasi agar hemat token.
-- Snapshot elemen: potongan `outerHTML` di `anchor`.
-- Arsip otomatis komentar resolved lama ke `.prototyper/comments-archive/YYYY-MM.json` supaya `comments.json` tetap kecil.
-- Blok `AGENTS.md` dan prompt run agent diperbarui: baca `DECISIONS.md` dan jalankan `comments context` sebelum mengerjakan komentar.
+- Jejak git (trailer `Prototyper-Comment: c12`), `comments search`, `decisions compact`, tool MCP `get_comment_context`.
+- Tampilkan komentar arsip di Web UI (filter "Semua" saat ini hanya komentar di `comments.json`).
 
 ### #4 Agent dari Web UI — lanjutan
 

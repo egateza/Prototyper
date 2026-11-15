@@ -1,4 +1,13 @@
-## Yang baru di 0.3.9
+## Yang baru di 0.3.10
+
+- **Riwayat & konteks komentar.** Setiap komentar yang diselesaikan dicatat satu baris di `.prototyper/DECISIONS.md` (tanggal · komentar · halaman · elemen · permintaan → hasil). Hasilnya diambil dari catatan saat menyelesaikan, atau dari laporan terakhir agent bila catatannya kosong. Komentar yang dibuka lagi dan perubahan agent yang dibatalkan juga tercatat.
+- `prototyper comments context <id> <komentar> [--json]` (dan `GET /api/prototypes/:id/comments/:cid/context`) memberi agent konteks satu komentar: thread-nya, sampai 10 komentar selesai di halaman yang sama (yang elemennya sama lebih dulu), dan sampai 20 keputusan terkait. Petunjuk agent di `AGENTS.md` prototype dan prompt "Kerjakan" dari Web UI memintanya dijalankan sebelum mengerjakan komentar.
+- Komentar elemen menyimpan potongan HTML elemen (`anchor.html`) saat dibuat, agar tetap bermakna bila selector sudah usang.
+- **Arsip otomatis.** Komentar selesai yang lebih tua dari 30 hari dipindah ke `.prototyper/comments-archive/YYYY-MM.json` saat komentar disimpan. Atur dengan `"comments": { "archiveDays": N }` di `prototyper.json` (0 = tidak diarsipkan). `comments list --include-archive` / `?archive=1` menampilkannya lagi.
+
+Pembaruan ke 0.3.10 mengubah kode server, jadi Prototyper dimulai ulang sekali. Petunjuk agent di folder prototype diperbarui otomatis saat Prototyper menyala.
+
+## 0.3.9
 
 - **Batalkan perubahan agent.** Sebelum agent mulai bekerja dari Web UI, Prototyper menyimpan checkpoint folder prototype. Bila agent mengubah file, bar agent menampilkan tombol **Batalkan (N file)** beserta daftar filenya. File yang diubah agent dikembalikan, file baru buatan agent dihapus. File lain yang Anda edit tidak ikut berubah.
 - Bila file yang diubah agent sudah Anda edit lagi, Prototyper menampilkan daftarnya dan bertanya dulu sebelum menimpa.

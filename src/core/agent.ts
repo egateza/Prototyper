@@ -215,7 +215,8 @@ export function agentPrompt(p: ResolvedPrototype, opts: AgentRunOptions = {}): s
   lines.push(
     '',
     'Langkah:',
-    `1. \`prototyper comments ${id} --waiting agent --json\` — komentar yang giliran agent. Perhatikan \`page\`, \`anchor\` (selector CSS / teks elemen yang diklik pengguna), balasan, dan \`answer\` pada pertanyaan berpilihan.`,
+    `1. \`prototyper comments ${id} --waiting agent --json\` — komentar yang giliran agent. Perhatikan \`page\`, \`anchor\` (selector CSS / teks / potongan \`html\` elemen yang diklik pengguna), balasan, dan \`answer\` pada pertanyaan berpilihan.`,
+    `   Sebelum mengerjakan tiap komentar, jalankan \`prototyper comments context ${id} <commentId> --json\`: komentar selesai terkait (halaman/elemen sama) dan keputusan sebelumnya (\`.prototyper/DECISIONS.md\`). Jangan mengulang perubahan yang sudah dibatalkan atau diminta dikembalikan.`,
     `2. Kerjakan satu per satu dengan mengedit file di folder ini, lalu laporkan lewat \`prototyper comments reply ${id} <commentId> "<ringkasan perubahan>"\` dan biarkan komentar tetap open.`,
     '   Jangan menutup komentar (`prototyper comments resolve`): pengguna yang memeriksa hasil dan menentukan pekerjaan selesai.',
     `3. Bila ada beberapa kemungkinan, jangan menebak: \`prototyper comments ask ${id} <commentId> "<pertanyaan>" --option "A" --option "B"\` dan biarkan open.`,

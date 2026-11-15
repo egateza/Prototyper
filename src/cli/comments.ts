@@ -2,6 +2,7 @@ import type { Command } from 'commander';
 import {
   addComment,
   AGENT_SOURCE,
+  commentContext,
   countComments,
   deleteComment,
   listComments,
@@ -9,6 +10,7 @@ import {
   replyComment,
   resolveComment,
   type Comment,
+  type CommentContext,
   type Role,
   type Source,
 } from '../core/comments.js';
@@ -63,6 +65,22 @@ export function formatComment(c: Comment): string {
   return lines.join('\n');
 }
 
+/** Teks `comments context`: komentar lengkap, lalu komentar selesai terkait dan keputusan secara ringkas. */
+export function formatContext(ctx: CommentContext): string {
+  const out = [formatComment(ctx.comment)];
+  out.push('', `Komentar selesai terkait (${ctx.related.length}):`);
+  if (!ctx.related.length) out.push('  (tidak ada)');
+  for (const r of ctx.related) {
+    const outcome = r.resolution ?? [...r.replies].reverse().find((x) => x.role === 'agent' && !x.options && !x.answerTo)?.text;
+    out.push(`  ${r.id}${r.sameAnchor ? ' [elemen sama]' : ''}${r.archived ? ' [arsip]' : ''}${r.anchor ? ` @ ${r.anchor.selector}` : ''}: ${r.text.replace(/\s+/g, ' ')}`);
+    if (outcome) out.push(`      → ${outcome.replace(/\s+/g, ' ')}`);
+  }
+  out.push('', `Keputusan sebelumnya (${ctx.decisions.length}):`);
+  if (!ctx.decisions.length) out.push('  (tidak ada)');
+  for (const d of ctx.decisions) out.push(`  ${d.date} · ${d.id}${d.selector ? ` · ${d.selector}` : ''} · ${d.text}`);
+  return out.join('\n');
+}
+
 function parseRole(v: string | undefined): Role | undefined {
   if (v === undefined) return undefined;
   if (v !== 'user' && v !== 'agent') throw new AppError('BAD_REQUEST', '--role harus "user" atau "agent"');
@@ -88,6 +106,7 @@ export function registerCommentCommands(program: Command, act: Act): void {
         '',
         'Contoh alur agent:',
         '  prototyper comments kasir-grosir --waiting agent --json   # yang perlu dikerjakan agent',
+        '  prototyper comments context kasir-grosir c3 --json         # riwayat & keputusan terkait c3',
         '  prototyper comments resolve kasir-grosir c3 --note "Tombol bayar diperbesar"',
         '  prototyper comments ask kasir-grosir c4 "Warna tombol?" --option Ungu --option Hijau',
       ].join('\n'),
@@ -100,18 +119,38 @@ export function registerCommentCommands(program: Command, act: Act): void {
     .option('--resolved', 'hanya yang sudah selesai')
     .option('--page <path>', 'hanya komentar pada halaman ini, mis. /kasir')
     .option('-w, --waiting <role>', 'hanya yang menunggu: agent | user')
+    .option('--include-archive', 'sertakan komentar selesai yang sudah diarsipkan')
     .action(
       act(async (ctx, [id], cmd) => {
-        const o = cmd.opts<{ all?: boolean; resolved?: boolean; page?: string; waiting?: string }>();
+        const o = cmd.opts<{ all?: boolean; resolved?: boolean; page?: string; waiting?: string; includeArchive?: boolean }>();
         const waitingFor = parseRole(o.waiting);
         const p = await ctx.registry.require(id ?? '');
         const status = o.all ? 'all' : o.resolved ? 'resolved' : 'open';
-        const list = await listComments(p.path, { status, ...(o.page ? { page: o.page } : {}), ...(waitingFor ? { waitingFor } : {}) });
+        const list = await listComments(p.path, {
+          status,
+          ...(o.page ? { page: o.page } : {}),
+          ...(waitingFor ? { waitingFor } : {}),
+          includeArchive: !!o.includeArchive,
+        });
         const counts = countComments(p.path);
         if (ctx.json) return printJson({ id: p.id, counts, comments: list });
         console.log(`${p.id}: ${counts.open} open (${counts.waitingUser} menunggu pengguna), ${counts.resolved} selesai\n`);
         if (!list.length) console.log(status === 'open' ? '(tidak ada komentar open)' : '(tidak ada komentar)');
         console.log(list.map(formatComment).join('\n\n'));
+      }),
+    );
+
+  comments
+    .command('context <id> <commentId>')
+    .description('konteks untuk mengerjakan satu komentar: thread, komentar selesai terkait (halaman/elemen sama), dan keputusan dari .prototyper/DECISIONS.md')
+    .option('--include-archive', 'cari juga di komentar yang sudah diarsipkan')
+    .action(
+      act(async (ctx, [id, cid], cmd) => {
+        const o = cmd.opts<{ includeArchive?: boolean }>();
+        const p = await ctx.registry.require(id ?? '');
+        const c = await commentContext(p.path, cid ?? '', { includeArchive: !!o.includeArchive });
+        if (ctx.json) return printJson(c);
+        console.log(formatContext(c));
       }),
     );
 

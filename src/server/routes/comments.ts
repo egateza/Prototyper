@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import {
   addComment,
+  commentContext,
   countComments,
   deleteComment,
   listComments,
@@ -23,6 +24,8 @@ export interface CommentsResponse {
   comments: Comment[];
 }
 
+const flag = (v: unknown) => v === '1' || v === 'true';
+
 function parseStatus(v: unknown): 'open' | 'resolved' | 'all' {
   if (v === undefined || v === '') return 'all';
   if (v === 'open' || v === 'resolved' || v === 'all') return v;
@@ -33,7 +36,7 @@ function parseStatus(v: unknown): 'open' | 'resolved' | 'all' {
 export const commentRoutes: FastifyPluginAsync<{ registry: Registry }> = async (app, { registry }) => {
   const dirOf = async (id: string) => (await registry.require(id)).path;
 
-  app.get<Params & { Querystring: { status?: string; page?: string; waiting?: string } }>(
+  app.get<Params & { Querystring: { status?: string; page?: string; waiting?: string; archive?: string } }>(
     '/prototypes/:id/comments',
     async (req): Promise<CommentsResponse> => {
       const p = await registry.require(req.params.id);
@@ -43,9 +46,15 @@ export const commentRoutes: FastifyPluginAsync<{ registry: Registry }> = async (
         status: parseStatus(req.query.status),
         ...(req.query.page !== undefined ? { page: req.query.page } : {}),
         ...(w ? { waitingFor: w } : {}),
+        includeArchive: flag(req.query.archive),
       });
       return { id: p.id, counts: countComments(p.path), comments };
     },
+  );
+
+  // Konteks untuk agent: thread + komentar selesai terkait + keputusan dari DECISIONS.md.
+  app.get<CParams & { Querystring: { archive?: string } }>('/prototypes/:id/comments/:cid/context', async (req) =>
+    commentContext(await dirOf(req.params.id), req.params.cid, { includeArchive: flag(req.query.archive) }),
   );
 
   app.post<Params & { Body: Body }>('/prototypes/:id/comments', async (req, reply) => {

@@ -90,8 +90,20 @@
     return `${el.localName}${t ? ` · ${t}${textOf(el).length > 30 ? '…' : ''}` : ''}`;
   };
 
+  // Snapshot outerHTML (tanpa elemen milik Prototyper), dipotong agar hemat; dipakai agent bila selector usang.
+  const MAX_HTML = 1500;
+  function htmlOf(el) {
+    try {
+      const c = el.cloneNode(true);
+      c.querySelectorAll(`[class*="${P}"]`).forEach((n) => n.remove());
+      const h = c.outerHTML.replace(/\s+/g, ' ').trim();
+      return h.length > MAX_HTML ? `${h.slice(0, MAX_HTML - 1)}…` : h;
+    } catch { return ''; }
+  }
+
   function anchorFor(el, quote) {
-    return { selector: cssPath(el), tag: el.localName, text: textOf(el), ...(quote ? { quote } : {}) };
+    const html = htmlOf(el);
+    return { selector: cssPath(el), tag: el.localName, text: textOf(el), ...(quote ? { quote } : {}), ...(html ? { html } : {}) };
   }
 
   // ---------- Sorotan ----------

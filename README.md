@@ -85,7 +85,7 @@ Coba dengan contoh bawaan: `prototyper add examples\hello-static` lalu `prototyp
 | `logs <id> [-n 200] [-f]` | log |
 | `agents list` | cek agent coding yang tersedia (Claude Code, Codex, Gemini CLI, Copilot CLI) |
 | `agents sync [id]` | pasang/perbarui petunjuk agent (`AGENTS.md` + `CLAUDE.md`) di folder prototype |
-| `comments <id>` | komentar open (`--all`, `--resolved`, `--page`, `--waiting agent\|user`); subperintah `add`, `reply`, `ask --option … [--multi]`, `resolve --note`, `reopen`, `rm` |
+| `comments <id>` | komentar open (`--all`, `--resolved`, `--page`, `--waiting agent\|user`); subperintah `context` (riwayat & keputusan terkait satu komentar), `add`, `reply`, `ask --option … [--multi]`, `resolve --note`, `reopen`, `rm`; `--include-archive` untuk komentar yang sudah diarsipkan |
 | `serve` | daemon di foreground (Ctrl+C untuk berhenti) |
 | `shutdown` | hentikan daemon + semua prototype |
 
@@ -131,6 +131,8 @@ prototyper comments ask kasir-grosir c4 "Warna tombol?" --option Ungu --option H
 Pertanyaan dari `ask` tampil di Web UI sebagai radio button (atau checkbox dengan `--multi`) plus kolom teks: pilih opsi untuk menjawab, atau tulis pertanyaan balik tanpa memilih — pertanyaannya tetap menunggu. Setiap komentar open diberi label **Menunggu Anda** / **Menunggu agent**; badge sidebar berwarna oranye bila ada yang menunggu Anda. Agent mengambil yang gilirannya dengan `prototyper comments <id> --waiting agent --json`.
 
 Komentar disimpan di `<folder prototype>/.prototyper/comments.json` (boleh di-commit; tidak ikut disajikan oleh server static). Badge di sidebar menunjukkan jumlah komentar open.
+
+**Riwayat komentar.** Setiap komentar yang diselesaikan dicatat di `.prototyper/DECISIONS.md` (tanggal · komentar · halaman · elemen · permintaan → hasil), termasuk saat dibuka lagi atau saat perubahan agent dibatalkan. Sebelum mengerjakan komentar, agent menjalankan `prototyper comments context <id> <komentar> --json` untuk melihat komentar selesai di halaman/elemen yang sama dan keputusan sebelumnya, sehingga tidak mengulang revisi yang sudah ditolak. Komentar elemen juga menyimpan potongan HTML elemennya. Komentar selesai yang lebih tua dari 30 hari dipindah ke `.prototyper/comments-archive/` (`"comments": { "archiveDays": N }` di `prototyper.json`, 0 = tidak diarsipkan).
 
 ## Manifest `prototyper.json`
 
