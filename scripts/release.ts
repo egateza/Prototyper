@@ -276,10 +276,14 @@ function buildMsi(exe: string, version: string, work: string, out: string): stri
   writeFileSync(installer, installerJson(version));
   const wxs = path.join(dir, 'prototyper.wxs');
   writeFileSync(wxs, buildWxs({ version, exe, installerJson: installer, icon: path.join(ROOT, 'assets', 'icon.ico'), url: 'https://github.com/egateza/Prototyper' }));
-  const file = path.join(out, msiName(version, process.arch));
+  const name = msiName(version, process.arch);
+  const file = path.join(out, name);
   rmSync(file, { force: true });
   for (const ext of MSI_EXTENSIONS) run('wix', ['extension', 'add', '-g', `${ext}/${WIX_VERSION}`]); // aman diulang
-  run('wix', ['build', '-arch', process.arch, ...MSI_EXTENSIONS.flatMap((e) => ['-ext', e]), '-o', file, wxs]);
+  // dibangun di folder kerja: wix juga menulis .wixpdb (simbol debug) yang tidak perlu ikut dirilis
+  const built = path.join(dir, name);
+  run('wix', ['build', '-arch', process.arch, ...MSI_EXTENSIONS.flatMap((e) => ['-ext', e]), '-o', built, wxs]);
+  copyFileSync(built, file);
   return file;
 }
 

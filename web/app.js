@@ -35,7 +35,6 @@ const ICON = {
   plus: svg('M12 5v14M5 12h14', 'fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"'),
   chev: svg('M6 9l6 6 6-6', 'fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"'),
   pick: svg('M4 4l7 17 2.5-7.5L21 11 4 4Z', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"'),
-  spark: svg('M12 3l1.9 5.6L19.5 10l-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.4L12 3ZM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15Z', 'fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"'),
 };
 
 // Request yang mengubah state hanya diterima dari mesin lokal (lihat app.ts).
@@ -193,10 +192,7 @@ function renderSide() {
   const home = loaded && list.length ? `<button type="button" class="ws-item ws-home" data-act="select" data-id="" aria-current="${!ui.selected}">
       <span class="home-ic">${ICON.home}</span><span class="t"><b>Beranda</b><span>ringkasan semua prototype</span></span>${totalWaitingUser() ? `<span class="cm-badge wait" title="Komentar menunggu jawaban Anda">${totalWaitingUser()}</span>` : ''}
     </button>` : '';
-  const news = loaded ? `<button type="button" class="ws-item ws-home ws-news" data-act="select" data-id="${WHATSNEW}" aria-current="${ui.selected === WHATSNEW}">
-      <span class="home-ic">${ICON.spark}</span><span class="t"><b>Yang baru</b><span>${wn.version ? `perubahan di v${esc(wn.version)}` : 'perubahan tiap versi'}</span></span>${wnUnseen() ? '<span class="cm-badge new" title="Ada perubahan yang belum Anda lihat">baru</span>' : ''}
-    </button>` : '';
-  const fullHtml = home + news + html;
+  const fullHtml = home + html;
   if (fullHtml !== lastSide) { $('#side-list').innerHTML = fullHtml; lastSide = fullHtml; }
   for (const b of $$('#filter button')) b.setAttribute('aria-pressed', String(b.dataset.f === ui.filter));
 }
@@ -613,7 +609,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === '[') { e.preventDefault(); return setSidePinned(!ui.sidePinned); }
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'j' || e.key === 'k') {
     // Urutan sama dengan sidebar (dikelompokkan).
-    const order = $$('#side-list .ws-item:not(.ws-news)').map((b) => b.dataset.id);
+    const order = $$('#side-list .ws-item').map((b) => b.dataset.id);
     if (!order.length) return;
     const i = order.indexOf(ui.selected ?? '');
     const step = e.key === 'ArrowDown' || e.key === 'j' ? 1 : -1;
@@ -825,6 +821,8 @@ $('#dlg-add').addEventListener('close', () => { $('#add-type-row').hidden = fals
 const wn = { version: null, data: null, loading: false, error: null };
 const SEEN_KEY = 'prototyper:seen-version';
 const wnUnseen = () => !!wn.version && readPref(SEEN_KEY, '') !== wn.version;
+/** Titik di samping versi (satu-satunya pintu ke halaman ini di Web UI) sampai halaman dibuka untuk versi itu. */
+const wnMark = () => $('#meta').classList.toggle('new', wnUnseen());
 function wnInline(t) {
   return esc(t).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
 }
@@ -854,7 +852,7 @@ async function loadWhatsNew() {
   }
 }
 function renderWhatsNew() {
-  if (wn.version && readPref(SEEN_KEY, '') !== wn.version) { writePref(SEEN_KEY, wn.version); renderSide(); }
+  if (wnUnseen()) { writePref(SEEN_KEY, wn.version); wnMark(); }
   if (!wn.data && !wn.error) {
     if (!wn.loading) loadWhatsNew();
     return patch('#wn-body', '<p class="muted">Memuat…</p>');
@@ -1644,7 +1642,6 @@ function commands() {
   out.push({ ic: '⇤', label: ui.sidePinned ? 'Sidebar: sembunyi otomatis' : 'Sidebar: sematkan', grp: 'Tampilan', run: () => setSidePinned(!ui.sidePinned) });
   if (LOCAL) out.push({ ic: '⏻', label: 'Matikan Prototyper', grp: 'Umum', run: () => confirmShutdown() });
   out.push({ ic: '✦', label: 'Agent lokal: cek agent yang tersedia', grp: 'Umum', run: () => openAgentsDialog() });
-  out.push({ ic: '✧', label: 'Yang baru: perubahan tiap versi', grp: 'Umum', run: () => select(WHATSNEW) });
   if (LOCAL && list.length) out.push({ ic: '↻', label: 'Sinkronkan petunjuk agent (semua prototype)', grp: 'Umum', run: () => syncAllInstructions() });
   for (const [k, d] of Object.entries(DEVICES)) {
     if (k !== ui.device) out.push({ ic: '▭', label: `Pratinjau: ${d.label}${d.w ? ` (${d.w}×${d.h})` : ''}`, grp: 'Tampilan', run: () => setDevice(k) });
@@ -1691,6 +1688,7 @@ api('GET', '/api/health')
     nw.workspace = h.workspace ?? ''; wn.version = h.version;
     $('#meta').textContent = `v${h.version}${h.lan ? ' · LAN' : ''}${LOCAL ? '' : ' · baca saja'}`;
     $('#meta').title = 'Yang baru di versi ini';
+    wnMark();
     render();
   })
   .catch(() => undefined);

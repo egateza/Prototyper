@@ -477,7 +477,7 @@ dialog.small p { margin: 0; }
 /* ---------- Yang baru (#!whatsnew) ---------- */
 #meta { cursor: pointer; }
 #meta:hover { color: var(--accent); }
-.cm-badge.new { font-size: 10px; letter-spacing: .02em; text-transform: uppercase; }
+#meta.new::after { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-left: 5px; vertical-align: 2px; }
 .whatsnew { max-width: 860px; }
 .wn-list { display: grid; gap: 14px; }
 .wn-rel { border: 1px solid var(--border); border-radius: var(--r-lg); padding: 16px 18px; background: var(--surface); box-shadow: var(--shadow-sm); }

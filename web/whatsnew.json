@@ -2,13 +2,23 @@
   "releasesUrl": "https://github.com/egateza/Prototyper/releases",
   "releases": [
     {
+      "version": "0.3.1",
+      "date": "2026-11-15",
+      "title": "Perbaikan kecil",
+      "items": [
+        "Halaman **Yang baru** di Web UI kini dibuka dengan klik nomor versi di samping logo; titik kecil di samping versi menandai perubahan yang belum dilihat. Item di sidebar dan palet perintah dihapus. Menu tray tetap ada.",
+        "Ikon tombol agent **Kerjakan** kembali seperti semula.",
+        "Berkas `.wixpdb` (simbol debug installer) tidak lagi ikut di halaman rilis."
+      ]
+    },
+    {
       "version": "0.3.0",
       "date": "2026-11-15",
       "title": "Installer MSI, pembaruan kecil, dan halaman Yang baru",
       "items": [
         "**Installer MSI (Windows).** `prototyper-<versi>-win-x64.msi` memasang Prototyper per pengguna tanpa hak admin: shortcut Start Menu, PATH, dan tray langsung menyala. Uninstall menutup tray, daemon, dan prototype lebih dulu.",
         "**Pembaruan lebih kecil.** Bila exe tidak perlu diganti, tray cukup mengunduh paket aplikasi (sekitar 0,6 MB) alih-alih exe penuh. Aplikasi yang gagal dimuat otomatis kembali ke versi bawaan exe.",
-        "**Halaman Yang baru** di Web UI (item di sidebar, klik nomor versi, atau `Ctrl+K`) dan di menu klik kanan tray.",
+        "**Halaman Yang baru** : klik nomor versi di samping logo Web UI, atau dari menu klik kanan tray.",
         "Perintah `prototyper quit` untuk menutup tray, daemon, dan semua prototype sekaligus.",
         "Popup tray kini tertutup saat mengklik di luar popup, dan tidak muncul di Alt+Tab maupun taskbar."
       ]
