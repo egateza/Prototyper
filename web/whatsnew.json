@@ -2,6 +2,15 @@
   "releasesUrl": "https://github.com/egateza/Prototyper/releases",
   "releases": [
     {
+      "version": "0.3.6",
+      "date": "2026-11-15",
+      "title": "Tombol Pasang untuk pembaruan Web UI",
+      "items": [
+        "Bila pembaruan yang diunduh tray hanya mengubah Web UI, tombolnya kini **Pasang**, bukan **Mulai ulang**: Prototyper dan prototype tetap berjalan, cukup muat ulang halaman Prototyper di browser.",
+        "Pembaruan yang mengubah kode tetap bertuliskan **Mulai ulang**."
+      ]
+    },
+    {
       "version": "0.3.5",
       "date": "2026-11-15",
       "title": "Sembunyikan pratinjau tanpa memuat ulang",

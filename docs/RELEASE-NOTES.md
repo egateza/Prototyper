@@ -1,9 +1,15 @@
-## Yang baru di 0.3.5
+## Yang baru di 0.3.6
+
+- **Tombol "Pasang" untuk pembaruan Web UI.** Bila pembaruan yang diunduh tray hanya mengubah Web UI, tombolnya kini "Pasang", bukan "Mulai ulang": Prototyper dan prototype tetap berjalan, cukup muat ulang halaman Prototyper di browser. Pembaruan yang mengubah kode tetap bertuliskan "Mulai ulang".
+
+Dari 0.3.0–0.3.5 (exe atau MSI), tray cukup mengunduh paket aplikasi `prototyper-0.3.6-app-r1.tar.gz` (sekitar 0,6 MB). Pembaruan ini mengubah kode tray, jadi Prototyper dimulai ulang sekali.
+
+## 0.3.5
 
 - **Sembunyikan pratinjau tanpa memuat ulang.** Menyembunyikan lalu menampilkan pratinjau di Web UI tidak lagi memuat ulang halaman prototype, jadi posisi scroll, isian form, dan state lainnya tetap.
 - Mode **Komentari** otomatis berhenti saat pratinjau disembunyikan.
 
-Dari 0.3.0–0.3.4 (exe atau MSI), tray cukup mengunduh paket aplikasi `prototyper-0.3.5-app-r1.tar.gz` (sekitar 0,6 MB). Dari 0.3.3 ke atas, pembaruan ini hanya mengubah Web UI: Prototyper dan prototype tetap berjalan, cukup muat ulang halaman Prototyper di browser.
+Dari 0.3.3 ke atas, pembaruan ke 0.3.5 hanya mengubah Web UI dan dipasang tanpa restart.
 
 ## 0.3.4
 

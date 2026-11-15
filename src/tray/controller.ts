@@ -51,6 +51,11 @@ export interface TrayDeps {
   applyApp?: (file: string, check: UpdateCheck) => Promise<AppApplyResult>;
   /** Jalankan tray baru yang menyalakan lagi `restore` (dipakai setelah `applyApp` butuh restart). */
   relaunch?: (restore: string[]) => void;
+  /**
+   * Paket aplikasi yang sudah diunduh hanya mengubah Web UI (codeHash sama dengan kode tray ini),
+   * sehingga `applyApp` akan memasangnya tanpa restart. Hanya untuk label tombol; tanpa ini: "Mulai ulang".
+   */
+  webOnly?: (file: string) => boolean;
   /** Dipanggil saat tray selesai (Keluar, host tertutup). */
   exit: (code: number) => void;
   /** Tema aplikasi Windows untuk menu klik kanan (default terang). */
@@ -88,7 +93,7 @@ export class TrayController {
       startup: null,
       notifications: true,
       theme: d.theme ?? 'light',
-      update: { status: 'idle', current: d.version, latest: null, progress: 0, checkedAt: null, error: null, selfUpdate: d.selfUpdate },
+      update: { status: 'idle', current: d.version, latest: null, progress: 0, checkedAt: null, error: null, selfUpdate: d.selfUpdate, restart: true },
     };
     d.host.on('event', (e: HostEvent) => void this.onEvent(e));
     d.host.on('exit', () => this.finish(0));
@@ -340,12 +345,26 @@ export class TrayController {
         u.progress = f;
       });
       u.status = 'ready';
-      this.notify('Pembaruan siap dipasang', `Pilih "Mulai ulang" di tray untuk memasang ${c.latest.version}.`);
+      u.restart = !(c.kind === 'app' && this.d.applyApp && this.isWebOnly(this.downloaded));
+      this.notify(
+        'Pembaruan siap dipasang',
+        u.restart
+          ? `Pilih "Mulai ulang" di tray untuk memasang ${c.latest.version}.`
+          : `Pilih "Pasang" di tray untuk memasang ${c.latest.version}. Prototype tetap berjalan.`,
+      );
     } catch (err) {
       u.status = 'available';
       this.notify('Gagal mengunduh pembaruan', errorMessage(err), 'error');
     }
     this.render();
+  }
+
+  private isWebOnly(file: string): boolean {
+    try {
+      return this.d.webOnly?.(file) ?? false;
+    } catch {
+      return false;
+    }
   }
 
   private async installUpdate(file: string, check: UpdateCheck): Promise<void> {

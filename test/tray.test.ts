@@ -37,7 +37,7 @@ function view(id: string, status: PrototypeView['status'] = 'stopped', port: num
 }
 
 const upd = (o: Partial<UpdateState> = {}): UpdateState => ({
-  status: 'idle', current: '0.1.0', latest: null, progress: 0, checkedAt: null, error: null, selfUpdate: true, ...o,
+  status: 'idle', current: '0.1.0', latest: null, progress: 0, checkedAt: null, error: null, selfUpdate: true, restart: true, ...o,
 });
 
 const state = (o: Partial<TrayState> = {}): TrayState => ({
@@ -104,6 +104,9 @@ describe('menu tray', () => {
     expect(texts(dl)).toContain('Mengunduh 0.2.0…');
     const ready = popupLayout(state({ update: upd({ status: 'ready', latest: '0.2.0' }) }));
     expect(texts(ready)).toEqual(expect.arrayContaining(['0.2.0 siap dipasang', 'Mulai ulang']));
+    const webOnly = popupLayout(state({ update: upd({ status: 'ready', latest: '0.2.0', restart: false }) }));
+    expect(texts(webOnly)).toContain('Pasang');
+    expect(texts(webOnly)).not.toContain('Mulai ulang');
   });
 
   it('menu klik kanan: urutan & teks sama dengan menu konteks prototype, menutup setelah dipilih', () => {
@@ -127,6 +130,7 @@ describe('menu tray', () => {
     expect(menuRow(at({ status: 'available', latest: '0.2.0', selfUpdate: false }), 'update')!.label).toBe('⬇ Lihat pembaruan 0.2.0');
     expect(texts(at({ status: 'downloading', progress: 0.42 }))).toContain('⬇ Mengunduh… 42%');
     expect(menuRow(at({ status: 'ready', latest: '0.2.0' }), 'update')!.label).toBe('★ Mulai ulang untuk memperbarui');
+    expect(menuRow(at({ status: 'ready', latest: '0.2.0', restart: false }), 'update')!.label).toBe('★ Pasang pembaruan 0.2.0');
     const paused = menuLayout(state({ daemonUp: false }));
     expect(hitIds(paused)).not.toContain('startAll');
     expect(hitIds(paused)).not.toContain('whatsnew'); // halaman Web UI butuh daemon
@@ -481,6 +485,30 @@ describe('TrayController', () => {
     expect(t.c.state.update).toMatchObject({ status: 'uptodate', current: '0.2.0', latest: '0.2.0' });
     expect(t.host.balloons.at(-1)![0]).toBe('Prototyper diperbarui');
     expect(JSON.stringify(t.host.popup)).toContain('v0.2.0'); // judul popup ikut versi baru
+  });
+
+  it('paket aplikasi khusus Web UI: tombol "Pasang", bukan "Mulai ulang"', async () => {
+    const seen: string[] = [];
+    const t = setup({
+      applyApp: async () => ({ live: true, version: '0.2.0' }),
+      relaunch: () => undefined,
+      webOnly: (file) => (seen.push(file), true),
+    });
+    await t.c.start();
+    await t.c.click('update');
+    await t.c.click('update');
+    expect(seen).toEqual([path.join(t.home, 'new.exe')]);
+    expect(t.c.state.update).toMatchObject({ status: 'ready', restart: false });
+    expect(t.host.balloons.at(-1)).toEqual(['Pembaruan siap dipasang', 'Pilih "Pasang" di tray untuk memasang 0.2.0. Prototype tetap berjalan.']);
+
+    // kode berubah atau paket tak terbaca: tetap "Mulai ulang"
+    for (const webOnly of [() => false, () => { throw new Error('rusak'); }]) {
+      const t2 = setup({ applyApp: async () => ({ live: false }), relaunch: () => undefined, webOnly });
+      await t2.c.start();
+      await t2.c.click('update');
+      await t2.c.click('update');
+      expect(t2.c.state.update).toMatchObject({ status: 'ready', restart: true });
+    }
   });
 
   it('paket aplikasi dengan perubahan kode: terpasang dulu, baru daemon dihentikan & tray dimulai ulang', async () => {

@@ -16,6 +16,8 @@ export interface UpdateState {
   error: string | null;
   /** true bila pembaruan bisa diunduh & dipasang dari tray (biner tunggal Windows). */
   selfUpdate: boolean;
+  /** Saat `ready`: false bila paket yang diunduh hanya mengubah Web UI (dipasang tanpa mulai ulang). */
+  restart: boolean;
 }
 
 export interface TrayState {

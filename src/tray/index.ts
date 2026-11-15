@@ -4,7 +4,7 @@ import path from 'node:path';
 import { DaemonClient } from '../cli/client.js';
 import { openBrowser } from '../core/open.js';
 import { APP_DIR, APP_HOST, APP_MODE, cliCommand } from '../core/appfiles.js';
-import { resolveWebSwap, type AppInfo } from '../core/apphost.js';
+import { readCodeHash, resolveWebSwap, type AppInfo } from '../core/apphost.js';
 import type { Config } from '../core/config.js';
 import { AppError } from '../core/errors.js';
 import { runReg, StartupEntry, type RegRunner } from '../core/startup.js';
@@ -15,6 +15,7 @@ import {
   evaluateRelease,
   fetchLatestRelease,
   installAppUpdate,
+  packCodeHash,
   launchMsiInstall,
   replaceExecutable,
   updateCandidates,
@@ -285,6 +286,13 @@ export async function runTray(config: Config, opts: { restore?: string[] } = {})
             liveWebApp = info.id;
             currentVersion = info.version;
             return { live: true, version: info.version };
+          }
+        : undefined,
+    webOnly:
+      APP_MODE === 'sea' && APP_HOST
+        ? (file) => {
+            const own = readCodeHash(APP_HOST!.appDir);
+            return own !== null && packCodeHash(file) === own;
           }
         : undefined,
     relaunch: (restore) => {

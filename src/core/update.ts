@@ -254,6 +254,14 @@ export interface AppInstallOptions {
  * Pasang paket aplikasi: ekstrak ke `<root>/<id>/`, arahkan `current.json` ke sana, lalu verifikasi.
  * Verifikasi gagal → `current.json` dikembalikan seperti semula.
  */
+/** `codeHash` di app.json sebuah paket aplikasi tanpa memasangnya; null bila tidak ada (paket ≤ 0.3.2). */
+export function packCodeHash(pack: string): string | null {
+  const infoFile = unpackFiles(readFileSync(pack)).get(APP_INFO_FILE);
+  if (!infoFile) return null;
+  const data = JSON.parse(infoFile.toString('utf8')) as { codeHash?: unknown };
+  return typeof data.codeHash === 'string' && data.codeHash.length > 0 ? data.codeHash : null;
+}
+
 export async function installAppUpdate(pack: string, o: AppInstallOptions): Promise<AppInfo> {
   const files = unpackFiles(readFileSync(pack));
   const infoFile = files.get(APP_INFO_FILE);

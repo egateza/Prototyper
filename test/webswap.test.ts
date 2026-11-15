@@ -4,7 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 import { computeCodeHash, readCodeHash, resolveWebSwap, writeCurrent, type AppInfo } from '../src/core/apphost.js';
 import { packFiles } from '../src/core/apppack.js';
-import { installAppUpdate } from '../src/core/update.js';
+import { installAppUpdate, packCodeHash } from '../src/core/update.js';
 import { buildApp } from '../src/server/app.js';
 import { testConfig, tmpDir } from './helpers.js';
 
@@ -76,6 +76,19 @@ describe('codeHash', () => {
     await installAppUpdate(pack, { root, runtime: 1, active: embedded, embedded, keep: [live.id], verify: () => undefined });
     expect(existsSync(path.join(root, live.id))).toBe(true);
     expect(existsSync(path.join(root, stale.id))).toBe(false);
+  });
+
+  it('packCodeHash membaca codeHash paket tanpa memasangnya (label tombol tray)', () => {
+    const dir = tmpDir('prototyper-dl-');
+    const info: AppInfo = { id: '0.4.1-x', version: '0.4.1', runtime: 1 };
+    const pack = (name: string, extra: object) => {
+      const file = path.join(dir, name);
+      writeFileSync(file, packFiles(new Map([...files('0.4.1'), ['app.json', Buffer.from(JSON.stringify({ ...info, ...extra }))]])));
+      return file;
+    };
+    const hash = computeCodeHash(files('0.4.1'));
+    expect(packCodeHash(pack('a.tar.gz', { codeHash: hash }))).toBe(hash);
+    expect(packCodeHash(pack('b.tar.gz', {}))).toBeNull(); // paket ≤ 0.3.2
   });
 });
 

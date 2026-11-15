@@ -123,7 +123,7 @@ export function updateView(u: UpdateState): UpdateView {
     case 'downloading':
       return { ...base, icon: '⬇', iconBg: '#451a03', iconFg: '#fbbf24', title: `Mengunduh ${u.latest}…`, button: 'Mengunduh…', busy: true };
     case 'ready':
-      return { ...base, icon: '★', iconBg: C.accent, iconFg: '#ffffff', title: `${u.latest} siap dipasang`, button: 'Mulai ulang', primary: true };
+      return { ...base, icon: '★', iconBg: C.accent, iconFg: '#ffffff', title: `${u.latest} siap dipasang`, button: u.restart ? 'Mulai ulang' : 'Pasang', primary: true };
     case 'error':
       return { ...base, icon: '!', iconBg: '#450a0a', iconFg: '#fca5a5', title: 'Gagal memeriksa pembaruan', button: 'Coba lagi' };
     default:
@@ -270,7 +270,7 @@ export function menuUpdateRow(u: UpdateState): { text: string; disabled: boolean
     case 'downloading':
       return { text: `⬇ Mengunduh… ${Math.round(u.progress * 100)}%`, disabled: true, hl: false };
     case 'ready':
-      return { text: '★ Mulai ulang untuk memperbarui', disabled: false, hl: true };
+      return { text: u.restart ? '★ Mulai ulang untuk memperbarui' : `★ Pasang pembaruan ${u.latest}`, disabled: false, hl: true };
     default:
       return { text: '⟳ Periksa pembaruan…', disabled: false, hl: false };
   }
