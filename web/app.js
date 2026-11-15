@@ -329,6 +329,7 @@ function fitDevice() {
   }
   const pad = 24;
   const W = view.clientWidth, H = view.clientHeight;
+  if (!W || !H) return; // tersembunyi (.collapsed): ukur ulang saat tampil lagi
   const s = Math.min(1, (W - pad * 2) / sz.w, (H - pad * 2 - 18) / sz.h);
   const left = Math.max(0, (W - sz.w * s) / 2), top = Math.max(0, (H - 18 - sz.h * s) / 2);
   f.style.cssText = `width:${sz.w}px;height:${sz.h}px;left:${left}px;top:${top}px;transform:scale(${s});`;
@@ -337,8 +338,15 @@ function fitDevice() {
 }
 
 let previewNonce = 0;
+function togglePreview() {
+  ui.preview = !ui.preview;
+  writePref('prototyper:preview', ui.preview ? 'on' : 'off');
+  if (!ui.preview && embed.mode) { embed.mode = false; sendEmbed('prototyper:mode', { on: false }); }
+  render();
+}
+// Saat disembunyikan, iframe tetap di DOM (hanya .collapsed → display:none) supaya
+// menampilkan lagi tidak memuat ulang halaman dan state prototype tidak hilang.
 function viewHtml(p, u) {
-  if (!ui.preview) return '';
   if (p.status === 'running' && u) {
     return `<iframe src="${esc(u)}" data-n="${previewNonce}" title="Pratinjau ${esc(p.name)}"></iframe>`;
   }
@@ -561,10 +569,7 @@ document.addEventListener('click', (e) => {
       navigator.clipboard?.writeText(t.dataset.url).then(() => toast('Disalin'), () => toast('Gagal menyalin', true));
       return;
     case 'clear-log': { const pre = $('#log'); if (pre) pre.textContent = ''; return; }
-    case 'toggle-preview':
-      ui.preview = !ui.preview;
-      writePref('prototyper:preview', ui.preview ? 'on' : 'off');
-      return render();
+    case 'toggle-preview': return togglePreview();
     case 'reload-preview': previewNonce++; return render();
     case 'device': return setDevice(t.dataset.dev);
     case 'edit-manifest': return p && openManifestEditor(p);
@@ -1647,9 +1652,7 @@ function commands() {
     if (k !== ui.device) out.push({ ic: '▭', label: `Pratinjau: ${d.label}${d.w ? ` (${d.w}×${d.h})` : ''}`, grp: 'Tampilan', run: () => setDevice(k) });
   }
   if (deviceSize()) out.push({ ic: '⟳', label: `Pratinjau: putar ke ${ui.landscape ? 'portrait' : 'landscape'}`, grp: 'Tampilan', run: () => setLandscape(!ui.landscape) });
-  out.push({ ic: '▢', label: ui.preview ? 'Sembunyikan pratinjau' : 'Tampilkan pratinjau', grp: 'Tampilan', run: () => {
-    ui.preview = !ui.preview; writePref('prototyper:preview', ui.preview ? 'on' : 'off'); render();
-  } });
+  out.push({ ic: '▢', label: ui.preview ? 'Sembunyikan pratinjau' : 'Tampilkan pratinjau', grp: 'Tampilan', run: togglePreview });
   return out;
 }
 function openPalette() {

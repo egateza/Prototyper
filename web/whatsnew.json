@@ -2,6 +2,15 @@
   "releasesUrl": "https://github.com/egateza/Prototyper/releases",
   "releases": [
     {
+      "version": "0.3.5",
+      "date": "2026-11-15",
+      "title": "Sembunyikan pratinjau tanpa memuat ulang",
+      "items": [
+        "**Sembunyikan pratinjau** kini hanya menyembunyikan dan menampilkan lagi. Halaman prototype tidak dimuat ulang, jadi posisi scroll, isian form, dan state lainnya tetap.",
+        "Mode **Komentari** otomatis berhenti saat pratinjau disembunyikan."
+      ]
+    },
+    {
       "version": "0.3.4",
       "date": "2026-11-15",
       "title": "Notifikasi tray benar-benar bisa dimatikan",
