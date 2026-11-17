@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { addComment, cleanAnchor, listComments } from '../src/core/comments.js';
-import { EMBED_PATH, EMBED_TAG, EMBED_TAG_LIVE, injectEmbedTag } from '../src/core/embed.js';
+import { EMBED_PATH, EMBED_TAG, EMBED_TAG_LIVE, injectEmbedTag, injectViewportMeta, VIEWPORT_META } from '../src/core/embed.js';
 import { buildApp } from '../src/server/app.js';
 import { makePrototype, testConfig, tmpDir } from './helpers.js';
 
@@ -11,6 +11,27 @@ describe('injectEmbedTag', () => {
     expect(injectEmbedTag('<p>tanpa body</p>')).toBe(`<p>tanpa body</p>\n${EMBED_TAG}\n`);
     const once = injectEmbedTag('<body></body>');
     expect(injectEmbedTag(once)).toBe(once);
+  });
+});
+
+describe('injectViewportMeta', () => {
+  it('setelah <head>, lalu <html>, lalu doctype; tidak menimpa viewport milik halaman', () => {
+    expect(injectViewportMeta('<!doctype html><html lang="id"><HEAD><title>x</title></head></html>')).toBe(
+      `<!doctype html><html lang="id"><HEAD>\n${VIEWPORT_META}<title>x</title></head></html>`,
+    );
+    expect(injectViewportMeta('<html><body>x</body></html>')).toBe(`<html>\n${VIEWPORT_META}<body>x</body></html>`);
+    expect(injectViewportMeta('<!DOCTYPE html><p>x</p>')).toBe(`<!DOCTYPE html>\n${VIEWPORT_META}<p>x</p>`);
+    expect(injectViewportMeta('<p>x</p>')).toBe(`${VIEWPORT_META}\n<p>x</p>`);
+    // <header> bukan <head>
+    expect(injectViewportMeta('<html><header>x</header></html>')).toBe(`<html>\n${VIEWPORT_META}<header>x</header></html>`);
+    const own = '<head><meta content="width=1024" name=viewport></head>';
+    expect(injectViewportMeta(own)).toBe(own);
+    // meta viewport di dalam komentar tidak dihitung; <head> di dalam komentar juga tidak
+    expect(injectViewportMeta('<!-- <head> --><head><!-- <meta name="viewport" content="x"> --></head>')).toBe(
+      `<!-- <head> --><head>\n${VIEWPORT_META}<!-- <meta name="viewport" content="x"> --></head>`,
+    );
+    const once = injectViewportMeta('<head></head>');
+    expect(injectViewportMeta(once)).toBe(once);
   });
 });
 
@@ -46,10 +67,14 @@ describe('server static menyisipkan skrip embed', () => {
     { id: 'embed-off', name: 'Off', type: 'static', static: { inject: false } },
     { 'index.html': '<body>polos</body>' },
   );
+  const noVp = makePrototype(
+    { id: 'embed-novp', name: 'NoVp', type: 'static', static: { viewport: false } },
+    { 'index.html': '<head></head><body>x</body>' },
+  );
 
   beforeAll(async () => {
     ({ app } = await buildApp({ config: testConfig() }));
-    for (const dir of [on, off]) await app.inject({ method: 'POST', url: '/api/prototypes', payload: { path: dir } });
+    for (const dir of [on, off, noVp]) await app.inject({ method: 'POST', url: '/api/prototypes', payload: { path: dir } });
   });
   afterAll(async () => {
     await app.close();
@@ -59,7 +84,7 @@ describe('server static menyisipkan skrip embed', () => {
     const { url } = (await app.inject({ method: 'POST', url: '/api/prototypes/embed-on/start' })).json() as { url: string };
     const index = await fetch(`${url}/`);
     const html = await index.text();
-    expect(html).toBe(`<!doctype html><html><body><h1>Halo</h1>${EMBED_TAG_LIVE}</body></html>`);
+    expect(html).toBe(`<!doctype html><html>\n${VIEWPORT_META}<body><h1>Halo</h1>${EMBED_TAG_LIVE}</body></html>`);
     expect(index.headers.get('cache-control')).toBe('no-store');
     expect(await (await fetch(`${url}/sub/page.html`)).text()).toContain(EMBED_TAG_LIVE);
     expect(await (await fetch(`${url}/rute/spa`)).text()).toContain(EMBED_TAG_LIVE);
@@ -69,6 +94,14 @@ describe('server static menyisipkan skrip embed', () => {
     expect(js.headers.get('content-type')).toContain('javascript');
     expect(await js.text()).toContain('prototyper:ready');
     await app.inject({ method: 'POST', url: '/api/prototypes/embed-on/stop' });
+  });
+
+  it('static.viewport: false → skrip disisipkan, meta viewport tidak', async () => {
+    const { url } = (await app.inject({ method: 'POST', url: '/api/prototypes/embed-novp/start' })).json() as { url: string };
+    const html = await (await fetch(`${url}/`)).text();
+    expect(html).toContain(EMBED_TAG_LIVE);
+    expect(html).not.toContain('viewport');
+    await app.inject({ method: 'POST', url: '/api/prototypes/embed-novp/stop' });
   });
 
   it('static.inject: false → HTML apa adanya', async () => {

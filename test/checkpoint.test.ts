@@ -192,12 +192,15 @@ describe('API: checkpoint run agent & undo', () => {
       { status: 'deleted', path: 'lama.css' },
     ]);
     expect(read(dir, 'index.html')).toBe('<p>diubah agent</p>');
+    expect(st.resume).toMatchObject({ resumable: true, session: { sessionId: st.run.sessionId } });
 
     const undo = await app.inject({ method: 'POST', url: `${base}/undo` });
     expect(undo.statusCode).toBe(200);
     expect(undo.json()).toMatchObject({ restored: ['index.html', 'lama.css'], removed: ['halaman/baru/a.html'] });
     expect(undo.json().run.checkpoint.undoneAt).toBeTruthy();
     expect(undo.json().comments).toEqual(['c1']);
+    // sesi berisi perubahan yang sudah dibatalkan: run berikutnya mulai sesi baru
+    expect((await app.inject({ method: 'GET', url: base })).json().resume).toMatchObject({ resumable: false, reason: expect.stringMatching(/dibatalkan/) });
     const c1 = (await app.inject({ method: 'GET', url: '/api/prototypes/cp-api/comments' })).json().comments[0];
     expect(c1.waitingFor).toBe('user');
     expect(c1.replies.at(-1).text).toMatch(/dibatalkan pengguna: 3 file dikembalikan/);

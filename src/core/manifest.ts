@@ -45,6 +45,12 @@ export const staticConfigSchema = z
       .boolean()
       .default(true)
       .describe('Muat ulang halaman otomatis saat file di root berubah (CSS diganti tanpa muat ulang). Butuh inject: true'),
+    viewport: z
+      .boolean()
+      .default(true)
+      .describe(
+        'Sisipkan <meta name="viewport" content="width=device-width, initial-scale=1"> bila halaman belum punya, agar tampilan di HP sama dengan pratinjau perangkat. Butuh inject: true',
+      ),
   })
   .strict();
 

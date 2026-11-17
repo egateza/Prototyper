@@ -1,3 +1,4 @@
+import type { LanMode } from '../core/config.js';
 import type { RunStatus } from '../core/runtime.js';
 import type { PrototypeView } from '../core/views.js';
 import type { IconState } from './host.js';
@@ -20,6 +21,8 @@ export interface UpdateState {
   restart: boolean;
 }
 
+export type LanScope = Exclude<LanMode, 'off'>;
+
 export interface TrayState {
   url: string;
   daemonUp: boolean;
@@ -29,6 +32,12 @@ export interface TrayState {
   /** null: status startup tidak diketahui / tidak didukung. */
   startup: boolean | null;
   notifications: boolean;
+  /** Mode LAN daemon: `prototypes` = hanya prototype yang terbuka ke LAN, `all` = Web UI juga. */
+  lanMode: LanMode;
+  /** Lingkup LAN terakhir yang dipilih; dipakai saat toggle Mode LAN dinyalakan. */
+  lanScope: LanScope;
+  /** Alamat IPv4 LAN mesin ini, yang paling mungkin dipakai lebih dulu. */
+  lanAddrs: string[];
   update: UpdateState;
   /** Tema aplikasi Windows; menu klik kanan mengikutinya (seperti prototype mengikuti prefers-color-scheme). */
   theme: 'light' | 'dark';
@@ -42,6 +51,40 @@ export const STATUS_LABEL: Record<RunStatus, string> = {
   crashed: 'Berhenti tak terduga',
   failed: 'Gagal',
 };
+
+/** URL Web UI dari perangkat lain (alamat LAN pertama), atau null bila Web UI tidak terbuka ke LAN / tanpa jaringan. */
+export function lanUrl(s: Pick<TrayState, 'url' | 'lanMode' | 'lanAddrs'>): string | null {
+  const addr = s.lanMode === 'all' ? s.lanAddrs[0] : undefined;
+  if (!addr) return null;
+  const port = new URL(s.url).port;
+  return `http://${addr}${port ? `:${port}` : ''}`;
+}
+
+const runningOnPort = (s: Pick<TrayState, 'prototypes'>) => s.prototypes.filter((p) => p.status === 'running' && p.port);
+
+/**
+ * Teks yang disalin tombol "Salin": URL Web UI (mode `all`), atau URL LAN prototype yang berjalan
+ * (mode `prototypes`; satu baris "Nama: URL" per prototype bila lebih dari satu). null = tidak ada yang disalin.
+ */
+export function lanCopyText(s: Pick<TrayState, 'url' | 'lanMode' | 'lanAddrs' | 'prototypes'>): string | null {
+  const addr = s.lanMode !== 'off' ? s.lanAddrs[0] : undefined;
+  if (!addr) return null;
+  if (s.lanMode === 'all') return lanUrl(s);
+  const running = runningOnPort(s);
+  if (running.length === 1) return `http://${addr}:${running[0]!.port}`;
+  return running.length ? running.map((p) => `${p.name}: http://${addr}:${p.port}`).join('\r\n') : null;
+}
+
+/** Baris keterangan di bawah toggle Mode LAN. */
+export function lanNote(s: Pick<TrayState, 'url' | 'lanMode' | 'lanAddrs' | 'prototypes' | 'daemonUp'>): string {
+  if (!s.daemonUp) return 'Aktif saat daemon dilanjutkan';
+  const addr = s.lanAddrs[0];
+  if (!addr) return 'Tidak ada jaringan';
+  if (s.lanMode === 'all') return lanUrl(s)!.replace(/^http:\/\//, '');
+  const running = runningOnPort(s);
+  if (running.length === 1) return `${addr}:${running[0]!.port}`;
+  return running.length ? `${addr} · ${running.length} prototype` : `${addr} · jalankan prototype dulu`;
+}
 
 export const isLive = (p: PrototypeView) => p.status === 'running' || p.status === 'starting';
 
@@ -60,7 +103,7 @@ export function iconState(s: TrayState): IconState {
     badge: s.daemonUp ? running : 0,
     dot: updateReady,
     paused: !s.daemonUp,
-    tooltip: `Prototyper — ${s.daemonUp ? `${running} prototype berjalan` : 'daemon dijeda'}${updateReady ? ' · ada pembaruan' : ''}`,
+    tooltip: `Prototyper — ${s.daemonUp ? `${running} prototype berjalan${s.lanMode === 'all' ? ' · LAN' : s.lanMode === 'prototypes' ? ' · LAN prototype' : ''}` : 'daemon dijeda'}${updateReady ? ' · ada pembaruan' : ''}`,
   };
 }
 

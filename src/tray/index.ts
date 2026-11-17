@@ -7,6 +7,8 @@ import { APP_DIR, APP_HOST, APP_MODE, cliCommand } from '../core/appfiles.js';
 import { readCodeHash, resolveWebSwap, type AppInfo } from '../core/apphost.js';
 import type { Config } from '../core/config.js';
 import { AppError } from '../core/errors.js';
+import { lanAddresses } from '../core/net.js';
+import { healthLanMode } from '../server/routes/health.js';
 import { runReg, StartupEntry, type RegRunner } from '../core/startup.js';
 import {
   cleanupOldExecutable,
@@ -181,15 +183,17 @@ function httpApi(config: Config): DaemonApi {
   const client = new DaemonClient(config);
   const enc = encodeURIComponent;
   return {
-    async list() {
-      if (!(await client.health())) return null;
-      return client.request<PrototypeView[]>('GET', '/api/prototypes').catch(() => null);
+    async status() {
+      const h = await client.health();
+      if (!h) return null;
+      const prototypes = await client.request<PrototypeView[]>('GET', '/api/prototypes').catch(() => null);
+      return prototypes ? { prototypes, lanMode: healthLanMode(h) } : null;
     },
     async action(id, action) {
       await client.request('POST', `/api/prototypes/${enc(id)}/${action}`);
     },
-    async ensure() {
-      await client.ensure();
+    async ensure({ lanMode }) {
+      await new DaemonClient({ ...config, lanMode }).ensure();
     },
     async shutdown() {
       if (!(await client.health())) return;
@@ -198,6 +202,13 @@ function httpApi(config: Config): DaemonApi {
       while (Date.now() < deadline && (await client.health())) await new Promise((r) => setTimeout(r, 300));
     },
   };
+}
+
+/** Salin teks ke clipboard Windows lewat clip.exe (cukup untuk teks ASCII seperti URL). */
+export function copyToClipboard(text: string): void {
+  const child = spawn('clip', [], { stdio: ['pipe', 'ignore', 'ignore'], windowsHide: true });
+  child.on('error', () => undefined);
+  child.stdin.end(text);
 }
 
 /** Proses tray sebenarnya (`prototyper tray --foreground`). Berjalan sampai Keluar. */
@@ -304,6 +315,9 @@ export async function runTray(config: Config, opts: { restore?: string[] } = {})
       process.exit(code);
     },
     autoUpdate: config.updateCheck ? { firstMs: 10_000, everyMs: DAY_MS } : null,
+    lanAddresses,
+    copyText: copyToClipboard,
+    ...(config.lanMode !== 'off' ? { lanMode: config.lanMode } : {}),
   });
 
   for (const sig of ['SIGINT', 'SIGTERM'] as const) {

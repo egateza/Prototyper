@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { AGENT_IDS, isAgentId, type AgentInfo, type AgentRunInfo, type AgentRunner } from '../../core/agent.js';
+import type { ResumeState } from '../../core/agentsession.js';
 import { AppError } from '../../core/errors.js';
 import type { LogLine } from '../../core/logs.js';
 import type { Registry } from '../../core/registry.js';
@@ -10,6 +11,8 @@ export interface AgentStateResponse {
   id: string;
   running: boolean;
   run: AgentRunInfo | null;
+  /** Apakah run berikutnya dengan agent ini (?agent=, default agent bawaan) bisa melanjutkan sesi. */
+  resume: ResumeState & { agent: string };
 }
 
 export interface AgentsResponse {
@@ -25,12 +28,15 @@ export const agentRoutes: FastifyPluginAsync<{ registry: Registry; agent: AgentR
     agents: await agent.checkAll(req.query.refresh === '1' || req.query.refresh === 'true'),
   }));
 
-  app.get<Params>('/prototypes/:id/agent', async (req): Promise<AgentStateResponse> => {
+  app.get<Params & { Querystring: { agent?: string } }>('/prototypes/:id/agent', async (req): Promise<AgentStateResponse> => {
     const p = await registry.require(req.params.id);
-    return { id: p.id, running: agent.isRunning(p.id), run: agent.info(p.id) };
+    const q = req.query.agent;
+    if (q !== undefined && !isAgentId(q)) throw new AppError('BAD_REQUEST', `agent harus salah satu dari: ${AGENT_IDS.join(', ')}`);
+    const which = isAgentId(q) ? q : agent.defaultAgent;
+    return { id: p.id, running: agent.isRunning(p.id), run: agent.info(p.id), resume: { agent: which, ...(await agent.resumeInfo(p, which)) } };
   });
 
-  app.post<Params & { Body: { agent?: unknown; commentIds?: unknown; message?: unknown } | null }>('/prototypes/:id/agent/run', async (req, reply) => {
+  app.post<Params & { Body: { agent?: unknown; commentIds?: unknown; message?: unknown; resume?: unknown } | null }>('/prototypes/:id/agent/run', async (req, reply) => {
     const p = await registry.require(req.params.id);
     const b = req.body ?? {};
     if (b.agent !== undefined && !isAgentId(b.agent)) throw new AppError('BAD_REQUEST', `agent harus salah satu dari: ${AGENT_IDS.join(', ')}`);
@@ -44,8 +50,10 @@ export const agentRoutes: FastifyPluginAsync<{ registry: Registry; agent: AgentR
     if (b.message !== undefined && (typeof b.message !== 'string' || b.message.length > 2000)) {
       throw new AppError('BAD_REQUEST', 'message harus teks (maks. 2000 karakter)');
     }
+    if (b.resume !== undefined && typeof b.resume !== 'boolean') throw new AppError('BAD_REQUEST', 'resume harus true atau false');
     const run = await agent.run(p, {
       ...(isAgentId(b.agent) ? { agent: b.agent } : {}),
+      ...(typeof b.resume === 'boolean' ? { resume: b.resume } : {}),
       ...(commentIds ? { commentIds } : {}),
       ...(typeof b.message === 'string' ? { message: b.message } : {}),
     });

@@ -44,7 +44,7 @@ Struktur:
 
 ```
 src/boot/    sea.ts (main biner tunggal: pilih aplikasi di app store lalu muat; mengubahnya = naikkan RUNTIME)
-src/core/    appfiles (APP_DIR/APP_MODE: source|dist|bundle|sea, cliCommand), apphost (RUNTIME, app store, bootApp), apppack (tar.gz paket aplikasi), semver, config, manifest (zod), detect (init), scaffold (new + template), agentfiles (AGENTS.md/CLAUDE.md), comments (+ DECISIONS.md, arsip, context), embed (sisip skrip pratinjau), agent (menjalankan claude -p), registry, state, ports, logs, runtime, views, startup (Run key Windows), update (GitHub Releases), open (buka browser)
+src/core/    appfiles (APP_DIR/APP_MODE: source|dist|bundle|sea, cliCommand), apphost (RUNTIME, app store, bootApp), apppack (tar.gz paket aplikasi), semver, config, manifest (zod), detect (init), scaffold (new + template), agentfiles (AGENTS.md/CLAUDE.md), comments (+ DECISIONS.md, arsip, context), embed (sisip skrip pratinjau), agent (menjalankan claude -p), agentsession (lanjut sesi), registry, state, ports, logs, runtime, views, startup (Run key Windows), update (GitHub Releases), open (buka browser)
 src/server/  app.ts (buildApp), routes/health.ts, routes/prototypes.ts, routes/comments.ts, routes/agent.ts
 src/cli/     index.ts (perintah), comments.ts (prototyper comments …), client.ts (HTTP + auto-start daemon), launcher.ts (dobel-klik exe), output.ts
 src/tray/    tray Windows: index.ts (proses, lock, install), controller.ts (logika, diuji dgn host tiruan), popup.ts (tata letak popup klik kiri, varian B Ringkas), menu.ts (menu klik kanan), host.ts (skrip PowerShell: NotifyIcon + popup)

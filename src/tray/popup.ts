@@ -1,4 +1,4 @@
-import { isLive, type TrayState, type UpdateState } from './menu.js';
+import { isLive, lanCopyText, lanNote, type TrayState, type UpdateState } from './menu.js';
 import type { RunStatus } from '../core/runtime.js';
 
 /**
@@ -208,6 +208,38 @@ export function popupLayout(s: TrayState): Popup {
     items.push({ k: 'toggle', x: toggleX, y: y + 5, w: 28, h: 16, on: s.startup });
     y += 26;
   }
+  // Mode LAN: toggle; saat aktif, baris kedua berisi alamat untuk perangkat lain + tombol Salin
+  items.push({ k: 'hit', x: rowX, y, w: rowW, h: 26, r: 6, ...(busy ? {} : { id: 'lan' }), hover: C.hover });
+  items.push({
+    k: 'text', x: 14, y, w: toggleX - 22, h: 26,
+    runs: [{ text: 'Mode LAN', size: 12, color: busy ? C.muted : C.text, bold: true }, { text: '  akses dari perangkat lain', size: 11, color: C.muted }],
+  });
+  items.push({ k: 'toggle', x: toggleX, y: y + 5, w: 28, h: 16, on: s.lanMode !== 'off' });
+  y += 26;
+  if (s.lanMode !== 'off') {
+    // lingkup: Web UI + prototype, atau prototype saja
+    const segX = 14;
+    const segW = (toggleX + 28 - segX - 4) / 2;
+    for (const [i, mode, label] of [[0, 'all', 'Semua'], [1, 'prototypes', 'Prototype saja']] as const) {
+      const sx = segX + i * (segW + 4);
+      const on = s.lanMode === mode;
+      items.push({ k: 'rect', x: sx, y: y + 1, w: segW, h: 22, r: 6, ...(on ? { fill: C.accent } : { stroke: C.line }) });
+      if (!on && !busy) items.push({ k: 'hit', x: sx, y: y + 1, w: segW, h: 22, r: 6, id: `lan:${mode}`, hover: C.hover });
+      items.push({ k: 'text', x: sx, y: y + 1, w: segW, h: 22, align: 'center', runs: [{ text: label, size: 11, color: on ? '#ffffff' : busy ? C.muted : C.text, bold: on }] });
+    }
+    y += 26;
+    const copy = s.daemonUp ? lanCopyText(s) : null;
+    const bw2 = buttonWidth('Salin');
+    const sx = toggleX + 28 - bw2;
+    const note = lanNote(s);
+    items.push({ k: 'text', x: 14, y, w: sx - 8 - 14, h: 20, runs: [{ text: note, size: 11, color: copy ? '#c4b5fd' : C.muted }] });
+    if (copy) {
+      items.push({ k: 'rect', x: sx, y: y + 1, w: bw2, h: 18, r: 5, stroke: C.line });
+      items.push({ k: 'hit', x: sx, y: y + 1, w: bw2, h: 18, r: 5, id: 'lanCopy', hover: C.btnHover });
+      items.push({ k: 'text', x: sx, y: y + 1, w: bw2, h: 18, align: 'center', runs: [{ text: 'Salin', size: 11, color: C.text }] });
+    }
+    y += 24;
+  }
   const u = updateView(s.update);
   const downloading = s.update.status === 'downloading';
   const rowH = downloading ? 36 : 32;
@@ -288,6 +320,14 @@ export function menuLayout(s: TrayState): Popup {
     { id: 'pause', text: s.daemonUp ? '⏸ Jeda daemon' : '▶ Lanjutkan daemon', disabled: busy },
     { sep: true },
     ...(s.startup === null ? [] : [{ id: 'startup', text: 'Jalankan saat startup', check: true, checked: s.startup }]),
+    { id: 'lan', text: 'Mode LAN', check: true, checked: s.lanMode !== 'off', disabled: busy },
+    ...(s.lanMode === 'off'
+      ? []
+      : [
+          { id: 'lan:all', text: 'LAN: Web UI + prototype', check: true, checked: s.lanMode === 'all', disabled: busy },
+          { id: 'lan:prototypes', text: 'LAN: prototype saja', check: true, checked: s.lanMode === 'prototypes', disabled: busy },
+        ]),
+    ...(s.daemonUp && lanCopyText(s) ? [{ id: 'lanCopy', text: '📋 Salin alamat LAN' }] : []),
     { id: 'notif', text: 'Tampilkan notifikasi', check: true, checked: s.notifications },
     { sep: true },
     { id: 'update', ...menuUpdateRow(s.update) },

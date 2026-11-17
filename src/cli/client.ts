@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { mkdirSync, openSync } from 'node:fs';
 import path from 'node:path';
 import { APP_MODE } from '../core/appfiles.js';
-import type { Config } from '../core/config.js';
+import { lanArgs, type Config } from '../core/config.js';
 import { AppError, errorMessage, type ErrorBody, type ErrorCode } from '../core/errors.js';
 import { samePath } from '../core/fsutil.js';
 import type { LogLine } from '../core/logs.js';
@@ -68,7 +68,7 @@ export class DaemonClient {
       String(this.config.port),
       '--home',
       this.config.home,
-      ...(this.config.lan ? ['--lan'] : []),
+      ...lanArgs(this.config.lanMode),
     ];
     const child = spawn(process.execPath, args, {
       detached: true,

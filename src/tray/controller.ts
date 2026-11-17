@@ -1,21 +1,29 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { errorMessage } from '../core/errors.js';
+import { rankLanAddresses } from '../core/net.js';
 import type { UpdateCheck } from '../core/update.js';
 import type { PrototypeView } from '../core/views.js';
 import type { HostEvent, TrayHostLike } from './host.js';
-import { iconState, isLive, statusNotices, summary, type TrayState } from './menu.js';
+import type { LanMode } from '../core/config.js';
+import { iconState, isLive, lanCopyText, lanUrl, statusNotices, summary, type LanScope, type TrayState } from './menu.js';
 import { menuLayout, popupLayout } from './popup.js';
 
 /** Akses ke daemon (lewat HTTP di aplikasi asli, tiruan di tes). */
 export interface DaemonApi {
-  /** Daftar prototype, atau null bila daemon tidak berjalan. */
-  list(): Promise<PrototypeView[] | null>;
+  /** Daftar prototype & mode daemon, atau null bila daemon tidak berjalan. */
+  status(): Promise<DaemonStatus | null>;
   action(id: string, action: 'start' | 'stop' | 'restart'): Promise<void>;
-  /** Nyalakan daemon (bila belum) dan tunggu sampai siap. */
-  ensure(): Promise<void>;
+  /** Nyalakan daemon (bila belum) dengan mode LAN `lanMode`, dan tunggu sampai siap. */
+  ensure(opts: { lanMode: LanMode }): Promise<void>;
   /** Hentikan daemon beserta semua prototype, tunggu sampai mati. */
   shutdown(): Promise<void>;
+}
+
+export interface DaemonStatus {
+  prototypes: PrototypeView[];
+  /** Mode LAN daemon yang sedang berjalan. */
+  lanMode: LanMode;
 }
 
 export interface Updater {
@@ -58,6 +66,12 @@ export interface TrayDeps {
   webOnly?: (file: string) => boolean;
   /** Dipanggil saat tray selesai (Keluar, host tertutup). */
   exit: (code: number) => void;
+  /** Alamat IPv4 LAN mesin ini (untuk alamat yang ditampilkan saat mode LAN aktif). */
+  lanAddresses?: () => string[];
+  /** Salin teks ke clipboard. Tanpa ini: tombol "Salin" hanya memberi notifikasi alamatnya. */
+  copyText?: (text: string) => void;
+  /** Paksa mode LAN saat mulai (tray dijalankan dengan `--lan`/`--lan-prototypes`). Selain itu: dari tray.json. */
+  lanMode?: LanMode;
   /** Tema aplikasi Windows untuk menu klik kanan (default terang). */
   theme?: 'light' | 'dark';
   /** Interval polling daemon (ms). */
@@ -68,7 +82,12 @@ export interface TrayDeps {
 
 interface Settings {
   notifications: boolean;
+  lanMode: LanMode;
+  lanScope: LanScope;
 }
+
+const LAN_MODES: readonly LanMode[] = ['off', 'prototypes', 'all'];
+const LAN_LABEL: Record<LanScope, string> = { all: 'Web UI + prototype', prototypes: 'prototype saja' };
 
 export type AppApplyResult = { live: true; version: string } | { live: false };
 
@@ -92,6 +111,9 @@ export class TrayController {
       prototypes: [],
       startup: null,
       notifications: true,
+      lanMode: d.lanMode ?? 'off',
+      lanScope: d.lanMode === 'prototypes' ? 'prototypes' : 'all',
+      lanAddrs: [],
       theme: d.theme ?? 'light',
       update: { status: 'idle', current: d.version, latest: null, progress: 0, checkedAt: null, error: null, selfUpdate: d.selfUpdate, restart: true },
     };
@@ -141,14 +163,20 @@ export class TrayController {
     if (this.polling || this.stopped) return;
     this.polling = true;
     try {
-      const list = await this.d.api.list().catch(() => null);
+      const st = await this.d.api.status().catch(() => null);
       const s = this.state;
-      if (list) {
-        if (s.daemonUp) for (const n of statusNotices(s.prototypes, list)) this.notify(n.title, n.text);
-        s.prototypes = list;
+      if (st) {
+        if (s.daemonUp) for (const n of statusNotices(s.prototypes, st.prototypes)) this.notify(n.title, n.text);
+        s.prototypes = st.prototypes;
+        // daemon bisa dinyalakan dari luar tray (CLI) dengan mode lain: tampilkan mode sebenarnya
+        if (!s.daemonBusy) {
+          s.lanMode = st.lanMode;
+          if (st.lanMode !== 'off') s.lanScope = st.lanMode;
+        }
       }
-      if (!s.daemonBusy) s.daemonUp = list !== null;
-      if (!list) this.markStopped();
+      if (!s.daemonBusy) s.daemonUp = st !== null;
+      if (!st) this.markStopped();
+      this.refreshLanAddrs();
       this.render();
     } finally {
       this.polling = false;
@@ -186,6 +214,13 @@ export class TrayController {
         return this.toggleStartup();
       case 'notif':
         return this.toggleNotifications();
+      case 'lan':
+        return this.setLanMode(this.state.lanMode === 'off' ? this.state.lanScope : 'off');
+      case 'lan:all':
+      case 'lan:prototypes':
+        return this.setLanMode(id === 'lan:all' ? 'all' : 'prototypes');
+      case 'lanCopy':
+        return this.copyLanUrl();
       case 'update':
         return this.updateAction();
       case 'whatsnew':
@@ -250,7 +285,7 @@ export class TrayController {
     this.state.daemonBusy = 'starting';
     this.render();
     try {
-      await this.d.api.ensure();
+      await this.d.api.ensure({ lanMode: this.state.lanMode });
       this.state.daemonUp = true;
       if (announce) this.notify('Prototyper', 'Daemon berjalan kembali.');
     } catch (err) {
@@ -286,6 +321,78 @@ export class TrayController {
     await this.saveSettings();
     if (this.state.notifications) this.notify('Notifikasi', 'Notifikasi tray diaktifkan.');
     this.render();
+  }
+
+  // ===== Mode LAN =====
+
+  private refreshLanAddrs(): void {
+    try {
+      this.state.lanAddrs = this.state.lanMode !== 'off' ? rankLanAddresses(this.d.lanAddresses?.() ?? []) : [];
+    } catch {
+      this.state.lanAddrs = [];
+    }
+  }
+
+  /**
+   * Mode LAN hanya bisa diubah saat daemon dinyalakan (alamat bind), jadi daemon dimulai ulang
+   * dengan mode baru, lalu prototype yang tadinya berjalan dinyalakan lagi. Pilihan disimpan di tray.json.
+   */
+  private async setLanMode(next: LanMode): Promise<void> {
+    const s = this.state;
+    if (s.daemonBusy || next === s.lanMode) return;
+    s.lanMode = next;
+    if (next !== 'off') s.lanScope = next;
+    await this.saveSettings();
+    this.refreshLanAddrs();
+    if (!s.daemonUp) {
+      this.notify('Mode LAN', next === 'off' ? 'Dimatikan.' : `${LAN_LABEL[next]} — berlaku saat daemon dilanjutkan.`);
+      return this.render();
+    }
+    const restore = s.prototypes.filter((p) => isLive(p)).map((p) => p.id);
+    s.daemonBusy = 'stopping';
+    this.render();
+    try {
+      await this.d.api.shutdown();
+      s.daemonUp = false;
+      this.markStopped();
+      s.daemonBusy = 'starting';
+      this.render();
+      await this.d.api.ensure({ lanMode: next });
+      s.daemonUp = true;
+    } catch (err) {
+      s.daemonBusy = null;
+      this.notify('Gagal mengubah mode LAN', errorMessage(err), 'error');
+      await this.poll();
+      return;
+    }
+    const failed: string[] = [];
+    for (const id of restore) await this.d.api.action(id, 'start').catch(() => failed.push(id));
+    s.daemonBusy = null;
+    await this.poll();
+    const addr = s.lanAddrs[0];
+    const firewall = 'Bila Windows meminta izin firewall, izinkan untuk jaringan Private.';
+    if (next === 'off') {
+      this.notify('Mode LAN dimatikan', 'Prototyper & prototype hanya bisa dibuka dari komputer ini.');
+    } else if (!addr) {
+      this.notify(`Mode LAN aktif (${LAN_LABEL[next]})`, 'Komputer ini belum terhubung ke jaringan. Alamat LAN muncul setelah tersambung.');
+    } else if (next === 'all') {
+      this.notify('Mode LAN aktif', `Buka dari perangkat lain di jaringan yang sama: ${lanUrl(s)}. ${firewall}`);
+    } else {
+      this.notify(
+        'Mode LAN aktif (prototype saja)',
+        `Prototype bisa dibuka dari perangkat lain di http://${addr}:<port prototype>. Web UI Prototyper tetap hanya di komputer ini. ${firewall}`,
+      );
+    }
+    if (failed.length) this.notify('Sebagian gagal dijalankan lagi', failed.join(', '), 'error');
+  }
+
+  private copyLanUrl(): void {
+    const text = this.state.daemonUp ? lanCopyText(this.state) : null;
+    if (!text) return;
+    if (!this.d.copyText) return this.notify('Alamat LAN', text);
+    this.d.copyText(text);
+    const lines = text.split('\r\n');
+    this.notify('Alamat LAN disalin', lines.length > 1 ? `${lines.length} alamat prototype — tempel di perangkat lain.` : `${text} — tempel di browser perangkat lain.`);
   }
 
   // ===== Pembaruan =====
@@ -460,13 +567,15 @@ export class TrayController {
     try {
       const s = JSON.parse(await fs.readFile(this.d.settingsFile, 'utf8')) as Partial<Settings>;
       if (typeof s.notifications === 'boolean') this.state.notifications = s.notifications;
+      if (s.lanScope === 'all' || s.lanScope === 'prototypes') this.state.lanScope = s.lanScope;
+      if (LAN_MODES.includes(s.lanMode as LanMode) && !this.d.lanMode) this.state.lanMode = s.lanMode as LanMode;
     } catch {
       /* belum ada / rusak: pakai default */
     }
   }
 
   private async saveSettings(): Promise<void> {
-    const s: Settings = { notifications: this.state.notifications };
+    const s: Settings = { notifications: this.state.notifications, lanMode: this.state.lanMode, lanScope: this.state.lanScope };
     await fs.mkdir(path.dirname(this.d.settingsFile), { recursive: true });
     await fs.writeFile(this.d.settingsFile, `${JSON.stringify(s, null, 2)}\n`);
   }

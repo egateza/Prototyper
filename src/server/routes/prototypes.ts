@@ -86,7 +86,7 @@ const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : unde
 export const prototypeRoutes: FastifyPluginAsync<{ ctx: RouteContext }> = async (app, { ctx }) => {
   const { config, registry, runtime } = ctx;
   const view = (p: ResolvedPrototype): PrototypeView =>
-    toView(p, runtime.info(p.id), { lan: config.lan, lanAddrs: config.lan ? lanAddresses() : [] });
+    toView(p, runtime.info(p.id), { lan: config.lanMode !== 'off', lanAddrs: config.lanMode !== 'off' ? lanAddresses() : [] });
 
   app.get('/prototypes', async () => (await registry.list()).map(view));
 

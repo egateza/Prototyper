@@ -1,4 +1,17 @@
-## Yang baru di 0.3.10
+## Yang baru di 0.3.11
+
+- **Lanjut sesi agent (Claude Code).** Klik **Kerjakan** berikutnya pada prototype yang sama melanjutkan percakapan run sebelumnya, jadi agent ingat apa yang sudah dilihat dan diubahnya dan tidak perlu membaca ulang semuanya dari awal. Hasilnya lebih nyambung dan lebih hemat.
+- Bar agent menampilkan **↻ Lanjutkan sesi · N run**. Klik untuk memulai **Sesi baru** pada run berikutnya.
+- Sesi otomatis tidak dilanjutkan bila sudah lewat 24 jam (`PROTOTYPER_AGENT_RESUME_HOURS`, 0 = mati), bila perubahan run terakhir Anda batalkan, atau bila folder prototype berpindah. Bila sesinya sudah tidak ada di Claude Code, Prototyper otomatis mengulang dengan sesi baru.
+- Sesi disimpan di `<PROTOTYPER_HOME>/agent-sessions.json`, jadi tetap bisa dilanjutkan setelah Prototyper dimulai ulang. Agent lain (Codex, Gemini, Copilot) selalu memulai sesi baru seperti sebelumnya.
+
+- **Mode LAN dari tray.** Popup tray (klik kiri) dan menu klik kanan punya toggle **Mode LAN**. Saat dinyalakan, daemon dimulai ulang agar bisa dibuka dari HP/laptop lain di jaringan yang sama, dan prototype yang tadi berjalan dinyalakan lagi. Alamatnya (mis. `192.168.1.5:4000`) tampil di bawah toggle dengan tombol **Salin**. Pilihannya diingat. Seperti `--lan`, perangkat lain hanya bisa melihat; start/stop, komentar, dan agent tetap hanya dari komputer ini. Bila Windows meminta izin firewall, izinkan untuk jaringan Private.
+- **LAN untuk prototype saja.** Di bawah toggle ada pilihan **Semua** / **Prototype saja**. *Prototype saja* membuka prototype ke jaringan (mis. `http://192.168.1.5:4101`), sedangkan Web UI Prototyper, komentar, dan log tetap hanya di komputer ini. Tombol **Salin** menyalin alamat prototype yang sedang berjalan. Dari terminal: `prototyper --lan-prototypes …` atau `PROTOTYPER_LAN=prototypes`.
+- **Tampilan HP sama dengan pratinjau.** Prototype static tanpa `<meta name="viewport">` dulu tampil sebagai layout desktop yang diperkecil saat dibuka di HP, meskipun di pratinjau perangkat sudah tampil versi mobile. Sekarang meta itu disisipkan otomatis bila belum ada. Matikan dengan `"static": { "viewport": false }`.
+
+Pembaruan ke 0.3.11 mengubah kode server, jadi Prototyper dimulai ulang sekali.
+
+## 0.3.10
 
 - **Riwayat & konteks komentar.** Setiap komentar yang diselesaikan dicatat satu baris di `.prototyper/DECISIONS.md` (tanggal · komentar · halaman · elemen · permintaan → hasil). Hasilnya diambil dari catatan saat menyelesaikan, atau dari laporan terakhir agent bila catatannya kosong. Komentar yang dibuka lagi dan perubahan agent yang dibatalkan juga tercatat.
 - `prototyper comments context <id> <komentar> [--json]` (dan `GET /api/prototypes/:id/comments/:cid/context`) memberi agent konteks satu komentar: thread-nya, sampai 10 komentar selesai di halaman yang sama (yang elemennya sama lebih dulu), dan sampai 20 keputusan terkait. Petunjuk agent di `AGENTS.md` prototype dan prompt "Kerjakan" dari Web UI memintanya dijalankan sebelum mengerjakan komentar.

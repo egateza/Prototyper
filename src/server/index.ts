@@ -51,11 +51,17 @@ export async function startServer(config: Config): Promise<void> {
   }
 
   const urls = [`http://localhost:${config.port}`];
-  if (config.lan) urls.push(...lanAddresses().map((a) => `http://${a}:${config.port}`));
+  if (config.lanMode === 'all') urls.push(...lanAddresses().map((a) => `http://${a}:${config.port}`));
+  const mode =
+    config.lanMode === 'all'
+      ? '\nMode   : LAN (kontrol hanya dari mesin ini)'
+      : config.lanMode === 'prototypes'
+        ? `\nMode   : LAN untuk prototype saja (${lanAddresses().join(', ') || 'tanpa jaringan'}); Web UI hanya dari mesin ini`
+        : '';
   console.log(
     `\nPrototyper berjalan:\n${urls.map((u) => `  ${u}`).join('\n')}\n` +
       `Data   : ${config.home}\nPort   : prototype ${config.portRange.start}-${config.portRange.end}` +
-      `${config.lan ? '\nMode   : LAN (kontrol hanya dari mesin ini)' : ''}\nCtrl+C untuk berhenti.\n`,
+      `${mode}\nCtrl+C untuk berhenti.\n`,
   );
 
   // Setelah update Prototyper: sesuaikan petunjuk agent di semua prototype (di belakang layar).

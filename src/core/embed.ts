@@ -28,6 +28,28 @@ export function injectEmbedTag(html: string, opts: { liveReload?: boolean } = {}
   return i >= 0 ? `${html.slice(0, i)}${tag}${html.slice(i)}` : `${html}\n${tag}\n`;
 }
 
+export const VIEWPORT_META = '<meta name="viewport" content="width=device-width, initial-scale=1">';
+
+/**
+ * Sisipkan meta viewport bila halaman belum punya. Tanpa meta ini browser HP merender dengan lebar
+ * virtual ±980px, sehingga media query mobile tidak aktif (padahal di pratinjau perangkat Web UI aktif,
+ * karena iframe-nya memang selebar perangkat). Diletakkan tepat setelah `<head>`, lalu `<html>`, lalu
+ * setelah doctype, atau di awal dokumen.
+ */
+export function injectViewportMeta(html: string): string {
+  // komentar HTML (mis. meta viewport yang dinonaktifkan) diabaikan; diganti spasi agar indeks tetap sama
+  const code = html.replace(/<!--[\s\S]*?(?:-->|$)/g, (c) => ' '.repeat(c.length));
+  if (/<meta\b[^>]*\bname\s*=\s*["']?viewport\b/i.test(code)) return html;
+  for (const re of [/<head\b[^>]*>/i, /<html\b[^>]*>/i, /<!doctype\b[^>]*>/i]) {
+    const m = re.exec(code);
+    if (m) {
+      const at = m.index + m[0].length;
+      return `${html.slice(0, at)}\n${VIEWPORT_META}${html.slice(at)}`;
+    }
+  }
+  return `${VIEWPORT_META}\n${html}`;
+}
+
 /** Ubah payload onSend Fastify (string/Buffer/stream) menjadi teks. */
 export async function payloadToString(payload: unknown): Promise<string | null> {
   if (typeof payload === 'string') return payload;

@@ -6,17 +6,25 @@ export interface PortRange {
   end: number;
 }
 
+/**
+ * Mode LAN: `off` = semua hanya dari komputer ini; `prototypes` = hanya server prototype yang bisa dibuka
+ * dari perangkat lain (Web UI tetap lokal); `all` = Web UI Prototyper juga.
+ */
+export type LanMode = 'off' | 'prototypes' | 'all';
+
 export interface Config {
   /** Folder data Prototyper: registry.json, state.json, logs/. */
   home: string;
-  /** Host yang dipakai daemon/UI dan server prototype. */
+  /** Host yang dipakai daemon/UI (0.0.0.0 hanya pada mode LAN `all`). */
   host: string;
+  /** Host server prototype & placeholder `{host}` (0.0.0.0 pada mode LAN apa pun). */
+  prototypeHost: string;
   /** Port daemon (HTTP API + UI). */
   port: number;
   /** Rentang port untuk prototype. */
   portRange: PortRange;
-  /** true bila dijalankan dengan --lan. */
-  lan: boolean;
+  /** Mode LAN (--lan = `all`, --lan-prototypes = `prototypes`, atau PROTOTYPER_LAN). */
+  lanMode: LanMode;
   /** Folder induk default untuk `prototyper new`. */
   workspace: string;
   /** Perbarui petunjuk agent di semua prototype saat daemon menyala (PROTOTYPER_AUTO_SYNC=0 mematikan). */
@@ -31,7 +39,20 @@ export interface ConfigOverrides {
   home?: string;
   workspace?: string;
   port?: number;
-  lan?: boolean;
+  lanMode?: LanMode;
+}
+
+/** PROTOTYPER_LAN: `1`/`all` = semua, `prototypes` = prototype saja, lainnya = mati. */
+export function parseLanMode(value: string | undefined): LanMode {
+  const v = (value ?? '').trim().toLowerCase();
+  if (v === '1' || v === 'all' || v === 'true') return 'all';
+  if (v === 'prototypes' || v === 'prototype') return 'prototypes';
+  return 'off';
+}
+
+/** Argumen CLI yang menyalakan daemon dengan mode LAN ini. */
+export function lanArgs(mode: LanMode): string[] {
+  return mode === 'all' ? ['--lan'] : mode === 'prototypes' ? ['--lan-prototypes'] : [];
 }
 
 function parsePort(value: string | undefined, fallback: number, name: string): number {
@@ -75,7 +96,7 @@ export function loadConfig(
   overrides: ConfigOverrides = {},
   env: NodeJS.ProcessEnv = process.env,
 ): Config {
-  const lan = overrides.lan ?? env.PROTOTYPER_LAN === '1';
+  const lanMode = overrides.lanMode ?? parseLanMode(env.PROTOTYPER_LAN);
   const home = resolveHome(overrides.home, env);
   const port = overrides.port ?? parsePort(env.PROTOTYPER_PORT, 4000, 'PROTOTYPER_PORT');
   const portRange = parseRange(env.PROTOTYPER_PORT_RANGE);
@@ -88,10 +109,11 @@ export function loadConfig(
 
   return {
     home,
-    host: lan ? '0.0.0.0' : '127.0.0.1',
+    host: lanMode === 'all' ? '0.0.0.0' : '127.0.0.1',
+    prototypeHost: lanMode === 'off' ? '127.0.0.1' : '0.0.0.0',
     port,
     portRange,
-    lan,
+    lanMode,
     workspace,
     autoSyncAgents: env.PROTOTYPER_AUTO_SYNC !== '0',
     updateRepo: parseRepo(env.PROTOTYPER_UPDATE_REPO),

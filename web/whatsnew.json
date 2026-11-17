@@ -2,6 +2,19 @@
   "releasesUrl": "https://github.com/egateza/Prototyper/releases",
   "releases": [
     {
+      "version": "0.3.11",
+      "date": "2026-11-17",
+      "title": "Lanjut sesi agent & mode LAN dari tray",
+      "items": [
+        "Dengan Claude Code, klik **Kerjakan** berikutnya pada prototype yang sama melanjutkan percakapan run sebelumnya: agent ingat apa yang sudah dilihat dan diubahnya, jadi hasilnya lebih nyambung dan lebih hemat.",
+        "Bar agent menampilkan **↻ Lanjutkan sesi · N run**. Klik untuk memulai **Sesi baru** pada run berikutnya.",
+        "Sesi tidak dilanjutkan bila sudah lewat 24 jam, bila perubahan run terakhir Anda batalkan, atau bila folder prototype berpindah. Bila sesinya sudah hilang, Prototyper otomatis memulai sesi baru.",
+        "**Mode LAN dari tray**: nyalakan toggle **Mode LAN** di popup tray agar Prototyper & prototype bisa dibuka dari HP/laptop lain di jaringan yang sama. Alamatnya tampil di bawah toggle dengan tombol **Salin**. Perangkat lain hanya bisa melihat; kontrol tetap dari komputer ini.",
+        "Pilih **Prototype saja** di bawah toggle Mode LAN bila hanya prototype yang perlu dibuka dari perangkat lain: Web UI Prototyper, komentar, dan log tetap hanya di komputer ini.",
+        "Prototype yang dibuka di HP kini memakai layout mobile seperti di pratinjau perangkat: meta viewport disisipkan otomatis bila halaman belum punya."
+      ]
+    },
+    {
       "version": "0.3.10",
       "date": "2026-11-16",
       "title": "Riwayat & konteks komentar untuk agent",

@@ -2,13 +2,15 @@ import { EventEmitter } from 'node:events';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import type { LanMode } from '../src/core/config.js';
+import { rankLanAddresses } from '../src/core/net.js';
 import { STOPPED_INFO } from '../src/core/runtime.js';
 import type { UpdateCheck } from '../src/core/update.js';
 import type { PrototypeView } from '../src/core/views.js';
 import { TrayController, WHATSNEW_HASH, type DaemonApi, type TrayDeps } from '../src/tray/controller.js';
 import { asciiJson, parseHostLine, TrayHost, type HostEvent, type IconState, type TrayHostLike } from '../src/tray/host.js';
 import { parseAppsTheme, readAppsTheme, runningTrayPid, trayArgs, trayFiles } from '../src/tray/index.js';
-import { iconState, statusNotices, type TrayState, type UpdateState } from '../src/tray/menu.js';
+import { iconState, lanCopyText, lanNote, lanUrl, statusNotices, type TrayState, type UpdateState } from '../src/tray/menu.js';
 import { glyphRuns, MENU_THEME, MENU_W, menuLayout, POPUP_W, MAX_ROWS, popupLayout, type Popup, type PopupItem } from '../src/tray/popup.js';
 import { testConfig, tmpDir } from './helpers.js';
 
@@ -41,7 +43,7 @@ const upd = (o: Partial<UpdateState> = {}): UpdateState => ({
 });
 
 const state = (o: Partial<TrayState> = {}): TrayState => ({
-  url: 'http://localhost:4000', daemonUp: true, daemonBusy: null, prototypes: [], startup: false, notifications: true, theme: 'dark', update: upd(), ...o,
+  url: 'http://localhost:4000', daemonUp: true, daemonBusy: null, prototypes: [], startup: false, notifications: true, lanMode: 'off', lanScope: 'all', lanAddrs: [], theme: 'dark', update: upd(), ...o,
 });
 
 type Hit = Extract<PopupItem, { k: 'hit' }>;
@@ -61,8 +63,8 @@ describe('menu tray', () => {
     const p = popupLayout(state({ prototypes: [view('kasir', 'running', 4101), view('landing')] }));
     expect(p.w).toBe(POPUP_W);
     expect(texts(p)).toEqual(expect.arrayContaining(['Prototyper  v0.1.0', 'Aktif · 1 dari 2 berjalan', 'KASIR  Berjalan · :4101', 'LANDING  Berhenti', 'Jalankan saat startup']));
-    expect(hitIds(p)).toEqual(['pause', 'p:open:kasir', 'p:stop:kasir', 'p:start:landing', 'startup', 'update', 'startAll', 'stopAll', 'open']);
-    expect(p.items.filter((i) => i.k === 'toggle').map((i) => (i as { on: boolean }).on)).toEqual([true, false, false]);
+    expect(hitIds(p)).toEqual(['pause', 'p:open:kasir', 'p:stop:kasir', 'p:start:landing', 'startup', 'lan', 'update', 'startAll', 'stopAll', 'open']);
+    expect(p.items.filter((i) => i.k === 'toggle').map((i) => (i as { on: boolean }).on)).toEqual([true, false, false, false]);
     // bar Buka Prototyper menempel di bawah; tombol di popup tidak menutup popup
     const hits = p.items.filter((i): i is Extract<PopupItem, { k: 'hit' }> => i.k === 'hit');
     const open = hits.find((i) => i.id === 'open')!;
@@ -112,7 +114,7 @@ describe('menu tray', () => {
   it('menu klik kanan: urutan & teks sama dengan menu konteks prototype, menutup setelah dipilih', () => {
     const m = menuLayout(state({ startup: true }));
     expect(m.w).toBe(MENU_W);
-    expect(hitIds(m)).toEqual(['open', 'startAll', 'stopAll', 'pause', 'startup', 'notif', 'update', 'whatsnew', 'quit']);
+    expect(hitIds(m)).toEqual(['open', 'startAll', 'stopAll', 'pause', 'startup', 'lan', 'notif', 'update', 'whatsnew', 'quit']);
     expect(texts(m)).toEqual(expect.arrayContaining(['🌐 Buka Prototyper di browser', '⏸ Jeda daemon', 'Tampilkan notifikasi', '⟳ Periksa pembaruan…', '✨ Yang baru di 0.1.0', 'Keluar']));
     expect(menuRow(m, 'startup')!.checked).toBe(true);
     expect(menuRow(menuLayout(state({ startup: false })), 'startup')!.checked).toBe(false);
@@ -135,6 +137,68 @@ describe('menu tray', () => {
     expect(hitIds(paused)).not.toContain('startAll');
     expect(hitIds(paused)).not.toContain('whatsnew'); // halaman Web UI butuh daemon
     expect(menuRow(paused, 'pause')!.label).toBe('▶ Lanjutkan daemon');
+  });
+
+  it('mode LAN: toggle, alamat untuk perangkat lain + Salin; dinonaktifkan saat daemon sibuk', () => {
+    const off = popupLayout(state());
+    expect(texts(off)).toContain('Mode LAN  akses dari perangkat lain');
+    expect(hitIds(off)).not.toContain('lanCopy');
+    const on = popupLayout(state({ lanMode: 'all', lanAddrs: ['192.168.1.5', '172.20.0.1'] }));
+    expect(texts(on)).toEqual(expect.arrayContaining(['Semua', 'Prototype saja', '192.168.1.5:4000', 'Salin']));
+    // lingkup yang aktif tidak bisa diklik; tombol Salin di atas baris (klik paling atas menang)
+    const ids = hitIds(on);
+    expect(ids).toContain('lan:prototypes');
+    expect(ids).not.toContain('lan:all');
+    expect(ids.indexOf('lanCopy')).toBeGreaterThan(ids.indexOf('lan'));
+    for (const i of on.items) if ('w' in i && 'h' in i) {
+      expect(i.x + i.w).toBeLessThanOrEqual(POPUP_W);
+      expect(i.y + i.h).toBeLessThanOrEqual(on.h);
+    }
+    expect(on.h).toBeGreaterThan(off.h);
+    expect(texts(popupLayout(state({ lanMode: 'all', lanAddrs: [] })))).toContain('Tidak ada jaringan');
+    const paused = popupLayout(state({ lanMode: 'all', daemonUp: false, lanAddrs: ['192.168.1.5'] }));
+    expect(texts(paused)).toContain('Aktif saat daemon dilanjutkan');
+    expect(hitIds(paused)).not.toContain('lanCopy');
+    const busy = popupLayout(state({ lanMode: 'all', daemonBusy: 'starting' }));
+    expect(hitIds(busy)).not.toContain('lan');
+    expect(hitIds(busy)).not.toContain('lan:prototypes');
+
+    const m = menuLayout(state({ lanMode: 'all', lanAddrs: ['192.168.1.5'] }));
+    expect(menuRow(m, 'lan')).toMatchObject({ label: 'Mode LAN', checked: true });
+    expect(menuRow(m, 'lan:all')).toMatchObject({ label: 'LAN: Web UI + prototype', checked: true });
+    expect(menuRow(m, 'lan:prototypes')).toMatchObject({ label: 'LAN: prototype saja', checked: false });
+    expect(menuRow(m, 'lanCopy')!.label).toBe('📋 Salin alamat LAN');
+    expect(hitIds(menuLayout(state()))).not.toContain('lanCopy');
+    expect(hitIds(menuLayout(state()))).not.toContain('lan:all');
+    expect(hitIds(menuLayout(state({ daemonBusy: 'stopping' })))).not.toContain('lan');
+    expect(iconState(state({ lanMode: 'all' })).tooltip).toBe('Prototyper — 0 prototype berjalan · LAN');
+    expect(iconState(state({ lanMode: 'prototypes' })).tooltip).toBe('Prototyper — 0 prototype berjalan · LAN prototype');
+  });
+
+  it('mode LAN prototype saja: alamat & Salin mengikuti prototype yang berjalan', () => {
+    const base = { lanMode: 'prototypes' as const, lanAddrs: ['192.168.1.5'] };
+    const none = popupLayout(state({ ...base, prototypes: [view('kasir')] }));
+    expect(texts(none)).toContain('192.168.1.5 · jalankan prototype dulu');
+    expect(hitIds(none)).not.toContain('lanCopy');
+    expect(hitIds(none)).toContain('lan:all');
+    const one = state({ ...base, prototypes: [view('kasir', 'running', 4101), view('landing')] });
+    expect(texts(popupLayout(one))).toContain('192.168.1.5:4101');
+    expect(lanCopyText(one)).toBe('http://192.168.1.5:4101');
+    expect(lanUrl(one)).toBeNull(); // Web UI tidak terbuka ke LAN
+    const two = state({ ...base, prototypes: [view('kasir', 'running', 4101), view('landing', 'running', 4102)] });
+    expect(lanNote(two)).toBe('192.168.1.5 · 2 prototype');
+    expect(lanCopyText(two)).toBe('KASIR: http://192.168.1.5:4101\r\nLANDING: http://192.168.1.5:4102');
+    expect(menuRow(menuLayout(two), 'lan:prototypes')!.checked).toBe(true);
+    expect(hitIds(menuLayout(two))).toContain('lanCopy');
+  });
+
+  it('alamat LAN: Wi-Fi/LAN biasa didahulukan dari adaptor virtual & link-local', () => {
+    expect(rankLanAddresses(['169.254.3.4', '172.20.0.1', '10.0.0.7', '192.168.1.5', '100.64.0.2'])).toEqual([
+      '192.168.1.5', '10.0.0.7', '172.20.0.1', '100.64.0.2', '169.254.3.4',
+    ]);
+    expect(lanUrl({ url: 'http://localhost:4000', lanMode: 'all', lanAddrs: ['192.168.1.5'] })).toBe('http://192.168.1.5:4000');
+    expect(lanUrl({ url: 'http://localhost:4000', lanMode: 'off', lanAddrs: ['192.168.1.5'] })).toBeNull();
+    expect(lanUrl({ url: 'http://localhost:4000', lanMode: 'all', lanAddrs: [] })).toBeNull();
   });
 
   it('simbol di awal teks memakai Segoe UI Symbol', () => {
@@ -258,20 +322,25 @@ class FakeHost extends EventEmitter implements TrayHostLike {
 
 class FakeApi implements DaemonApi {
   up = false;
+  lanMode: LanMode = 'off';
   views: PrototypeView[] = [];
   calls: string[] = [];
   failStart = new Set<string>();
-  async list() {
-    return this.up ? this.views.map((v) => ({ ...v })) : null;
+  failEnsure = false;
+  async status() {
+    return this.up ? { prototypes: this.views.map((v) => ({ ...v })), lanMode: this.lanMode } : null;
   }
   async action(id: string, action: 'start' | 'stop' | 'restart') {
     this.calls.push(`${action}:${id}`);
     if (action === 'start' && this.failStart.has(id)) throw new Error('gagal');
     this.views = this.views.map((v) => (v.id === id ? view(id, action === 'stop' ? 'stopped' : 'running', 4100 + this.views.indexOf(v)) : v));
   }
-  async ensure() {
-    this.calls.push('ensure');
+  async ensure({ lanMode }: { lanMode: LanMode }) {
+    this.calls.push(lanMode === 'off' ? 'ensure' : `ensure:${lanMode}`);
+    if (this.up) return; // sudah berjalan: mode tidak berubah
+    if (this.failEnsure) throw new Error('port dipakai');
     this.up = true;
+    this.lanMode = lanMode;
   }
   async shutdown() {
     this.calls.push('shutdown');
@@ -296,6 +365,7 @@ function setup(o: Partial<TrayDeps> = {}) {
   const opened: string[] = [];
   const exits: number[] = [];
   const installs: Array<[string, string[], string | null]> = [];
+  const copied: string[] = [];
   let startup = false;
   let nextCheck = release('0.2.0');
   const home = tmpDir('prototyper-tray-home-');
@@ -320,10 +390,12 @@ function setup(o: Partial<TrayDeps> = {}) {
     exit: (code) => void exits.push(code),
     pollMs: 60_000,
     autoUpdate: null,
+    lanAddresses: () => ['172.20.0.1', '192.168.1.5'],
+    copyText: (t) => void copied.push(t),
     ...o,
   });
   controllers.push(c);
-  return { c, host, api, opened, exits, installs, home, startup: () => startup, setCheck: (r: UpdateCheck) => void (nextCheck = r) };
+  return { c, host, api, opened, exits, installs, copied, home, startup: () => startup, setCheck: (r: UpdateCheck) => void (nextCheck = r) };
 }
 
 const controllers: TrayController[] = [];
@@ -401,6 +473,91 @@ describe('TrayController', () => {
     expect(t.host.icon!.paused).toBe(true);
   });
 
+  it('mode LAN: daemon dimulai ulang dengan --lan, prototype yang berjalan dinyalakan lagi, pilihan tersimpan', async () => {
+    const t = setup();
+    await t.c.start();
+    await t.c.click('p:start:kasir');
+    await t.c.poll();
+    t.api.calls.length = 0;
+    await t.c.click('lan');
+    expect(t.api.calls).toEqual(['shutdown', 'ensure:all', 'start:kasir']);
+    expect(t.c.state).toMatchObject({ lanMode: 'all', daemonUp: true, daemonBusy: null, lanAddrs: ['192.168.1.5', '172.20.0.1'] });
+    expect(t.c.state.prototypes.find((p) => p.id === 'kasir')!.status).toBe('running');
+    expect(t.host.balloons.at(-1)![0]).toBe('Mode LAN aktif');
+    expect(t.host.balloons.at(-1)![1]).toContain('http://192.168.1.5:4000');
+    expect(JSON.parse(readFileSync(path.join(t.home, 'tray.json'), 'utf8'))).toEqual({ notifications: true, lanMode: 'all', lanScope: 'all' });
+    expect(texts(t.host.popup!)).toContain('192.168.1.5:4000');
+
+    await t.c.click('lanCopy');
+    expect(t.copied).toEqual(['http://192.168.1.5:4000']);
+    expect(t.host.balloons.at(-1)![0]).toBe('Alamat LAN disalin');
+
+    // tray berikutnya menyalakan daemon langsung dalam mode LAN
+    const t2 = setup({ settingsFile: path.join(t.home, 'tray.json') });
+    await t2.c.start();
+    expect(t2.api.calls).toEqual(['ensure:all']);
+    expect(t2.api.lanMode).toBe('all');
+
+    t.api.calls.length = 0;
+    await t.c.click('lan');
+    expect(t.api.calls).toEqual(['shutdown', 'ensure', 'start:kasir']);
+    expect(t.c.state).toMatchObject({ lanMode: 'off', lanScope: 'all', lanAddrs: [] });
+    expect(t.host.balloons.at(-1)![0]).toBe('Mode LAN dimatikan');
+  });
+
+  it('mode LAN prototype saja: daemon dimulai ulang dengan --lan-prototypes; lingkup diingat untuk toggle berikutnya', async () => {
+    const t = setup();
+    await t.c.start();
+    await t.c.click('p:start:kasir');
+    await t.c.poll();
+    await t.c.click('lan'); // default: semua
+    t.api.calls.length = 0;
+    await t.c.click('lan:prototypes');
+    expect(t.api.calls).toEqual(['shutdown', 'ensure:prototypes', 'start:kasir']);
+    expect(t.c.state).toMatchObject({ lanMode: 'prototypes', lanScope: 'prototypes', daemonUp: true });
+    expect(t.host.balloons.at(-1)![0]).toBe('Mode LAN aktif (prototype saja)');
+    expect(t.host.balloons.at(-1)![1]).toContain('Web UI Prototyper tetap hanya di komputer ini');
+    expect(texts(t.host.popup!)).toContain('192.168.1.5:4100');
+    await t.c.click('lanCopy');
+    expect(t.copied).toEqual(['http://192.168.1.5:4100']);
+    // memilih lingkup yang sudah aktif: tidak ada restart
+    t.api.calls.length = 0;
+    await t.c.click('lan:prototypes');
+    expect(t.api.calls).toEqual([]);
+    // matikan lalu nyalakan lagi: kembali ke prototype saja
+    await t.c.click('lan');
+    expect(t.c.state.lanMode).toBe('off');
+    t.api.calls.length = 0;
+    await t.c.click('lan');
+    expect(t.api.calls).toEqual(['shutdown', 'ensure:prototypes', 'start:kasir']);
+    expect(JSON.parse(readFileSync(path.join(t.home, 'tray.json'), 'utf8'))).toMatchObject({ lanMode: 'prototypes', lanScope: 'prototypes' });
+  });
+
+  it('mode LAN saat daemon dijeda hanya disimpan; daemon dari luar menampilkan mode sebenarnya; gagal dinyalakan dilaporkan', async () => {
+    const t = setup();
+    await t.c.start();
+    await t.c.click('pause');
+    t.api.calls.length = 0;
+    await t.c.click('lan');
+    expect(t.api.calls).toEqual([]);
+    expect(t.c.state.lanMode).toBe('all');
+    await t.c.click('pause');
+    expect(t.api.calls).toEqual(['ensure:all']);
+
+    const t2 = setup();
+    t2.api.up = true;
+    t2.api.lanMode = 'prototypes'; // mis. `prototyper --lan-prototypes serve` dari terminal
+    await t2.c.start();
+    expect(t2.c.state).toMatchObject({ lanMode: 'prototypes', lanScope: 'prototypes' });
+
+    const t3 = setup();
+    await t3.c.start();
+    t3.api.failEnsure = true;
+    await t3.c.click('lan');
+    expect(t3.c.state).toMatchObject({ daemonUp: false, daemonBusy: null });
+    expect(t3.host.balloons.at(-1)).toEqual(['Gagal mengubah mode LAN', 'port dipakai']);
+  });
+
   it('opsi startup dan notifikasi; notifikasi tersimpan di tray.json', async () => {
     const t = setup();
     await t.c.start();
@@ -408,7 +565,7 @@ describe('TrayController', () => {
     expect(t.startup()).toBe(true);
     expect(menuRow(t.host.menu!, 'startup')!.checked).toBe(true);
     await t.c.click('notif');
-    expect(JSON.parse(readFileSync(path.join(t.home, 'tray.json'), 'utf8'))).toEqual({ notifications: false });
+    expect(JSON.parse(readFileSync(path.join(t.home, 'tray.json'), 'utf8'))).toEqual({ notifications: false, lanMode: 'off', lanScope: 'all' });
     const before = t.host.balloons.length;
     await t.c.click('p:start:kasir');
     await t.c.poll();

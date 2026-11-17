@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { agentPrompt, agentRules, AgentRunner, childEnv, describeEvent, ensureShim, expandWinVars, parseCodexWindowsSandbox, npmShimTarget, parseRegPath, resolveCommand, scriptRunner, withExtraPath } from '../src/core/agent.js';
+import { agentPrompt, agentRules, AgentRunner, childEnv, describeEvent, ensureShim, expandWinVars, helpHasFlag, parseCodexWindowsSandbox, npmShimTarget, parseRegPath, resolveCommand, scriptRunner, withExtraPath } from '../src/core/agent.js';
 import { addComment } from '../src/core/comments.js';
 import { buildApp } from '../src/server/app.js';
 import { makePrototype, testConfig, tmpDir } from './helpers.js';
@@ -226,4 +226,45 @@ describe('Codex: [windows] sandbox dari config.toml', () => {
     expect(parseCodexWindowsSandbox('model = "x"\n[windows]\n')).toBeNull();
     expect(parseCodexWindowsSandbox('[windows.extra]\nsandbox = "x"')).toBeNull();
   });
+});
+
+describe('Claude Code versi lama: flag opsional', () => {
+  it('helpHasFlag mengenali flag di teks --help', () => {
+    const help = '  -p, --print  x\n  --permission-mode <mode>  x\n  --permission-prompt-tool <tool>  x';
+    expect(helpHasFlag(help, '--permission-mode')).toBe(true);
+    expect(helpHasFlag(help, '--permission-prompts')).toBe(false);
+    expect(helpHasFlag(`${help}\n  --permission-prompts <target>  x`, '--permission-prompts')).toBe(true);
+  });
+
+  const runWith = async (prefixArgs: string[]) => {
+    const config = testConfig();
+    const dir = makePrototype({ id: 'agen-lama', name: 'Agen Lama', type: 'static' }, { 'index.html': '<p>x</p>' });
+    const { app } = await buildApp({ config, agentCommands: { claude: { bin: process.execPath, prefixArgs } } });
+    try {
+      await app.inject({ method: 'POST', url: '/api/prototypes', payload: { path: dir } });
+      await addComment(dir, { text: 'ubah judul' });
+      const base = '/api/prototypes/agen-lama/agent';
+      expect((await app.inject({ method: 'POST', url: `${base}/run`, payload: { commentIds: ['c1'] } })).statusCode).toBe(202);
+      const s = await waitFor(async () => (await app.inject({ method: 'GET', url: base })).json(), (v) => !v.running);
+      const args = (readFileSync(path.join(config.home, 'fake-claude-runs.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l) as { args: string[] })).at(-1)!.args;
+      const logs = (await app.inject({ method: 'GET', url: `${base}/logs` })).json().lines.map((l: { line: string }) => l.line) as string[];
+      return { s, args, logs };
+    } finally {
+      await app.close();
+    }
+  };
+
+  it('tanpa --permission-prompts bila --help tidak menyebutnya; tetap dontAsk', async () => {
+    const { s, args, logs } = await runWith([FAKE, '--fake-old']);
+    expect(s.run.status).toBe('done');
+    expect(args).not.toContain('--permission-prompts');
+    expect(args[args.indexOf('--permission-mode') + 1]).toBe('dontAsk');
+    expect(logs.some((l) => l.includes('belum mendukung --permission-prompts'))).toBe(true);
+  }, 60_000);
+
+  it('versi baru tetap memakai --permission-prompts none', async () => {
+    const { s, args } = await runWith([FAKE]);
+    expect(s.run.status).toBe('done');
+    expect(args[args.indexOf('--permission-prompts') + 1]).toBe('none');
+  }, 60_000);
 });

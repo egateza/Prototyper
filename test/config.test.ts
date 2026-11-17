@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { loadConfig } from '../src/core/config.js';
+import { lanArgs, loadConfig } from '../src/core/config.js';
 
 describe('loadConfig', () => {
   it('memakai default bila env kosong', () => {
@@ -8,17 +8,28 @@ describe('loadConfig', () => {
     expect(c.port).toBe(4000);
     expect(c.host).toBe('127.0.0.1');
     expect(c.portRange).toEqual({ start: 4100, end: 4199 });
-    expect(c.lan).toBe(false);
+    expect(c.lanMode).toBe('off');
+    expect(c.prototypeHost).toBe('127.0.0.1');
     expect(path.basename(c.home)).toBe('.prototyper');
   });
 
   it('membaca env dan override menang atas env', () => {
     const env = { PROTOTYPER_HOME: '/data/proto', PROTOTYPER_PORT: '5000', PROTOTYPER_PORT_RANGE: '6000-6010' };
-    const c = loadConfig({ port: 5001, lan: true }, env);
+    const c = loadConfig({ port: 5001, lanMode: 'all' }, env);
     expect(c.home).toBe(path.resolve('/data/proto'));
     expect(c.port).toBe(5001);
     expect(c.portRange).toEqual({ start: 6000, end: 6010 });
     expect(c.host).toBe('0.0.0.0');
+  });
+
+  it('mode LAN: semua (Web UI + prototype) atau prototype saja', () => {
+    expect(loadConfig({}, { PROTOTYPER_LAN: '1' })).toMatchObject({ lanMode: 'all', host: '0.0.0.0', prototypeHost: '0.0.0.0' });
+    expect(loadConfig({}, { PROTOTYPER_LAN: 'prototypes' })).toMatchObject({ lanMode: 'prototypes', host: '127.0.0.1', prototypeHost: '0.0.0.0' });
+    expect(loadConfig({ lanMode: 'prototypes' }, { PROTOTYPER_LAN: '1' }).lanMode).toBe('prototypes');
+    expect(loadConfig({}, { PROTOTYPER_LAN: '0' }).lanMode).toBe('off');
+    expect(lanArgs('all')).toEqual(['--lan']);
+    expect(lanArgs('prototypes')).toEqual(['--lan-prototypes']);
+    expect(lanArgs('off')).toEqual([]);
   });
 
   it('menolak port dan rentang yang tidak valid', () => {

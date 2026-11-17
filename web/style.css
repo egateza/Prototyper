@@ -359,6 +359,9 @@ dialog.small p { margin: 0; }
 .agent-tested { background: color-mix(in oklab, var(--ok) 15%, transparent); color: color-mix(in oklab, var(--ok) 75%, var(--fg)); }
 .agent-cur { background: var(--accent-soft); color: var(--accent); }
 .agent-bar .icon-btn { width: 28px; height: 28px; }
+.agent-resume { height: 24px; padding: 0 9px; border-radius: var(--r-pill); border: 1px solid var(--accent-line); background: var(--surface); color: var(--accent); font: inherit; font-size: 11.5px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.agent-resume:hover { background: var(--accent-soft); }
+.agent-resume.fresh { color: var(--fg-2); border-color: var(--border-strong); }
 .agents-list { display: grid; gap: 8px; }
 .agent-row { border: 1px solid var(--border); border-radius: var(--r); padding: 10px 12px; display: grid; gap: 6px; }
 .agent-row.na { background: var(--surface-2); }

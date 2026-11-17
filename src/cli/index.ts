@@ -16,6 +16,7 @@ import { STOPPED_INFO } from '../core/runtime.js';
 import { createPrototype, isTemplate, TEMPLATE_INFO, TEMPLATES } from '../core/scaffold.js';
 import { toView, type PrototypeView } from '../core/views.js';
 import { startServer } from '../server/index.js';
+import { healthLanMode, type HealthResponse } from '../server/routes/health.js';
 import { VERSION } from '../version.js';
 import { APP_MODE } from '../core/appfiles.js';
 import { DaemonClient } from './client.js';
@@ -29,6 +30,7 @@ interface GlobalOpts {
   home?: string;
   port?: number;
   lan?: boolean;
+  lanPrototypes?: boolean;
 }
 
 interface Ctx {
@@ -48,7 +50,8 @@ function parseIntOption(min: number, max: number) {
 
 function makeCtx(cmd: Command): Ctx {
   const o = cmd.optsWithGlobals<GlobalOpts>();
-  const config = loadConfig({ home: o.home, port: o.port, lan: o.lan });
+  const lanMode = o.lan ? 'all' : o.lanPrototypes ? 'prototypes' : undefined;
+  const config = loadConfig({ home: o.home, port: o.port, lanMode });
   return { json: !!o.json, config, registry: new Registry(config.home), client: new DaemonClient(config) };
 }
 
@@ -70,6 +73,10 @@ function act(fn: (ctx: Ctx, args: Array<string | undefined>, cmd: Command) => Pr
 }
 
 const enc = encodeURIComponent;
+const lanLabel = (h: HealthResponse) => {
+  const mode = healthLanMode(h);
+  return mode === 'all' ? ', LAN' : mode === 'prototypes' ? ', LAN prototype saja' : '';
+};
 const localView = (p: Awaited<ReturnType<Registry['require']>>) => toView(p, STOPPED_INFO, { lan: false, lanAddrs: [] });
 
 async function listViews(ctx: Ctx): Promise<PrototypeView[]> {
@@ -142,7 +149,8 @@ program
   .option('--json', 'output JSON (untuk agent/skrip)')
   .option('--home <dir>', 'folder data (default ~/.prototyper atau PROTOTYPER_HOME)')
   .option('-p, --port <port>', 'port daemon (default 4000 atau PROTOTYPER_PORT)', parseIntOption(1, 65535))
-  .option('--lan', 'mode LAN: bind 0.0.0.0 agar bisa dibuka dari perangkat lain')
+  .option('--lan', 'mode LAN: Web UI & prototype bisa dibuka dari perangkat lain (bind 0.0.0.0)')
+  .option('--lan-prototypes', 'mode LAN untuk prototype saja: Web UI Prototyper tetap hanya dari komputer ini')
   .showHelpAfterError();
 
 program
@@ -287,7 +295,7 @@ program
       if (ctx.json) return printJson({ daemon: health ? { ...health, url: ctx.client.base } : null, prototypes: views });
       console.log(
         health
-          ? `Daemon: berjalan di http://localhost:${ctx.config.port} (v${health.version}, uptime ${health.uptimeSec}s${health.lan ? ', LAN' : ''})\n`
+          ? `Daemon: berjalan di http://localhost:${ctx.config.port} (v${health.version}, uptime ${health.uptimeSec}s${lanLabel(health)})\n`
           : 'Daemon: tidak berjalan (akan dinyalakan otomatis oleh "prototyper start")\n',
       );
       printTable(views);

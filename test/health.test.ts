@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/server/app.js';
+import { healthLanMode } from '../src/server/routes/health.js';
 import { VERSION } from '../src/version.js';
 import { testConfig } from './helpers.js';
 
@@ -17,7 +18,23 @@ describe('HTTP API dasar', () => {
   it('GET /api/health mengembalikan status ok', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/health' });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ status: 'ok', version: VERSION, lan: false });
+    expect(res.json()).toMatchObject({ status: 'ok', version: VERSION, lan: false, lanMode: 'off' });
+  });
+
+  it('mode LAN prototype saja: health melaporkannya, URL LAN prototype tersedia, Web UI tetap lokal', async () => {
+    const config = { ...testConfig(), lanMode: 'prototypes' as const, prototypeHost: '0.0.0.0' };
+    const built = await buildApp({ config });
+    try {
+      const h = (await built.app.inject({ method: 'GET', url: '/api/health' })).json();
+      expect(h).toMatchObject({ lan: true, lanMode: 'prototypes' });
+      expect(healthLanMode(h)).toBe('prototypes');
+      expect(config.host).toBe('127.0.0.1');
+    } finally {
+      await built.app.close();
+    }
+    // daemon lama tanpa lanMode
+    expect(healthLanMode({ lan: true })).toBe('all');
+    expect(healthLanMode({ lan: false })).toBe('off');
   });
 
   it('route tak dikenal mengembalikan format error seragam', async () => {

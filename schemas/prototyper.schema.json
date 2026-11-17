@@ -88,6 +88,11 @@
               "default": true,
               "description": "Muat ulang halaman otomatis saat file di root berubah (CSS diganti tanpa muat ulang). Butuh inject: true",
               "type": "boolean"
+            },
+            "viewport": {
+              "default": true,
+              "description": "Sisipkan <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"> bila halaman belum punya, agar tampilan di HP sama dengan pratinjau perangkat. Butuh inject: true",
+              "type": "boolean"
             }
           },
           "additionalProperties": false

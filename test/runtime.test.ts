@@ -222,3 +222,23 @@ describe('mendaftarkan folder tanpa prototyper.json (alur Web UI)', () => {
     expect(res.json().error.code).toBe('BAD_REQUEST');
   });
 });
+
+describe('mode LAN prototype saja', () => {
+  it('prototype bind 0.0.0.0 ({host}/HOST) dan tetap terbuka di localhost; Web UI tetap 127.0.0.1', async () => {
+    const config = { ...testConfig(), lanMode: 'prototypes' as const, prototypeHost: '0.0.0.0' };
+    const { app } = await buildApp({ config });
+    try {
+      await app.inject({ method: 'POST', url: '/api/prototypes', payload: { path: copyExample('hello-command') } });
+      const v = (await app.inject({ method: 'POST', url: '/api/prototypes/hello-command/start' })).json<PrototypeView>();
+      expect(v.status).toBe('running');
+      expect(config.host).toBe('127.0.0.1');
+      expect(await (await fetch(`${v.url}/`)).text()).toContain('Hello dari prototype command');
+      const logs = (await app.inject({ method: 'GET', url: '/api/prototypes/hello-command/logs?tail=50' })).json();
+      expect(logs.lines.some((l: { line: string }) => l.line.includes(`Listening on http://0.0.0.0:${v.port}`))).toBe(true);
+      expect(v.lanUrls.every((u) => u.endsWith(`:${v.port}`))).toBe(true);
+      await app.inject({ method: 'POST', url: '/api/prototypes/hello-command/stop' });
+    } finally {
+      await app.close();
+    }
+  });
+});

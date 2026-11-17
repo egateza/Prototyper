@@ -94,7 +94,7 @@ export async function buildApp({ config, logger = false, onShutdown, agentComman
     await runtime.stopAll();
   });
 
-  await app.register(healthRoutes, { prefix: '/api', startedAt, lan: config.lan, home: config.home, workspace: config.workspace, version: () => ctx.web.version });
+  await app.register(healthRoutes, { prefix: '/api', startedAt, lanMode: config.lanMode, home: config.home, workspace: config.workspace, version: () => ctx.web.version });
   await app.register(prototypeRoutes, { prefix: '/api', ctx });
   await app.register(commentRoutes, { prefix: '/api', registry });
   await app.register(agentRoutes, { prefix: '/api', registry, agent });

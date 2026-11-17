@@ -4,7 +4,7 @@ import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { Config } from './config.js';
 import { AppError, errorMessage } from './errors.js';
-import { EMBED_PATH, injectEmbedTag, payloadToString, readEmbedScript } from './embed.js';
+import { EMBED_PATH, injectEmbedTag, injectViewportMeta, payloadToString, readEmbedScript } from './embed.js';
 import { isDirectory } from './fsutil.js';
 import { LIVERELOAD_PATH, LiveReload } from './livereload.js';
 import { LogStore, type LogLine } from './logs.js';
@@ -209,7 +209,7 @@ export class Runtime {
       range: this.config.portRange,
       preferred: this.state.getPort(p.id),
       exclude: this.activePorts(p.id),
-      hosts: probeHosts(this.config.host),
+      hosts: probeHosts(this.config.prototypeHost),
     });
     await this.state.setPort(p.id, port);
     const logs = await this.logs(p.id);
@@ -257,7 +257,7 @@ export class Runtime {
           const html = await payloadToString(payload);
           if (html === null) return payload;
           reply.removeHeader('content-length');
-          return injectEmbedTag(html, { liveReload });
+          return injectEmbedTag(cfg.viewport ? injectViewportMeta(html) : html, { liveReload });
         });
       }
       if (liveReload) {
@@ -293,7 +293,7 @@ export class Runtime {
       server.addHook('onResponse', async (req, reply) => {
         logs.write('stdout', `${req.method} ${req.url} ${reply.statusCode}\n`);
       });
-      await server.listen({ host: this.config.host, port: run.port });
+      await server.listen({ host: this.config.prototypeHost, port: run.port });
     } catch (err) {
       await server.close().catch(() => undefined);
       throw err;
@@ -306,7 +306,7 @@ export class Runtime {
   private async startCommand(run: Run, dir: string, cfg: CommandConfig, logs: LogStore): Promise<void> {
     const cwd = path.resolve(dir, cfg.cwd);
     if (!(await isDirectory(cwd))) throw new Error(`folder command.cwd tidak ditemukan: ${cwd}`);
-    const host = this.config.host;
+    const host = this.config.prototypeHost;
     const cmd = cfg.run.replaceAll('{port}', String(run.port)).replaceAll('{host}', host);
     const env: NodeJS.ProcessEnv = {
       ...process.env,
@@ -411,7 +411,7 @@ export class Runtime {
   }
 
   private async waitPortReleased(port: number, timeoutMs: number): Promise<boolean> {
-    const hosts = probeHosts(this.config.host);
+    const hosts = probeHosts(this.config.prototypeHost);
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       if (await isPortFree(port, hosts)) return true;

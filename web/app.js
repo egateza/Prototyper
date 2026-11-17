@@ -596,6 +596,7 @@ document.addEventListener('click', (e) => {
     case 'agent-undo': return undoAgent();
     case 'agent-list': return openAgentsDialog();
     case 'agent-log-toggle': ag.open = !ag.open; return renderAgent();
+    case 'agent-resume': if (ag.fresh.has(cm.id)) ag.fresh.delete(cm.id); else ag.fresh.add(cm.id); return renderAgent();
     case 'cm-pick': return togglePick();
     case 'cm-clear-anchor': return setAnchor(null);
     case 'cm-focus': return focusAnchor(t.dataset.cid);
@@ -1218,7 +1219,7 @@ document.addEventListener('click', (e) => {
 });
 
 // ---------- Agent (Claude Code, Codex, … dijalankan oleh Prototyper) ----------
-const ag = { agents: null, defaultId: 'claude', pick: readPref('prototyper:agent', ''), state: null, lastHtml: '', open: false, es: null, esFor: null, loading: null };
+const ag = { agents: null, defaultId: 'claude', pick: readPref('prototyper:agent', ''), state: null, lastHtml: '', open: false, es: null, esFor: null, loading: null, fresh: new Set() };
 
 const agentById = (id) => ag.agents?.find((a) => a.id === id) ?? null;
 const availableAgents = () => (ag.agents ?? []).filter((a) => a.available);
@@ -1267,7 +1268,8 @@ async function loadAgent() {
   if (!id) return;
   if (!ag.agents && !ag.loading) loadAgents();
   try {
-    const st = await api('GET', `/api/prototypes/${enc(id)}/agent`);
+    const cur = pickedAgent();
+    const st = await api('GET', `/api/prototypes/${enc(id)}/agent${cur ? `?agent=${enc(cur.id)}` : ''}`);
     if (cm.id !== id) return;
     const wasRunning = ag.state?.running;
     ag.state = st;
@@ -1306,7 +1308,7 @@ function renderAgent() {
   let html = '';
   if (st?.running) {
     const r = st.run;
-    html = `<span class="agent-dot"></span><b>${esc(agentName(r?.agent))} sedang bekerja…</b><span class="muted">${r?.commentIds?.length ? r.commentIds.join(', ') : 'semua komentar'} · ${ago(r.startedAt)}</span>
+    html = `<span class="agent-dot"></span><b>${esc(agentName(r?.agent))} sedang bekerja…</b><span class="muted">${r?.commentIds?.length ? r.commentIds.join(', ') : 'semua komentar'}${r?.resumed ? ' · lanjut sesi' : ''} · ${ago(r.startedAt)}</span>
       <span class="spacer"></span>
       <button type="button" class="btn sm ghost" data-act="agent-log-toggle">${ag.open ? 'Tutup log' : 'Log'}</button>
       <button type="button" class="btn sm" data-act="agent-stop">Stop</button>`;
@@ -1335,6 +1337,7 @@ function renderAgent() {
         </button>
         ${menu}
       </div>
+      ${resumeHtml(st, cur)}
       <span class="muted">${waiting ? `${waiting} menunggu agent` : 'tidak ada yang menunggu agent'}${lastTxt ? ` · terakhir: ${lastTxt}` : ''}</span>
       <span class="spacer"></span>
       ${undoHtml(r)}
@@ -1348,12 +1351,26 @@ function renderAgent() {
   if (showLog) connectAgentLog(cm.id); else disconnectAgentLog();
 }
 
+/** Tombol lanjut sesi: tampil bila agent terpilih bisa melanjutkan sesi run sebelumnya. Klik = sesi baru untuk run berikutnya. */
+function resumeHtml(st, cur) {
+  const rs = st?.resume;
+  if (!rs?.resumable || rs.agent !== cur?.id || !rs.session) return '';
+  const fresh = ag.fresh.has(cm.id);
+  const s = rs.session;
+  const title = fresh
+    ? 'Run berikutnya memulai sesi baru (agent tidak mengingat run sebelumnya). Klik untuk melanjutkan sesi.'
+    : `Run berikutnya melanjutkan sesi sebelumnya (${s.runs} run, terakhir ${ago(s.endedAt)}): agent ingat apa yang sudah dilihat & diubahnya. Klik untuk memulai sesi baru.`;
+  return `<button type="button" class="agent-resume${fresh ? ' fresh' : ''}" data-act="agent-resume" aria-pressed="${!fresh}" title="${esc(title)}">${fresh ? '✦ Sesi baru' : `↻ Lanjutkan sesi · ${s.runs} run`}</button>`;
+}
+
 async function runAgent(commentIds) {
   const id = cm.id;
   const cur = pickedAgent();
   if (!id || !cur) return;
   try {
-    const st = await api('POST', `/api/prototypes/${enc(id)}/agent/run`, { agent: cur.id, ...(commentIds ? { commentIds } : {}) });
+    const fresh = ag.fresh.has(id);
+    const st = await api('POST', `/api/prototypes/${enc(id)}/agent/run`, { agent: cur.id, ...(commentIds ? { commentIds } : {}), ...(fresh ? { resume: false } : {}) });
+    ag.fresh.delete(id);
     ag.state = { ...(ag.state ?? {}), running: true, run: st.run };
     ag.open = true;
     toast(`${cur.name} mulai mengerjakan ${commentIds ? commentIds.join(', ') : 'komentar'}`);
@@ -1760,7 +1777,8 @@ render();
 api('GET', '/api/health')
   .then((h) => {
     nw.workspace = h.workspace ?? ''; wn.version = h.version;
-    $('#meta').textContent = `v${h.version}${h.lan ? ' · LAN' : ''}${LOCAL ? '' : ' · baca saja'}`;
+    const lanMode = h.lanMode ?? (h.lan ? 'all' : 'off');
+    $('#meta').textContent = `v${h.version}${lanMode === 'all' ? ' · LAN' : lanMode === 'prototypes' ? ' · LAN (prototype)' : ''}${LOCAL ? '' : ' · baca saja'}`;
     $('#meta').title = 'Yang baru di versi ini';
     wnMark();
     render();

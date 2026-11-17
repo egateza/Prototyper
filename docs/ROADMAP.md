@@ -38,7 +38,7 @@ Urutan yang disarankan:
 
 1. **Commit baseline** + verifikasi yang tersisa di atas.
 2. ~~**#3 tahap 3 — konteks komentar**~~ ✓ (0.3.10).
-3. **Lanjutan #4** (agent): `--resume` sesi Claude, uji preset lain.
+3. **Lanjutan #4** (agent): ~~`--resume` sesi Claude~~ ✓ (0.3.11), uji preset lain.
 4. ~~**Live-reload static**~~ ✓ (0.3.8).
 5. **MCP server**.
 6. **#5 `.exe`** terakhir, supaya semua fitur ikut terbungkus.
@@ -72,7 +72,7 @@ Tahap 1 (komentar per halaman + pertanyaan berpilihan) dan tahap 2 untuk mode st
 
 Dasar selesai (Claude dan Codex teruji, Gemini/Copilot eksperimental). Belum:
 
-- Melanjutkan sesi Claude sebelumnya (`--resume`) agar konteks tidak hilang antar run.
+- ~~Melanjutkan sesi Claude sebelumnya (`--resume`)~~ ✓ (0.3.11). Lanjutan: resume untuk Codex (`codex exec resume`) bila sudah diuji.
 - Uji preset Gemini/Copilot dengan versi aslinya; parsing output JSON Codex (`--json`) agar log lebih rapi.
 - Agent kustom lewat perintah bebas (bukan hanya preset).
 - `prototyper comments wait` untuk sesi agent interaktif di terminal (menunggu sampai ada komentar `--waiting agent`).

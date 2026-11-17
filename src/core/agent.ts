@@ -1,7 +1,9 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { APP_MODE, cliCommand, type AppMode } from './appfiles.js';
+import { DEFAULT_RESUME_HOURS, resumeState, SessionStore, type ResumeState } from './agentsession.js';
 import { Checkpoints, removeCheckpoints, type FileChange, type UndoResult } from './checkpoint.js';
 import { noteUndo } from './comments.js';
 import type { Config } from './config.js';
@@ -41,6 +43,10 @@ export interface AgentRunInfo {
   checkpoint: AgentCheckpoint | null;
   /** Alasan checkpoint tidak dibuat (mis. git tidak ditemukan). */
   checkpointError: string | null;
+  /** id sesi agent (hanya agent yang mendukung lanjut sesi, saat ini Claude Code). */
+  sessionId: string | null;
+  /** true bila run ini melanjutkan sesi run sebelumnya. */
+  resumed: boolean;
 }
 
 export interface AgentCheckpoint {
@@ -72,6 +78,10 @@ export interface AgentRunOptions {
   agent?: AgentId;
   commentIds?: string[];
   message?: string;
+  /** Lanjutkan sesi run sebelumnya bila bisa (default true). false = selalu sesi baru. */
+  resume?: boolean;
+  /** Internal: prompt untuk sesi lanjutan. */
+  resumed?: boolean;
 }
 
 /** Perintah yang dijalankan: executable + argumen awal (mis. node + skrip JS di balik shim npm). */
@@ -90,7 +100,11 @@ interface Preset {
   install: string;
   permissions: string;
   output: 'claude-stream' | 'text';
-  args(prompt: string, opts: { apikey: boolean; env: NodeJS.ProcessEnv }): string[];
+  args(prompt: string, opts: { apikey: boolean; env: NodeJS.ProcessEnv; supports(flag: string): boolean }): string[];
+  /** Flag yang belum ada di versi lama agent: dicek lewat `--help` dan hanya dipakai bila didukung. */
+  optionalFlags?: string[];
+  /** Argumen sesi: `fresh` = sesi baru dengan id dari Prototyper, `resume` = lanjutkan sesi itu. */
+  session?: { fresh(id: string): string[]; resume(id: string): string[] };
 }
 
 const CLAUDE_TOOLS = ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(prototyper *)', 'PowerShell(prototyper *)'];
@@ -125,15 +139,19 @@ export const PRESETS: Record<AgentId, Preset> = {
     install: 'Install Claude Code (https://code.claude.com), lalu login dengan `claude`.',
     permissions: 'baca/edit file + perintah `prototyper`; lainnya ditolak otomatis (--permission-mode dontAsk)',
     output: 'claude-stream',
-    args: (prompt, { apikey }) => [
+    // --permission-prompts baru ada di Claude Code versi baru; versi lama menolaknya ("unknown option").
+    // Tanpa flag itu dontAsk tetap menolak izin yang tidak diizinkan.
+    optionalFlags: ['--permission-prompts'],
+    args: (prompt, { apikey, supports }) => [
       '-p', prompt,
       '--output-format', 'stream-json', '--verbose',
       '--permission-mode', 'dontAsk',
-      '--permission-prompts', 'none',
+      ...(supports('--permission-prompts') ? ['--permission-prompts', 'none'] : []),
       '--allowedTools', CLAUDE_TOOLS.join(','),
       '--append-system-prompt', agentRules('claude'),
       ...(apikey ? ['--bare'] : []),
     ],
+    session: { fresh: (id) => ['--session-id', id], resume: (id) => ['--resume', id] },
   },
   codex: {
     id: 'codex',
@@ -210,6 +228,11 @@ export function agentPrompt(p: ResolvedPrototype, opts: AgentRunOptions = {}): s
   const id = p.id;
   const name = p.manifest?.name ?? id;
   const lines = [`Kerjakan komentar pengguna pada prototype "${name}" (id \`${id}\`). Folder kerja ini adalah folder prototype tersebut.`];
+  if (opts.resumed) {
+    lines.push(
+      'Ini lanjutan sesimu sebelumnya pada prototype ini. Sejak itu file dan komentar bisa sudah berubah (diedit pengguna, atau perubahanmu dibatalkan): ambil ulang komentar dan baca ulang file sebelum mengedit, jangan mengandalkan isi file dari ingatan.',
+    );
+  }
   if (opts.commentIds?.length) lines.push(`Fokus hanya pada komentar: ${opts.commentIds.join(', ')}.`);
   if (opts.message?.trim()) lines.push(`Pesan dari pengguna: ${opts.message.trim()}`);
   lines.push(
@@ -418,6 +441,11 @@ interface ActiveRun {
 
 const VERSION_TIMEOUT_MS = 15_000;
 
+/** Apakah teks `--help` menyebut flag ini (mis. "  --permission-prompts <target>")? */
+export function helpHasFlag(help: string, flag: string): boolean {
+  return new RegExp(`(^|[\\s,])${flag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=[\\s=,<\\[]|$)`, 'm').test(help);
+}
+
 /** Isi balasan komentar saat perubahan sebuah run dibatalkan. */
 export function undoReplyText(agentName: string, changes: readonly FileChange[]): string {
   const names = changes.slice(0, 8).map((c) => c.path).join(', ') + (changes.length > 8 ? `, +${changes.length - 8} lainnya` : '');
@@ -429,13 +457,20 @@ export class AgentRunner {
   /** Prototype yang sedang disiapkan untuk run (checkpoint dibuat) atau sedang di-undo. */
   private readonly busy = new Set<string>();
   private readonly last = new Map<string, AgentRunInfo>();
+  /** Run yang agent-nya benar-benar mulai (event sesi pertama sudah diterima). */
+  private readonly started = new WeakSet<AgentRunInfo>();
   private readonly logStores = new Map<string, Promise<LogStore>>();
   private readonly checks = new Map<AgentId, Promise<AgentInfo>>();
+  private readonly helpChecks = new Map<AgentId, Promise<{ unsupported: Set<string> }>>();
   readonly auth: 'login' | 'apikey';
   readonly timeoutMs: number;
   readonly defaultAgent: AgentId;
   /** null bila PROTOTYPER_AGENT_CHECKPOINT=0. */
   readonly checkpoints: Checkpoints | null;
+  /** Sesi terakhir per prototype (lanjut sesi). */
+  readonly sessions: SessionStore;
+  /** Sesi yang lebih tua dari ini tidak dilanjutkan. 0 = lanjut sesi dimatikan. */
+  readonly resumeHours: number;
   /** env untuk mencari/menjalankan agent: env proses + PATH terbaru dari registry (Windows). */
   private lookupEnv: NodeJS.ProcessEnv;
 
@@ -451,6 +486,9 @@ export class AgentRunner {
     this.defaultAgent = isAgentId(env.PROTOTYPER_AGENT_DEFAULT) ? env.PROTOTYPER_AGENT_DEFAULT : 'claude';
     this.lookupEnv = env;
     this.checkpoints = env.PROTOTYPER_AGENT_CHECKPOINT === '0' ? null : new Checkpoints(config.home);
+    this.sessions = new SessionStore(config.home);
+    const hours = Number(env.PROTOTYPER_AGENT_RESUME_HOURS);
+    this.resumeHours = env.PROTOTYPER_AGENT_RESUME_HOURS !== undefined && Number.isFinite(hours) && hours >= 0 ? hours : DEFAULT_RESUME_HOURS;
     this.refreshPath();
   }
 
@@ -472,6 +510,7 @@ export class AgentRunner {
   check(id: AgentId = this.defaultAgent, force = false): Promise<AgentInfo> {
     const cached = this.checks.get(id);
     if (cached && !force) return cached;
+    this.helpChecks.delete(id); // agent bisa sudah diperbarui
     const preset = PRESETS[id];
     const base = { id, name: preset.name, support: preset.support, install: preset.install, permissions: preset.permissions };
     const cmd = this.command(id);
@@ -513,6 +552,43 @@ export class AgentRunner {
     return p;
   }
 
+  /**
+   * Flag opsional (Preset.optionalFlags) yang tidak ada di `--help` agent ini. Di-cache bersama `check`.
+   * Bila `--help` gagal, semua flag dianggap didukung (perilaku lama).
+   */
+  private optionalFlags(id: AgentId, cmd: AgentCommand): Promise<{ unsupported: Set<string> }> {
+    const wanted = PRESETS[id].optionalFlags ?? [];
+    if (!wanted.length) return Promise.resolve({ unsupported: new Set() });
+    const cached = this.helpChecks.get(id);
+    if (cached) return cached;
+    const p = new Promise<{ unsupported: Set<string> }>((resolve) => {
+      let out = '';
+      let settled = false;
+      const done = (ok: boolean) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve({ unsupported: new Set(ok ? wanted.filter((f) => !helpHasFlag(out, f)) : []) });
+      };
+      let child: ChildProcess;
+      try {
+        child = spawn(cmd.bin, [...cmd.prefixArgs, '--help'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: childEnv(this.config, '', this.lookupEnv) });
+      } catch {
+        done(false);
+        return;
+      }
+      const timer = setTimeout(() => {
+        child.kill();
+        done(false);
+      }, VERSION_TIMEOUT_MS);
+      child.stdout?.on('data', (d: Buffer) => (out += d.toString()));
+      child.once('error', () => done(false));
+      child.once('close', (code) => done(code === 0 && out.includes('--')));
+    });
+    this.helpChecks.set(id, p);
+    return p;
+  }
+
   /** Cek semua agent yang dikenal. */
   checkAll(force = false): Promise<AgentInfo[]> {
     if (force) this.refreshPath();
@@ -534,6 +610,13 @@ export class AgentRunner {
 
   isRunning(id: string): boolean {
     return this.runs.has(id);
+  }
+
+  /** Bisakah run berikutnya dengan `agent` melanjutkan sesi sebelumnya? */
+  async resumeInfo(p: ResolvedPrototype, agent: AgentId = this.defaultAgent): Promise<ResumeState> {
+    return resumeState(await this.sessions.get(p.id), {
+      agent, cwd: p.path, supported: !!PRESETS[agent].session, hours: this.resumeHours,
+    });
   }
 
   async run(p: ResolvedPrototype, opts: AgentRunOptions = {}): Promise<AgentRunInfo> {
@@ -558,14 +641,25 @@ export class AgentRunner {
 
     const logs = await this.logs(p.id);
     const shim = await ensureShim(this.config.home);
-    const args = preset.args(agentPrompt(p, opts), { apikey: this.auth === 'apikey', env: this.env });
+    const flags = await this.optionalFlags(agentId, cmd);
+    if (flags.unsupported.size) logs.system(`${preset.name} ${avail.version ?? ''} belum mendukung ${[...flags.unsupported].join(', ')} — flag itu tidak dipakai (perbarui agent untuk memakainya)`.replace(/ {2,}/g, ' '));
+    // Lanjut sesi: pakai id sesi sebelumnya bila masih berlaku; selain itu sesi baru ber-id dari Prototyper.
+    const prev = preset.session && opts.resume !== false ? await this.resumeInfo(p, agentId) : null;
+    const resumed = !!prev?.resumable;
+    const sessionId = preset.session ? (resumed && prev?.session ? prev.session.sessionId : randomUUID()) : null;
+    const args = [
+      ...preset.args(agentPrompt(p, { ...opts, resumed }), { apikey: this.auth === 'apikey', env: this.env, supports: (f) => !flags.unsupported.has(f) }),
+      ...(preset.session && sessionId ? (resumed ? preset.session.resume(sessionId) : preset.session.fresh(sessionId)) : []),
+    ];
     const info: AgentRunInfo = {
       agent: agentId, status: 'running', startedAt: new Date().toISOString(), endedAt: null, exitCode: null,
       commentIds: opts.commentIds ?? [], summary: null, costUsd: null, turns: null, error: null,
-      checkpoint: null, checkpointError: null,
+      checkpoint: null, checkpointError: null, sessionId, resumed,
     };
     const authNote = agentId === 'claude' ? ` (${this.auth === 'apikey' ? 'API key, --bare' : 'login Claude Code'})` : preset.support === 'experimental' ? ' (eksperimental)' : '';
     logs.system(`agent: ${preset.name}${authNote}${info.commentIds.length ? ` · komentar ${info.commentIds.join(', ')}` : ''} · ${cmd.path}`);
+    if (resumed && prev?.session) logs.system(`melanjutkan sesi ${prev.session.sessionId.slice(0, 8)} (run ke-${prev.session.runs + 1}, terakhir ${prev.session.endedAt})`);
+    else if (prev?.reason) logs.system(`sesi baru: ${prev.reason}`);
 
     if (this.checkpoints) {
       try {
@@ -635,12 +729,46 @@ export class AgentRunner {
         logs.system(`${preset.name} keluar tanpa output apa pun. Coba jalankan \`${preset.exe}\` di terminal untuk melihat pesannya, atau set PROTOTYPER_AGENT_BIN_${agentId.toUpperCase()} ke path yang benar.`);
       }
       logs.system(`agent ${info.status === 'done' ? 'selesai' : info.status === 'stopped' ? 'dihentikan' : `gagal (exit ${child.exitCode ?? '-'})`}`);
+      // Resume gagal sebelum agent sempat bekerja (mis. sesi sudah dihapus): ulangi sekali dengan sesi baru.
+      if (resumed && info.status === 'failed' && !this.started.has(info)) {
+        logs.system('sesi sebelumnya tidak bisa dilanjutkan — mengulang dengan sesi baru');
+        this.runs.delete(p.id);
+        await this.sessions.update(p.id, () => null).catch(() => null);
+        this.busy.add(p.id);
+        try {
+          await this.startRun(p, { ...opts, resume: false });
+        } catch (err) {
+          info.error = errorMessage(err);
+          this.last.set(p.id, info);
+        } finally {
+          this.busy.delete(p.id);
+        }
+        finish();
+        return;
+      }
       await this.checkpointAfter(p, info, logs);
+      await this.saveSession(p, info);
       this.runs.delete(p.id);
       this.last.set(p.id, info);
       finish();
     });
     return info;
+  }
+
+  /** Simpan sesi run ini agar run berikutnya bisa melanjutkannya. */
+  private async saveSession(p: ResolvedPrototype, info: AgentRunInfo): Promise<void> {
+    const sessionId = info.sessionId;
+    if (!sessionId || !this.started.has(info)) return; // agent tidak pernah mulai: tidak ada yang dilanjutkan
+    const endedAt = info.endedAt ?? new Date().toISOString();
+    try {
+      await this.sessions.update(p.id, (cur) =>
+        cur && cur.sessionId === sessionId
+          ? { ...cur, endedAt, runs: cur.runs + 1, undoneAt: null }
+          : { agent: info.agent, sessionId, cwd: p.path, startedAt: info.startedAt, endedAt, runs: 1, undoneAt: null },
+      );
+    } catch (err) {
+      (await this.logs(p.id)).system(`gagal menyimpan sesi agent: ${errorMessage(err)}`);
+    }
   }
 
   private onLine(preset: Preset, line: string, cwd: string, info: AgentRunInfo, logs: LogStore, tail: string[]): void {
@@ -657,6 +785,12 @@ export class AgentRunner {
     } catch {
       logs.write('stdout', `${line}\n`);
       return;
+    }
+    // Hanya event init yang berarti sesi benar-benar berjalan: resume yang gagal tetap mengirim
+    // event result ber-session_id (num_turns 0, "No conversation found").
+    if (ev.type === 'system' && ev.subtype === 'init' && typeof ev.session_id === 'string' && ev.session_id && preset.session) {
+      info.sessionId = ev.session_id;
+      this.started.add(info);
     }
     if (ev.type === 'result') {
       if (typeof ev.result === 'string') info.summary = ev.result;
@@ -709,6 +843,9 @@ export class AgentRunner {
       this.busy.delete(p.id);
     }
     cp.undoneAt = new Date().toISOString();
+    const undoneAt = cp.undoneAt;
+    // Sesi berisi perubahan yang kini sudah tidak ada: run berikutnya mulai sesi baru.
+    await this.sessions.update(p.id, (cur) => (cur && cur.sessionId === info.sessionId ? { ...cur, undoneAt } : cur)).catch(() => null);
     const logs = await this.logs(p.id);
     logs.system(`perubahan agent dibatalkan: ${res.restored.length} file dikembalikan, ${res.removed.length} file baru dihapus`);
     // Beri tahu di komentar yang dikerjakan run ini bahwa perubahannya sudah tidak ada.
@@ -733,6 +870,7 @@ export class AgentRunner {
   async forget(id: string): Promise<void> {
     if (this.runs.has(id)) await this.stop(id);
     this.last.delete(id);
+    await this.sessions.update(id, () => null).catch(() => null);
     await removeCheckpoints(this.config.home, id);
   }
 
