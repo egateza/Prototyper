@@ -608,8 +608,9 @@ export class AgentRunner {
     return this.runs.get(id)?.info ?? this.last.get(id) ?? null;
   }
 
+  /** Termasuk run yang sedang disiapkan (busy), mis. selama retry sesi baru: jangan tampil "selesai" di antaranya. */
   isRunning(id: string): boolean {
-    return this.runs.has(id);
+    return this.runs.has(id) || this.busy.has(id);
   }
 
   /** Bisakah run berikutnya dengan `agent` melanjutkan sesi sebelumnya? */
@@ -732,10 +733,10 @@ export class AgentRunner {
       // Resume gagal sebelum agent sempat bekerja (mis. sesi sudah dihapus): ulangi sekali dengan sesi baru.
       if (resumed && info.status === 'failed' && !this.started.has(info)) {
         logs.system('sesi sebelumnya tidak bisa dilanjutkan — mengulang dengan sesi baru');
+        this.busy.add(p.id); // sebelum runs.delete: tanpa jeda "tidak berjalan" sampai retry terdaftar
         this.runs.delete(p.id);
-        await this.sessions.update(p.id, () => null).catch(() => null);
-        this.busy.add(p.id);
         try {
+          await this.sessions.update(p.id, () => null).catch(() => null);
           await this.startRun(p, { ...opts, resume: false });
         } catch (err) {
           info.error = errorMessage(err);

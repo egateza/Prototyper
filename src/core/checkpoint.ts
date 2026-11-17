@@ -193,6 +193,8 @@ export class Checkpoints {
         if ((o.ok ?? [0]).includes(c)) resolve({ code: c, stdout, stderr });
         else reject(new AppError('INTERNAL', `git ${args.find((a) => !a.startsWith('-')) ?? ''} gagal (exit ${c}): ${stderr.trim().slice(0, 300)}`));
       });
+      // git bisa keluar sebelum stdin habis ditulis (EPIPE); hasilnya tetap dinilai dari exit code di 'close'
+      child.stdin.on('error', () => {});
       child.stdin.end(o.input ?? '');
     });
   }
