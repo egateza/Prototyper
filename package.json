@@ -1,6 +1,6 @@
 {
   "name": "prototyper",
-  "version": "0.3.11",
+  "version": "0.4.0",
   "description": "Daftarkan, jalankan, dan kelola prototype lokal agar bisa dikerjakan oleh LLM agent apa pun.",
   "type": "module",
   "license": "UNLICENSED",
@@ -27,11 +27,13 @@
     "@fastify/static": "^10.1.11",
     "commander": "^15.1.0",
     "fastify": "^5.12.8",
+    "qrcode": "^1.5.4",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",
     "@types/node": "^24.19.2",
+    "@types/qrcode": "^1.5.5",
     "esbuild": "^0.28.2",
     "postject": "^1.0.0-alpha.6",
     "rcedit": "^5.0.2",

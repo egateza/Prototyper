@@ -376,7 +376,7 @@ export class TrayController {
     } else if (!addr) {
       this.notify(`Mode LAN aktif (${LAN_LABEL[next]})`, 'Komputer ini belum terhubung ke jaringan. Alamat LAN muncul setelah tersambung.');
     } else if (next === 'all') {
-      this.notify('Mode LAN aktif', `Buka dari perangkat lain di jaringan yang sama: ${lanUrl(s)}. ${firewall}`);
+      this.notify('Mode LAN aktif', `Buka ${lanUrl(s)} dari HP di jaringan yang sama, lalu pasangkan lewat ikon HP di Web UI komputer ini. ${firewall}`);
     } else {
       this.notify(
         'Mode LAN aktif (prototype saja)',

@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import type { LanMode } from '../../core/config.js';
+import type { Access } from '../access.js';
 
 export interface HealthResponse {
   status: 'ok';
@@ -15,6 +16,10 @@ export interface HealthResponse {
   workspace: string;
   /** Folder induk default desain sistem baru. */
   dsWorkspace: string;
+  /** Hak akses peminta: `local` (komputer ini), `device` (HP terpasang), `none`. Tidak ada di daemon lama. */
+  access?: Access;
+  /** Nama perangkat terpasang (bila access = `device`). */
+  device?: string;
 }
 
 /** Mode LAN daemon; daemon lama hanya mengirim `lan` (true = `--lan` = semua). */
@@ -26,14 +31,20 @@ export const healthRoutes: FastifyPluginAsync<{ startedAt: number; lanMode: LanM
   app,
   opts,
 ) => {
-  app.get('/health', async (): Promise<HealthResponse> => ({
-    status: 'ok',
-    version: opts.version(),
-    uptimeSec: Math.round((Date.now() - opts.startedAt) / 1000),
-    lan: opts.lanMode !== 'off',
-    lanMode: opts.lanMode,
-    home: opts.home,
-    workspace: opts.workspace,
-    dsWorkspace: opts.dsWorkspace,
-  }));
+  app.get('/health', async (req): Promise<HealthResponse> => {
+    // Health terbuka untuk perangkat yang belum dipasangkan; jangan bocorkan path komputer ini.
+    const known = req.access !== 'none';
+    return {
+      status: 'ok',
+      version: opts.version(),
+      uptimeSec: Math.round((Date.now() - opts.startedAt) / 1000),
+      lan: opts.lanMode !== 'off',
+      lanMode: opts.lanMode,
+      home: known ? opts.home : '',
+      workspace: known ? opts.workspace : '',
+      dsWorkspace: known ? opts.dsWorkspace : '',
+      access: req.access,
+      ...(req.device ? { device: req.device.name } : {}),
+    };
+  });
 };

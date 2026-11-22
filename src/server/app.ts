@@ -6,12 +6,16 @@ import { resolveWebSwap, type HostInfo } from '../core/apphost.js';
 import { AgentRunner, type AgentCommand, type AgentId } from '../core/agent.js';
 import type { Config } from '../core/config.js';
 import type { Runner } from '../core/picker.js';
+import { DeviceStore } from '../core/devices.js';
 import { AppError, errorBody } from '../core/errors.js';
+import { lanAddresses, rankLanAddresses } from '../core/net.js';
+import { accessHook } from './access.js';
 import { Registry } from '../core/registry.js';
 import { Runtime } from '../core/runtime.js';
 import { StateStore, type StaleProcess } from '../core/state.js';
 import { agentRoutes } from './routes/agent.js';
 import { commentRoutes } from './routes/comments.js';
+import { devicesRoutes } from './routes/devices.js';
 import { healthRoutes } from './routes/health.js';
 import { pickRoutes } from './routes/pick.js';
 import { prototypeRoutes } from './routes/prototypes.js';
@@ -36,6 +40,8 @@ export interface BuildAppOptions {
   update?: { check?: (current: string) => Promise<UpdateCheck>; install?: () => string };
   /** Untuk tes: ganti pembuka dialog pilih file/folder OS. */
   picker?: { run?: Runner; platform?: NodeJS.Platform };
+  /** Untuk tes: alamat untuk URL pairing (default: IP LAN komputer ini + PROTOTYPER_ALLOWED_HOSTS). */
+  lanAddresses?: () => string[];
 }
 
 /** Asal Web UI yang sedang dilayani. Berganti tanpa restart lewat `POST /api/app/reload-web`. */
@@ -53,15 +59,13 @@ export interface AppContext {
   /** Proses command dari sesi daemon sebelumnya yang mungkin masih hidup. */
   staleProcesses: StaleProcess[];
   web: WebSource;
+  /** Perangkat lain (HP) yang dipasangkan untuk mode LAN. */
+  devices: DeviceStore;
 }
 
 export const WEB_DIR = path.join(APP_DIR, 'web');
 
-function isLoopback(ip: string): boolean {
-  return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
-}
-
-export async function buildApp({ config, logger = false, onShutdown, agentCommands, web, appHost = APP_HOST, update, picker }: BuildAppOptions): Promise<{
+export async function buildApp({ config, logger = false, onShutdown, agentCommands, web, appHost = APP_HOST, update, picker, lanAddresses: addrs }: BuildAppOptions): Promise<{
   app: FastifyInstance;
   ctx: AppContext;
 }> {
@@ -71,17 +75,18 @@ export async function buildApp({ config, logger = false, onShutdown, agentComman
   const registry = new Registry(config.home);
   const runtime = new Runtime(config, state);
   const agent = new AgentRunner(config, agentCommands);
-  const ctx: AppContext = { config, registry, runtime, agent, state, staleProcesses, web: web ?? { dir: WEB_DIR, version: VERSION } };
+  const devices = new DeviceStore(config.home);
+  await devices.load();
+  const ctx: AppContext = { config, registry, runtime, agent, state, staleProcesses, web: web ?? { dir: WEB_DIR, version: VERSION }, devices };
 
   const app = Fastify({ logger, forceCloseConnections: true });
   const startedAt = Date.now();
 
-  // Mode LAN: request yang mengubah state hanya boleh dari mesin lokal.
-  app.addHook('onRequest', async (req) => {
-    if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS' && !isLoopback(req.ip)) {
-      throw new AppError('FORBIDDEN', 'Operasi ini hanya bisa dilakukan dari mesin lokal');
-    }
-  });
+  // Hak akses: komputer ini = semua; HP terpasang (mode LAN) = baca + alur komentar/agent; lainnya
+  // ditolak. Juga memeriksa Host (DNS rebinding) dan Origin (CSRF). Lihat access.ts.
+  app.decorateRequest('access', 'none');
+  app.decorateRequest('device', null);
+  app.addHook('onRequest', accessHook(devices, config.allowedHosts));
 
   app.setErrorHandler((err, _req, reply) => {
     if (err instanceof AppError) {
@@ -100,6 +105,7 @@ export async function buildApp({ config, logger = false, onShutdown, agentComman
   });
 
   app.addHook('onClose', async () => {
+    await devices.flush();
     await agent.stopAll();
     await runtime.stopAll();
   });
@@ -108,6 +114,12 @@ export async function buildApp({ config, logger = false, onShutdown, agentComman
   await app.register(prototypeRoutes, { prefix: '/api', ctx });
   await app.register(commentRoutes, { prefix: '/api', registry });
   await app.register(agentRoutes, { prefix: '/api', registry, agent });
+  await app.register(devicesRoutes, {
+    devices,
+    lanMode: config.lanMode,
+    port: config.port,
+    addresses: addrs ?? (() => [...rankLanAddresses(lanAddresses()), ...config.allowedHosts]),
+  });
   await app.register(pickRoutes, { prefix: '/api', ...(picker ?? {}) });
   const ictx = installContext();
   const checker = new UpdateChecker({

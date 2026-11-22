@@ -41,9 +41,24 @@ const ICON = {
   clip: svg('M20.5 11.5l-8.4 8.4a5 5 0 0 1-7.1-7.1l8.4-8.4a3.3 3.3 0 0 1 4.7 4.7l-8.4 8.4a1.7 1.7 0 0 1-2.4-2.4l7.7-7.7', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'),
 };
 
-// Request yang mengubah state hanya diterima dari mesin lokal (lihat app.ts).
-const LOCAL = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
-const RO_TITLE = 'Hanya bisa dari mesin lokal';
+// Hak akses dari /api/health (lihat src/server/access.ts): `local` = komputer ini, semua operasi;
+// `device` = HP terpasang pada mode LAN: komentar, agent, start/stop; `none` = perlu pairing.
+// Sebelum health dimuat, ditebak dari hostname.
+const LOCAL_HOST = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+let ACCESS = LOCAL_HOST ? 'local' : 'device';
+let LOCAL = LOCAL_HOST; // semua operasi
+let EDIT = true; // alur komentar → agent → periksa hasil
+document.documentElement.dataset.access = ACCESS;
+const RO_TITLE = 'Hanya bisa dari komputer tempat Prototyper berjalan';
+/** Aksi tombol prototype yang boleh dari HP terpasang (selaras DEVICE_WRITES di access.ts). */
+const DEVICE_ACTS = new Set(['start', 'stop', 'restart', 'lan']);
+function setAccess(a) {
+  if (a === ACCESS) return false;
+  ACCESS = a; LOCAL = a === 'local'; EDIT = a !== 'none';
+  mainFor = null; // bangun ulang kerangka halaman (form komentar, panel agent)
+  document.documentElement.dataset.access = a;
+  return true;
+}
 /** Mode LAN daemon dari /api/health: `off`, `prototypes`, atau `all`. */
 let daemonLan = 'off';
 
@@ -57,6 +72,7 @@ async function api(method, url, body) {
   if (!res.ok) {
     const err = new Error(data?.error?.message ?? `HTTP ${res.status}`);
     err.code = data?.error?.code;
+    if (err.code === 'UNAUTHORIZED') showPairScreen(); // belum dipasangkan atau aksesnya dicabut
     err.details = data?.error?.details ?? [];
     throw err;
   }
@@ -86,6 +102,9 @@ const DEVICES = {
   mobile: { label: 'Mobile', w: 390, h: 844 },
 };
 if (!DEVICES[ui.device]) ui.device = 'desktop';
+/** Mode Desktop pada kotak pratinjau yang lebih sempit dari DESKTOP_MIN dirender selebar DESKTOP_W lalu diperkecil. */
+const DESKTOP_MIN = 1024;
+const DESKTOP_W = 1280;
 /** Klik ikon perangkat yang sudah aktif = putar portrait/landscape. */
 function setDevice(d) {
   if (!DEVICES[d]) return;
@@ -159,7 +178,7 @@ function visible() {
 const statusHtml = (p) => `<span class="status ${st(p)}" title="${LABEL[st(p)]}"><i class="dot"></i>${LABEL[st(p)]}</span>`;
 const avatar = (p, cls = '') => `<span class="mono-av ${cls} ${isDs(p) ? 'ds' : ''} ${isActive(p) ? '' : 'off'}" style="--h:${hue(p.id)}" ${isDs(p) ? 'title="Desain sistem"' : ''}>${esc(initials(p))}</span>`;
 function btn(act, p, { label, icon, cls = '', title = label, mutating = true, disabled = false, pressed }) {
-  const ro = mutating && !LOCAL;
+  const ro = mutating && !(DEVICE_ACTS.has(act) ? EDIT : LOCAL);
   const dis = disabled || ro || ui.busy.has(p.id);
   const ap = pressed === undefined ? '' : ` aria-pressed="${pressed}"`;
   return `<button type="button" class="btn sm ${cls}" data-act="${act}" data-id="${esc(p.id)}" title="${esc(ro ? RO_TITLE : title)}"${ap} ${dis ? 'disabled' : ''}>${icon}${label ? esc(label) : ''}</button>`;
@@ -273,7 +292,7 @@ function renderMain() {
     cm.id = p ? p.id : null; cm.data = null; cm.replyTo = null; cm.lastHtml = ''; cm.anchor = null; clearFiles();
     if (p) { applyPanel(); watchWsBody(); renderComments(); loadComments(); }
     disconnectAgentLog(); ag.state = null; ag.lastHtml = ''; ag.open = false;
-    if (p && LOCAL) loadAgent();
+    if (p && EDIT) loadAgent();
     if (key === 'none' && !ag.agents && !ag.loading) loadAgents();
   }
   if (key === 'none') return renderHome();
@@ -291,7 +310,7 @@ function renderMain() {
   patch('#d-bar-btns', `
     ${ui.preview ? `<span class="dev-seg" role="group" aria-label="Ukuran jendela">${Object.entries(DEVICES).map(([k, d]) =>
       deviceBtn(k, d)).join('')}</span>` : ''}
-    ${u && ui.preview && LOCAL && p.status === 'running' ? `<button type="button" class="pick-btn${embed.mode ? ' on' : ''}" data-act="cm-pick" title="Komentari elemen: klik elemen atau blok teks di pratinjau (Esc untuk batal)" aria-pressed="${embed.mode}">${ICON.pick}<span>${embed.mode ? 'Pilih elemen…' : 'Komentari'}</span></button>` : ''}
+    ${u && ui.preview && EDIT && p.status === 'running' ? `<button type="button" class="pick-btn${embed.mode ? ' on' : ''}" data-act="cm-pick" title="Komentari elemen: klik elemen atau blok teks di pratinjau (Esc untuk batal)" aria-pressed="${embed.mode}">${ICON.pick}<span>${embed.mode ? 'Pilih elemen…' : 'Komentari'}</span></button>` : ''}
     ${u && ui.preview ? `<button type="button" class="icon-btn" data-act="reload-preview" title="Muat ulang pratinjau">${ICON.restart}</button>` : ''}
     <button type="button" class="icon-btn" data-act="toggle-preview" title="${ui.preview ? 'Sembunyikan pratinjau' : 'Tampilkan pratinjau'}">${ui.preview ? ICON.eyeOff : ICON.eye}</button>
     ${u ? `<a class="icon-btn" href="${esc(u)}" target="_blank" rel="noopener" title="Buka di tab baru">${ICON.ext}</a>` : ''}`);
@@ -333,12 +352,12 @@ function skeleton(p) {
               <button type="button" data-f="open">Open</button><button type="button" data-f="resolved">Selesai</button><button type="button" data-f="all">Semua</button>
             </div>
             <button type="button" class="icon-btn panel-btn" id="btn-panel-hide" data-act="toggle-panel"></button></div>
-          ${LOCAL ? '<div class="agent-bar" id="agent-bar" hidden></div><pre class="log agent-log" id="agent-log" hidden></pre>' : ''}
+          ${EDIT ? '<div class="agent-bar" id="agent-bar" hidden></div><pre class="log agent-log" id="agent-log" hidden></pre>' : ''}
           <div class="cm-list-wrap">
             <div class="cm-list" id="cm-list"><p class="muted cm-empty">Memuat…</p></div>
             <button type="button" class="cm-latest" id="cm-latest" data-act="cm-latest" title="Gulir ke pesan terbaru" hidden>↓ <span>Terbaru</span></button>
           </div>
-          ${LOCAL ? `<form class="cm-form" id="cm-form">
+          ${EDIT ? `<form class="cm-form" id="cm-form">
             <div class="cm-replying" id="cm-replying" hidden><span></span><button type="button" class="btn sm ghost" data-act="cm-cancel-reply">Batal</button></div>
             <div class="cm-anchor" id="cm-anchor" hidden><span class="cm-anchor-ic">${ICON.pick}</span><span class="cm-anchor-t"></span><button type="button" class="icon-btn" data-act="cm-clear-anchor" title="Lepas elemen">✕</button></div>
             <div class="cm-files" id="cm-files" hidden></div>
@@ -399,6 +418,15 @@ function fitDevice() {
   const d = DEVICES[ui.device];
   const sz = deviceSize();
   let lbl = view.querySelector('.dev-size');
+  if (f && !sz && view.clientWidth && view.clientWidth < DESKTOP_MIN) {
+    // Desktop di layar sempit (mis. HP): render selebar layar desktop lalu perkecil agar muat,
+    // supaya prototype tetap memakai tata letak desktop, bukan media query mobile.
+    const W = view.clientWidth, H = view.clientHeight;
+    const s = W / DESKTOP_W;
+    f.style.cssText = `inset:auto;left:0;top:0;width:${DESKTOP_W}px;height:${Math.round(H / s)}px;transform:scale(${s});transform-origin:0 0;`;
+    lbl?.remove();
+    return;
+  }
   if (!f || !sz) {
     if (f) f.removeAttribute('style');
     lbl?.remove();
@@ -521,7 +549,54 @@ function render() {
   if (location.hash !== hash) history.replaceState(null, '', hash || location.pathname);
   renderSide();
   renderMain();
+  updateFabs();
 }
+
+// ---------- Tampilan mobile (≤ 800px) ----------
+// Sidebar dan panel komentar tidak ditumpuk di halaman, tetapi dibuka sebagai lembar (sheet)
+// lewat tombol mengambang: ☰ = daftar prototype, 💬 = komentar & agent, ↖ = komentari elemen.
+const MOBILE = matchMedia('(max-width: 800px)');
+const isMobile = () => MOBILE.matches;
+const sheet = () => document.documentElement.dataset.sheet ?? null;
+function setSheet(name) {
+  const root = document.documentElement;
+  if (name === sheet()) return;
+  if (name) root.dataset.sheet = name; else delete root.dataset.sheet;
+  if (name === 'side' && embed.mode) togglePick();
+  if (name === 'cm') requestAnimationFrame(() => { const l = $('#cm-list'); if (l) l.scrollTop = l.scrollHeight; });
+  if (!name && $('.ws-side').contains(document.activeElement)) document.activeElement.blur();
+  updateFabs();
+}
+function updateFabs() {
+  const p = byId(ui.selected);
+  const fcm = $('#fab-cm');
+  const fpick = $('#fab-pick');
+  if (!fcm) return;
+  fcm.hidden = !p;
+  const c = p && cm.id === p.id ? cm.data?.counts : null;
+  const n = c ? (c.waitingUser || c.open || 0) : 0;
+  const badge = $('#fab-cm-badge');
+  badge.hidden = !n;
+  badge.textContent = n > 99 ? '99+' : String(n);
+  badge.classList.toggle('wait', !!c?.waitingUser);
+  fcm.setAttribute('aria-expanded', String(sheet() === 'cm'));
+  fcm.title = n ? `Komentar — ${c.waitingUser ? `${n} menunggu Anda` : `${n} open`}` : 'Komentar';
+  fpick.hidden = !(p && EDIT && ui.preview && p.status === 'running' && embed.origin);
+  fpick.setAttribute('aria-pressed', String(embed.mode));
+  $('#fab-menu').setAttribute('aria-expanded', String(sheet() === 'side'));
+}
+$('#fab-menu').addEventListener('click', () => setSheet(sheet() === 'side' ? null : 'side'));
+$('#fab-cm').addEventListener('click', () => setSheet(sheet() === 'cm' ? null : 'cm'));
+$('#fab-pick').addEventListener('click', () => {
+  setSheet(null);
+  togglePick();
+  updateFabs();
+});
+$('#m-backdrop').addEventListener('click', () => setSheet(null));
+MOBILE.addEventListener('change', () => setSheet(null));
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && sheet() && !$('dialog[open]')) setSheet(null);
+});
 
 // ---------- Log (SSE) ----------
 let es = null;
@@ -562,8 +637,9 @@ async function refresh(force = false) {
     render();
     if (list.some((x) => x.manifest?.designSystem) && (force || !ds.list || ++ds.tick % 3 === 0)) loadDesignSystems().then(render);
     if (cm.id && (force || ++cm.tick % 2 === 0)) loadComments();
-    if (cm.id && LOCAL && (force || ag.state?.running || cm.tick % 2 === 0)) loadAgent();
-  } catch {
+    if (cm.id && EDIT && (force || ag.state?.running || cm.tick % 2 === 0)) loadAgent();
+  } catch (err) {
+    if (err?.code === 'UNAUTHORIZED') return;
     $('#offline').hidden = false;
   }
 }
@@ -692,6 +768,7 @@ async function confirmShutdown() {
 }
 
 function select(id) {
+  if (sheet() === 'side') setSheet(null);
   const next = id || null; // '' / null = beranda
   if (next === ui.selected) return;
   ui.selected = next;
@@ -741,7 +818,7 @@ document.addEventListener('click', (e) => {
     }
     case 'cm-collapse-all': return toggleCollapseAll();
     case 'sec-toggle': return toggleSection(t.dataset.sec);
-    case 'toggle-panel': return setPanelHidden(!ui.panelHidden);
+    case 'toggle-panel': return isMobile() ? setSheet(null) : setPanelHidden(!ui.panelHidden);
     case 'cm-reply': return startReply(t.dataset.cid);
     case 'cm-cancel-reply': return startReply(null);
     case 'cm-resolve': return commentAction('resolve', t.dataset.cid);
@@ -1298,7 +1375,7 @@ function questionHtml(c, r) {
   const type = r.multi ? 'checkbox' : 'radio';
   const head = `<div class="cm-q-head"><b>${esc(r.author)}</b><span class="cm-q-tag">${r.multi ? 'Pilih satu atau lebih' : 'Pilih satu'}</span><span class="cm-meta">${fmtTime(r.createdAt)}</span></div>
     <p class="cm-text">${esc(r.text)}</p>`;
-  if (r.answer || c.status !== 'open' || !LOCAL) {
+  if (r.answer || c.status !== 'open' || !EDIT) {
     const chosen = r.answer?.choices ?? [];
     return `<div class="cm-question answered" data-rid="${esc(r.id)}">${head}
       <ul class="cm-opts-done">${r.options.map((o) => `<li class="${chosen.includes(o) ? 'on' : ''}">${chosen.includes(o) ? '✓' : '○'} ${esc(o)}</li>`).join('')}</ul>
@@ -1402,7 +1479,7 @@ function commentHtml(c) {
       ${collapsedSummary(c)}
     </article>`;
   }
-  const actions = LOCAL ? `<div class="cm-actions">
+  const actions = EDIT ? `<div class="cm-actions">
       ${c.waitingFor === 'agent' && pickedAgent() ? `<button type="button" class="btn sm ghost agent-one" data-act="agent-run-one" data-cid="${esc(c.id)}" title="Minta ${esc(pickedAgent().name)} mengerjakan komentar ini saja" ${ag.state?.running ? 'disabled' : ''}>${ICON.spark}Kerjakan</button>` : ''}
       <button type="button" class="btn sm ghost" data-act="cm-reply" data-cid="${esc(c.id)}">Balas</button>
       ${c.status === 'open'
@@ -1495,6 +1572,7 @@ function renderComments() {
   }
   trackLatest(d && !d.error ? d.comments.filter((c) => cm.filter === 'all' || c.status === cm.filter) : []);
   if (ui.panelHidden) applyPanel(); // perbarui badge jumlah komentar di tombol panel
+  updateFabs(); // badge tombol komentar mengambang (mobile)
 }
 
 // ---------- Tombol "Terbaru": gulir daftar komentar ke pesan (komentar/balasan) paling baru ----------
@@ -1703,7 +1781,7 @@ const readDataUrl = (file) => new Promise((resolve, reject) => {
 
 async function addFiles(files) {
   const id = cm.id;
-  if (!id || !LOCAL) return;
+  if (!id || !EDIT) return;
   for (const file of files) {
     if (!IMAGE_TYPES.includes(fileType(file))) { toast(`${file.name || 'File'}: hanya gambar PNG, JPG, GIF, WebP, atau SVG`, true); continue; }
     if (file.size > MAX_FILE_MB * 1024 * 1024) { toast(`${file.name || 'Gambar'} terlalu besar (maks. ${MAX_FILE_MB} MB)`, true); continue; }
@@ -1979,7 +2057,7 @@ function undoHtml(r) {
   if (!cp?.changes?.length) return '';
   const n = cp.changes.length;
   if (cp.undoneAt) return `<span class="muted agent-undone">perubahan ${n} file dibatalkan</span>`;
-  if (!LOCAL) return '';
+  if (!EDIT) return '';
   const tip = changeList(cp.changes.slice(0, 15)).join('\n') + (n > 15 ? `\n… +${n - 15}` : '');
   return `<button type="button" class="btn sm ghost" data-act="agent-undo" title="${esc(`Kembalikan ${n} file ke keadaan sebelum agent bekerja:\n${tip}`)}">${ICON.undo}Batalkan (${n} file)</button>`;
 }
@@ -2051,7 +2129,7 @@ function renderAgentsDialog() {
         ${a.support === 'tested' ? '<span class="agent-tested">teruji</span>' : '<span class="agent-exp">eksperimental</span>'}
         ${cur?.id === a.id ? '<span class="agent-cur">dipakai</span>' : ''}
         <span class="spacer"></span>
-        ${a.available && LOCAL && cur?.id !== a.id ? `<button type="button" class="btn sm ghost" data-pick-agent="${esc(a.id)}">Pakai</button>` : ''}
+        ${a.available && EDIT && cur?.id !== a.id ? `<button type="button" class="btn sm ghost" data-pick-agent="${esc(a.id)}">Pakai</button>` : ''}
       </div>
       <div class="agent-row-body">
         ${a.available ? `<span>${esc(a.version ?? '')}</span>` : `<span>${esc(a.error ?? 'tidak tersedia')}</span>`}
@@ -2132,7 +2210,7 @@ function sendEmbed(type, data = {}) {
   const f = $('#d-view iframe');
   if (f && embed.origin) f.contentWindow.postMessage({ type, ...data }, embed.origin);
 }
-function patchBar() { delete last['#d-bar-btns']; renderMain(); }
+function patchBar() { delete last['#d-bar-btns']; renderMain(); updateFabs(); }
 
 function anchorLabel(a) {
   if (a.quote) return `“${a.quote.length > 60 ? `${a.quote.slice(0, 60)}…` : a.quote}”`;
@@ -2150,6 +2228,7 @@ function setAnchor(anchor, page) {
   if (!anchor) { sendEmbed('prototyper:clear'); return; }
   if (cm.replyTo) startReply(null);
   if (page) { $('#cm-page').value = page; }
+  if (isMobile()) setSheet('cm');
   $('#cm-text').focus();
 }
 
@@ -2201,12 +2280,13 @@ window.addEventListener('message', (e) => {
       embed.page = typeof d.page === 'string' ? d.page : '/';
       sendEmbed('prototyper:hello');
       if (embed.mode) sendEmbed('prototyper:mode', { on: true });
+      updateFabs();
       patchBar();
       sendPins();
       break;
     case 'prototyper:page':
       embed.page = typeof d.page === 'string' ? d.page : '/';
-      if (LOCAL && !cm.anchor && $('#cm-page')) $('#cm-page').value = embed.page;
+      if (EDIT && !cm.anchor && $('#cm-page')) $('#cm-page').value = embed.page;
       sendPins();
       break;
     case 'prototyper:pick':
@@ -2219,6 +2299,7 @@ window.addEventListener('message', (e) => {
       patchBar();
       break;
     case 'prototyper:pin-click':
+      if (isMobile()) setSheet('cm');
       focusComment(String(d.id || ''));
       break;
     case 'prototyper:focus-missing':
@@ -2584,7 +2665,7 @@ function commands() {
     out.push({ ic: '→', label: `Buka ${p.name}`, grp: p.id, run: () => select(p.id) });
     if (LOCAL && !p.valid) out.push({ ic: '!', label: `Perbaiki manifest ${p.name}`, grp: p.id, run: () => openManifestEditor(p) });
     if (LOCAL && p.manifest?.designSystem) out.push({ ic: '◇', label: p.manifest.designSystem.source ? `Sebarkan desain sistem ${p.name} ke pemakai` : `Sinkronkan desain sistem ${p.name}`, grp: p.id, run: () => dsSync(p) });
-    if (LOCAL && p.valid) {
+    if (EDIT && p.valid) {
       if (isActive(p)) {
         out.push({ ic: '■', label: `Stop ${p.name}`, grp: p.id, run: () => run('stop', p) });
         out.push({ ic: '↻', label: `Restart ${p.name}`, grp: p.id, run: () => run('restart', p) });
@@ -2598,6 +2679,7 @@ function commands() {
   if (LOCAL) out.push({ ic: '⏻', label: 'Matikan Prototyper', grp: 'Umum', run: () => confirmShutdown() });
   out.push({ ic: '⇡', label: upd.info?.available ? `Pasang pembaruan Prototyper ${upd.info.latest}` : 'Periksa pembaruan Prototyper', grp: 'Umum', run: () => { openUpdateDialog(); if (!upd.info?.available) loadUpdate(true); } });
   out.push({ ic: '✦', label: 'Agent lokal: cek agent yang tersedia', grp: 'Umum', run: () => openAgentsDialog() });
+  if (LOCAL) out.push({ ic: '▯', label: 'Hubungkan HP: edit dari perangkat lain lewat jaringan', grp: 'Umum', run: () => openPhoneDialog() });
   if (LOCAL && list.length) out.push({ ic: '↻', label: 'Sinkronkan petunjuk agent (semua prototype)', grp: 'Umum', run: () => syncAllInstructions() });
   for (const [k, d] of Object.entries(DEVICES)) {
     if (k !== ui.device) out.push({ ic: '▭', label: `Pratinjau: ${d.label}${d.w ? ` (${d.w}×${d.h})` : ''}`, grp: 'Tampilan', run: () => setDevice(k) });
@@ -2633,6 +2715,136 @@ $('#cmd-q').addEventListener('keydown', (e) => {
 $('#cmd-list').addEventListener('click', (e) => { const li = e.target.closest('li[data-i]'); if (li) execCmd(Number(li.dataset.i)); });
 for (const d of $$('dialog')) d.addEventListener('click', (e) => { if (e.target === d) d.close(); });
 
+// ---------- Perangkat lain (HP) pada mode LAN ----------
+// Di HP yang belum dipasangkan: layar kode pairing. Di komputer: dialog QR + daftar perangkat.
+function showPairScreen() {
+  setAccess('none');
+  const el = $('#pair-screen');
+  if (!el.hidden) return;
+  el.hidden = false;
+  $('#ws').hidden = true;
+  const q = new URLSearchParams(location.search);
+  const msg = q.get('pair-error');
+  if (msg) {
+    $('#pair-err').textContent = msg;
+    $('#pair-err').hidden = false;
+    history.replaceState(null, '', location.pathname + location.hash);
+  }
+  $('#pair-code').focus();
+}
+$('#pair-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const code = $('#pair-code').value.replace(/\D/g, '');
+  const b = $('#pair-submit');
+  b.disabled = true;
+  try {
+    await api('POST', '/api/devices/pair', { code });
+    location.replace(`/${location.hash}`);
+  } catch (err) {
+    $('#pair-err').textContent = err.message;
+    $('#pair-err').hidden = false;
+    b.disabled = false;
+  }
+});
+
+const ph = { pairing: null, err: null, sel: 0, devices: [], paired: null, timer: null };
+async function openPhoneDialog() {
+  if (!LOCAL) return toast(RO_TITLE, true);
+  ph.pairing = null; ph.err = null; ph.sel = 0; ph.paired = null;
+  $('#dlg-phone').showModal();
+  await loadDevices();
+  if (daemonLan === 'all') await newPairing(); else renderPhone();
+  clearInterval(ph.timer);
+  ph.timer = setInterval(phoneTick, 1000);
+}
+async function newPairing() {
+  try {
+    ph.pairing = await api('POST', '/api/devices/pairing');
+    ph.err = null; ph.paired = null;
+  } catch (err) {
+    ph.pairing = null; ph.err = err.message;
+  }
+  renderPhone();
+}
+async function loadDevices() {
+  try {
+    const r = await api('GET', '/api/devices');
+    const known = new Set(ph.devices.map((d) => d.id));
+    // Kode habis terpakai + perangkat baru muncul = pairing berhasil.
+    if (ph.pairing && !r.pairing) {
+      ph.paired = r.devices.find((d) => !known.has(d.id)) ?? null;
+      if (!ph.paired && ph.pairing.expiresAt > Date.now() + 1500) ph.err = 'Kode dibatalkan karena terlalu sering salah ketik. Buat kode baru.';
+      if (ph.paired || ph.err) ph.pairing = null;
+    }
+    ph.devices = r.devices;
+  } catch (err) {
+    ph.err = err.message;
+  }
+}
+let phoneTicks = 0;
+async function phoneTick() {
+  if (!$('#dlg-phone').open) return;
+  if (++phoneTicks % 2 === 0) await loadDevices();
+  renderPhone();
+}
+function renderPhone() {
+  const p = ph.pairing;
+  let body;
+  if (daemonLan !== 'all') {
+    body = `<div class="callout warn">Web UI belum terbuka ke jaringan. Nyalakan dari tray: <b>Mode LAN → Web UI + prototype</b>, atau jalankan <code>prototyper shutdown</code> lalu <code>prototyper serve --lan</code>.</div>`;
+  } else if (ph.paired) {
+    body = `<div class="callout info">✓ <b>${esc(ph.paired.name)}</b> terhubung. Bisa langsung dipakai di HP itu.</div>
+      <div><button type="button" class="btn" data-ph="new">Hubungkan perangkat lain</button></div>`;
+  } else if (ph.err) {
+    body = `<div class="callout err">${esc(ph.err)}</div><div><button type="button" class="btn" data-ph="new">Coba lagi</button></div>`;
+  } else if (!p) {
+    body = '<p class="muted">Membuat kode…</p>';
+  } else {
+    const left = Math.max(0, Math.round((p.expiresAt - Date.now()) / 1000));
+    const t = p.targets[ph.sel] ?? p.targets[0];
+    body = left === 0
+      ? `<div class="callout warn">Kode kedaluwarsa.</div><div><button type="button" class="btn primary" data-ph="new">Buat kode baru</button></div>`
+      : `<div class="phone-pair">
+          <div class="phone-qr">${t.qr}</div>
+          <div class="phone-info">
+            <p>Pindai QR dengan kamera HP (HP harus di Wi-Fi yang sama), atau buka alamat ini lalu ketik kodenya:</p>
+            <code class="phone-url">${esc(t.url.replace(/\/pair\?.*$/, ''))}</code>
+            <div class="phone-code" aria-label="Kode pairing">${esc(p.code.slice(0, 3))} ${esc(p.code.slice(3))}</div>
+            <p class="muted">Berlaku ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} lagi · sekali pakai</p>
+            ${p.targets.length > 1 ? `<p class="muted">Tidak bisa dibuka? Coba alamat lain:</p>
+              <div class="seg phone-addrs">${p.targets.map((x, i) => `<button type="button" data-ph-addr="${i}" aria-pressed="${i === ph.sel}">${esc(new URL(x.url).hostname)}</button>`).join('')}</div>` : ''}
+          </div>
+        </div>`;
+  }
+  patchEl($('#phone-body'), body);
+  patchEl($('#phone-devices'), ph.devices.length
+    ? ph.devices.map((d) => `<div class="phone-dev"><span><b>${esc(d.name)}</b><small class="muted">terpasang ${fmtTime(d.createdAt)} · terakhir aktif ${fmtTime(d.lastSeenAt)}</small></span>
+        <button type="button" class="btn sm ghost danger" data-ph-revoke="${esc(d.id)}">Cabut</button></div>`).join('')
+    : '<p class="muted">Belum ada.</p>');
+}
+function patchEl(el, html) { if (el.dataset.html !== html) { el.dataset.html = html; el.innerHTML = html; } }
+$('#dlg-phone').addEventListener('click', async (e) => {
+  const t = e.target.closest('[data-ph],[data-ph-addr],[data-ph-revoke],[data-close]');
+  if (!t) return;
+  if (t.matches('[data-close]')) return $('#dlg-phone').close();
+  if (t.dataset.ph === 'new') return newPairing();
+  if (t.dataset.phAddr) { ph.sel = Number(t.dataset.phAddr); return renderPhone(); }
+  if (t.dataset.phRevoke) {
+    const d = ph.devices.find((x) => x.id === t.dataset.phRevoke);
+    const yes = await confirmDialog({ title: `Cabut ${d?.name ?? 'perangkat'}?`, body: 'Perangkat ini tidak bisa lagi membuka atau mengubah apa pun di Prototyper sampai dipasangkan ulang.', ok: 'Cabut' });
+    if (!yes) return;
+    try { await api('DELETE', `/api/devices/${enc(t.dataset.phRevoke)}`); toast('Akses perangkat dicabut'); } catch (err) { toast(err.message, true); }
+    await loadDevices();
+    renderPhone();
+  }
+});
+$('#dlg-phone').addEventListener('close', () => {
+  clearInterval(ph.timer);
+  if (ph.pairing) api('DELETE', '/api/devices/pairing').catch(() => undefined);
+  ph.pairing = null;
+});
+$('#btn-phone').addEventListener('click', () => openPhoneDialog());
+
 // ---------- Mulai ----------
 applyTheme();
 applySide();
@@ -2643,13 +2855,17 @@ api('GET', '/api/health')
     nw.workspace = h.workspace ?? ''; nw.dsWorkspace = h.dsWorkspace ?? ''; wn.version = h.version;
     const lanMode = h.lanMode ?? (h.lan ? 'all' : 'off');
     daemonLan = lanMode;
-    $('#meta').textContent = `v${h.version}${lanMode === 'all' ? ' · LAN' : lanMode === 'prototypes' ? ' · LAN (prototype)' : ''}${LOCAL ? '' : ' · baca saja'}`;
-    $('#meta').title = 'Yang baru di versi ini';
+    if (setAccess(h.access ?? (LOCAL_HOST ? 'local' : 'none'))) refresh(true);
+    if (ACCESS === 'none') return showPairScreen();
+    $('#meta').textContent = `v${h.version}${lanMode === 'all' ? ' · LAN' : lanMode === 'prototypes' ? ' · LAN (prototype)' : ''}${ACCESS === 'device' ? ` · ${h.device ?? 'HP'}` : ''}`;
+    $('#meta').title = ACCESS === 'device'
+      ? 'Perangkat ini terpasang: bisa berkomentar, menjalankan agent, dan start/stop. Operasi lain hanya dari komputer.'
+      : 'Yang baru di versi ini';
     wnMark();
     render();
   })
   .catch(() => undefined);
 refresh(true);
-setInterval(refresh, 2000);
+setInterval(() => { if (ACCESS !== 'none') refresh(); }, 2000);
 loadUpdate();
 setInterval(() => loadUpdate(), 60 * 60_000);

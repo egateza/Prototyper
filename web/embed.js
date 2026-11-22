@@ -46,7 +46,9 @@
   pickedBox.className = `${P}box ${P}picked`;
   const hint = document.createElement('div');
   hint.className = `${P}hint`;
-  hint.textContent = 'Klik elemen atau blok teks untuk dikomentari · Esc untuk batal';
+  hint.textContent = window.matchMedia?.('(pointer: coarse)').matches
+    ? 'Ketuk elemen atau blok teks untuk dikomentari'
+    : 'Klik elemen atau blok teks untuk dikomentari · Esc untuk batal';
   hint.style.display = 'none';
   const pinLayer = document.createElement('div');
   const ours = (el) => !!el && (el === box || el === pickedBox || el === hint || pinLayer.contains(el));

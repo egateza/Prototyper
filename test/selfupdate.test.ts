@@ -167,7 +167,7 @@ describe('HTTP /api/update', () => {
 
   it('POST install ditolak bila sudah terbaru atau tidak bisa otomatis', async () => {
     const latest = await buildApp({ config: testConfig(), update: { check: async (current) => fakeCheck({ current, latest: current }), install: () => 'x' } });
-    const manual = await buildApp({ config: testConfig(), update: { check: async (current) => fakeCheck({ current, kind: null }), install: () => 'x' } });
+    const manual = await buildApp({ config: testConfig(), update: { check: async (current) => fakeCheck({ current, latest: '99.0.0', kind: null }), install: () => 'x' } });
     try {
       expect((await latest.app.inject({ method: 'POST', url: '/api/update/install' })).statusCode).toBe(409);
       expect((await manual.app.inject({ method: 'POST', url: '/api/update/install' })).statusCode).toBe(400);

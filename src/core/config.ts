@@ -35,6 +35,11 @@ export interface Config {
   updateRepo: string;
   /** Tray memeriksa pembaruan otomatis saat menyala dan tiap 24 jam (PROTOTYPER_UPDATE_CHECK=0 mematikan). */
   updateCheck: boolean;
+  /**
+   * Nama host tambahan yang boleh dipakai membuka Web UI/API selain IP, localhost, dan nama komputer
+   * (PROTOTYPER_ALLOWED_HOSTS, dipisah koma; mis. nama MagicDNS Tailscale).
+   */
+  allowedHosts: string[];
 }
 
 export interface ConfigOverrides {
@@ -124,5 +129,6 @@ export function loadConfig(
     autoSyncAgents: env.PROTOTYPER_AUTO_SYNC !== '0',
     updateRepo: parseRepo(env.PROTOTYPER_UPDATE_REPO),
     updateCheck: env.PROTOTYPER_UPDATE_CHECK !== '0',
+    allowedHosts: (env.PROTOTYPER_ALLOWED_HOSTS ?? '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean),
   };
 }

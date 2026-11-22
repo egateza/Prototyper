@@ -222,7 +222,7 @@ kbd { border: 1px solid var(--border-strong); border-bottom-width: 2px; border-r
 .bar-btns .icon-btn svg { width: 15px; height: 15px; }
 .browser-view { aspect-ratio: 16 / 10; position: relative; display: grid; place-items: center; border-top: 1px solid var(--border); }
 .browser-view.collapsed { display: none; }
-.browser-view.live { background: #fff; }
+.browser-view.live { background: #fff; overflow: hidden; }
 .browser-view iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #fff; }
 .browser-view.off { background: repeating-linear-gradient(-45deg, var(--surface-2) 0 10px, var(--surface) 10px 20px); color: var(--muted); text-align: center; padding: 16px; }
 .browser-view.off b { display: block; color: var(--fg-2); font-size: 15px; margin-bottom: 4px; }
@@ -592,13 +592,52 @@ dialog.small p { margin: 0; }
 @media (max-width: 1100px) {
   .ws-body { grid-template-columns: minmax(0, 1fr); }
 }
+.fabs, .m-backdrop { display: none; }
 @media (max-width: 800px) {
   .ws { grid-template-columns: minmax(0, 1fr); height: auto; min-height: 100vh; }
-  .ws-side { border-right: 0; border-bottom: 1px solid var(--border); max-height: 42vh; }
-  .ws-body { padding: 16px; }
+  .ws-body { padding: 12px 12px 96px; } /* ruang untuk tombol mengambang */
+  /* Tinggi halaman tidak dikunci ke layar, jadi --ws-h (tinggi area kerja) jangan dipakai:
+     pratinjau → area kerja → --ws-h saling memperbesar tanpa henti. */
+  .ws-body .ws-left { min-height: 0; }
   .ws-left > .browser { height: auto; }
-  .ws-left .browser-view { aspect-ratio: 16 / 10; }
+  .ws-left .browser-view { aspect-ratio: auto; height: min(72vh, 720px); min-height: 360px; }
+  .ws-left .browser-view.collapsed { height: auto; min-height: 0; }
   .ws-left .browser-view.live.dev-tablet, .ws-left .browser-view.live.dev-mobile { aspect-ratio: auto; height: min(80vh, 920px); min-height: 420px; }
+  .ws-left:has(.browser-view.collapsed) > .ws-log .log { height: 55vh; }
+
+  /* Sidebar = laci dari kiri, dibuka tombol ☰ */
+  #ws > .ws-side { position: fixed; left: 0; top: 0; bottom: 0; width: min(320px, 86vw); max-height: none; z-index: 60;
+    border-right: 1px solid var(--border); border-bottom: 0; transform: translateX(-105%); visibility: hidden;
+    transition: transform .2s ease, visibility 0s linear .2s; }
+  :root[data-sheet="side"] #ws > .ws-side { transform: none; visibility: visible; box-shadow: var(--shadow-lg); transition: transform .2s ease; }
+  #ws > .side-edge, #btn-pin { display: none; }
+
+  /* Panel komentar = lembar dari bawah, dibuka tombol komentar */
+  :root #ws .ws-body > .ws-right { display: grid; position: fixed; left: 0; right: 0; bottom: 0; z-index: 60; max-height: 85vh; max-height: 85dvh;
+    overflow: auto; overscroll-behavior: contain; border-radius: var(--r-lg) var(--r-lg) 0 0; border-bottom: 0;
+    padding: 8px 14px calc(14px + env(safe-area-inset-bottom)); transform: translateY(105%); visibility: hidden;
+    transition: transform .22s ease, visibility 0s linear .22s; }
+  :root #ws .ws-body > .ws-right::before { content: ""; justify-self: center; width: 40px; height: 4px; border-radius: 4px; background: var(--border-strong); margin-bottom: 4px; }
+  :root[data-sheet="cm"] #ws .ws-body > .ws-right { transform: none; visibility: visible; box-shadow: var(--shadow-lg); transition: transform .22s ease; }
+  #btn-panel-show { display: none !important; }
+
+  .m-backdrop { display: block; position: fixed; inset: 0; z-index: 55; background: rgb(10 10 20 / .45); opacity: 0; pointer-events: none; transition: opacity .2s; }
+  :root[data-sheet] .m-backdrop { opacity: 1; pointer-events: auto; }
+  :root[data-sheet] { overflow: hidden; }
+
+  .fabs { display: flex; align-items: flex-end; gap: 10px; position: fixed; left: 16px; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 50; pointer-events: none; }
+  :root[data-sheet] .fabs { display: none; }
+  .fab-gap { flex: 1; }
+  .fab { pointer-events: auto; position: relative; width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; padding: 0;
+    border: 1px solid var(--border); background: var(--surface); color: var(--fg); box-shadow: var(--shadow-lg); cursor: pointer; }
+  .fab[hidden] { display: none; }
+  .fab svg { width: 22px; height: 22px; }
+  .fab-sm { width: 44px; height: 44px; margin-bottom: 4px; }
+  .fab-sm svg { width: 19px; height: 19px; }
+  .fab-primary, .fab[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .fab-badge { position: absolute; top: -4px; right: -4px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: var(--r-pill);
+    background: var(--fg); color: var(--bg); font-size: 11px; font-weight: 700; line-height: 20px; text-align: center; border: 2px solid var(--bg); }
+  .fab-badge.wait { background: var(--warn); color: #fff; }
   .detail-head { padding: 16px; flex-wrap: wrap; }
   .detail-head .actions { width: 100%; }
   .kv { grid-template-columns: 1fr; } .kv dt { border-top: 1px solid var(--border); } .kv > :nth-child(2) { border-top: 0; }
@@ -633,3 +672,31 @@ dialog.small p { margin: 0; }
 .cm-atts { display: flex; flex-wrap: wrap; gap: 6px; flex-basis: 100%; }
 .cm-atts a { display: block; border-radius: var(--r-sm); overflow: hidden; border: 1px solid var(--border); background: var(--surface-2); }
 .cm-atts img { display: block; max-width: 160px; max-height: 120px; object-fit: contain; }
+
+/* ============ Perangkat lain (HP) ============ */
+/* HP terpasang: sembunyikan kontrol yang hanya untuk komputer ini. */
+:root[data-access="device"] #btn-new, :root[data-access="device"] #btn-add, :root[data-access="device"] #btn-shutdown,
+:root[data-access="device"] #btn-phone, :root[data-access="none"] #btn-phone { display: none; }
+.pair-screen { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; background: var(--bg); }
+.pair-screen[hidden] { display: none; }
+.pair-card { width: min(380px, 100%); min-width: 0; box-sizing: border-box; display: grid; gap: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow); padding: 24px 20px; }
+.pair-card h1 { margin: 0; font-size: 20px; letter-spacing: -.02em; }
+.pair-card p { margin: 0; font-size: 13.5px; line-height: 1.5; }
+#pair-code { width: 100%; min-width: 0; box-sizing: border-box; font: 600 28px/1.2 var(--mono); letter-spacing: .3em; text-align: center; padding: 12px; border: 1px solid var(--border-strong); border-radius: var(--r); background: var(--bg); color: var(--fg); }
+.pair-card .btn { justify-content: center; padding: 12px; font-size: 15px; }
+.phone-pair { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 18px; align-items: start; }
+.phone-qr { background: #fff; border-radius: var(--r); padding: 8px; border: 1px solid var(--border); }
+.phone-qr svg { display: block; width: 100%; height: auto; }
+.phone-info { display: grid; gap: 8px; font-size: 13px; }
+.phone-info p { margin: 0; }
+.phone-url { overflow-wrap: anywhere; font-size: 13px; }
+.phone-code { font: 700 30px/1.1 var(--mono); letter-spacing: .12em; }
+.phone-addrs button { font-family: var(--mono); font-weight: 500; }
+.phone-sub { margin: 0; font-size: 13px; }
+.phone-devices { display: grid; gap: 6px; }
+.phone-devices p { margin: 0; font-size: 13px; }
+.phone-dev { display: flex; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: var(--r); padding: 8px 12px; }
+.phone-dev > span { display: grid; gap: 2px; flex: 1; min-width: 0; font-size: 13px; }
+.phone-dev small { font-size: 11.5px; }
+@media (max-width: 560px) { .phone-pair { grid-template-columns: 1fr; } .phone-qr { max-width: 220px; } }
+.ws[hidden] { display: none; }

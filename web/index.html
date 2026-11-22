@@ -33,6 +33,7 @@
       <div class="ws-side-foot">
         <button type="button" class="btn primary" id="btn-new"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" d="M12 5v14M5 12h14"/></svg>Baru</button>
         <button type="button" class="btn" id="btn-add" title="Daftarkan folder yang sudah ada">Daftarkan</button>
+        <button type="button" class="icon-btn" id="btn-phone" title="Hubungkan HP: edit dari perangkat lain lewat jaringan" aria-label="Hubungkan HP"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10.5 18h3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
         <button type="button" class="icon-btn" id="btn-theme" title="Tema"></button>
         <button type="button" class="btn ghost" id="btn-palette" title="Palet perintah"><kbd>Ctrl K</kbd></button>
       </div>
@@ -40,6 +41,46 @@
     <button type="button" class="side-edge" id="side-edge" title="Tampilkan sidebar" aria-label="Tampilkan sidebar"><i></i></button>
     <main class="ws-main" id="main"></main>
   </div>
+
+  <!-- Tampilan mobile: sidebar & panel komentar dibuka sebagai lembar lewat tombol mengambang -->
+  <div class="m-backdrop" id="m-backdrop"></div>
+  <div class="fabs" id="fabs">
+    <button type="button" class="fab" id="fab-menu" title="Menu: daftar prototype" aria-label="Menu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
+    <span class="fab-gap"></span>
+    <button type="button" class="fab fab-sm" id="fab-pick" title="Komentari elemen: ketuk elemen di pratinjau" aria-label="Komentari elemen" aria-pressed="false" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4l7 17 2.5-7.5L21 11 4 4Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
+    <button type="button" class="fab fab-primary" id="fab-cm" title="Komentar" aria-label="Komentar" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 19 17h-8l-5 4v-4H5a1.5 1.5 0 0 1-1.5-1.5v-9A1.5 1.5 0 0 1 5 5Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><span class="fab-badge" id="fab-cm-badge" hidden></span></button>
+  </div>
+
+  <!-- Perangkat lain yang belum dipasangkan (mode LAN) -->
+  <section class="pair-screen" id="pair-screen" hidden>
+    <form class="pair-card" id="pair-form">
+      <h1>Hubungkan perangkat ini</h1>
+      <p class="muted">Di komputer tempat Prototyper berjalan, klik ikon <b>HP</b> di bawah sidebar (atau palet perintah → <i>Hubungkan HP</i>). Pindai QR-nya, atau ketik kode 6 digit di sini.</p>
+      <input id="pair-code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="000000" aria-label="Kode pairing">
+      <div class="callout err" id="pair-err" hidden></div>
+      <button type="submit" class="btn primary" id="pair-submit">Hubungkan</button>
+    </form>
+  </section>
+
+  <!-- Hubungkan HP (hanya dari komputer ini) -->
+  <dialog id="dlg-phone" class="small">
+    <form method="dialog">
+      <div class="dlg-head">
+        <div>
+          <h2>Hubungkan HP</h2>
+          <p class="muted">Berkomentar, menjawab pertanyaan agent, dan menjalankan agent dari HP lewat jaringan yang sama.</p>
+        </div>
+        <button type="button" class="icon-btn" data-close aria-label="Tutup">✕</button>
+      </div>
+      <div id="phone-body"></div>
+      <h3 class="phone-sub">Perangkat terpasang</h3>
+      <div class="phone-devices" id="phone-devices"></div>
+      <p class="muted hint">HP yang terpasang bisa menjalankan agent di komputer ini; pakai hanya di jaringan yang Anda percayai. Hapus/daftarkan prototype, manifest, update, dan mematikan Prototyper tetap hanya dari komputer.</p>
+      <div class="dlg-foot">
+        <button type="button" class="btn primary" data-close>Tutup</button>
+      </div>
+    </form>
+  </dialog>
 
   <!-- Dialog daftarkan / perbaiki manifest -->
   <dialog id="dlg-add">

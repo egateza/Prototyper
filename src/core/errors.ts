@@ -2,6 +2,7 @@ export type ErrorCode =
   | 'NOT_FOUND'
   | 'BAD_REQUEST'
   | 'CONFLICT'
+  | 'UNAUTHORIZED'
   | 'FORBIDDEN'
   | 'INVALID_MANIFEST'
   | 'START_FAILED'
@@ -13,6 +14,7 @@ const STATUS: Record<ErrorCode, number> = {
   NOT_FOUND: 404,
   BAD_REQUEST: 400,
   CONFLICT: 409,
+  UNAUTHORIZED: 401,
   FORBIDDEN: 403,
   INVALID_MANIFEST: 422,
   START_FAILED: 500,

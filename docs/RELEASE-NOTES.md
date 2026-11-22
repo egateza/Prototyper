@@ -1,4 +1,19 @@
-## Yang baru di 0.3.11
+## Yang baru di 0.4.0
+
+- **Edit dari HP lewat jaringan.** Nyalakan Mode LAN **Web UI + prototype** (tray, atau `prototyper serve --lan`), lalu di Web UI komputer klik ikon **HP** di bawah sidebar (atau palet perintah → *Hubungkan HP*). Pindai QR dengan kamera HP, atau buka alamatnya dan ketik kode 6 digit. Kode berlaku 5 menit, hanya sekali pakai, dan dibatalkan setelah 5 kali salah.
+- HP yang terpasang bisa berkomentar (termasuk lampiran gambar), menjawab pertanyaan agent, menjalankan/menghentikan/membatalkan agent, serta start/stop/restart prototype. Hapus/daftarkan prototype, manifest, install, desain sistem, update, dan mematikan Prototyper tetap hanya dari komputer. Daftar HP terpasang ada di dialog yang sama, lengkap dengan tombol **Cabut**.
+- **Perubahan perilaku `--lan`:** perangkat yang belum dipasangkan tidak bisa lagi membaca daftar prototype, komentar, atau log. Yang terbuka untuknya hanya halaman pairing.
+- **Keamanan:** token HP disimpan di cookie `HttpOnly`, dan daemon hanya menyimpan hash-nya (`<PROTOTYPER_HOME>/devices.json`). API kini menolak request yang Origin-nya dari situs lain (CSRF) dan nama host selain IP, `localhost`, atau nama komputer (DNS rebinding). Nama host tambahan, mis. MagicDNS Tailscale, didaftarkan di `PROTOTYPER_ALLOWED_HOSTS` (dipisah koma).
+- **Tampilan mobile.** Di layar ≤ 800px, sidebar menjadi laci (tombol ☰) dan panel komentar menjadi lembar dari bawah (tombol komentar, dengan jumlah komentar open). Tombol panah menyalakan mode komentar elemen: ketuk elemen di pratinjau, dan lembar komentar terbuka dengan elemen itu terlampir. Panel komentar di mobile yang sebelumnya terdorong jauh ke bawah sudah diperbaiki.
+- Mode **Desktop** di pratinjau dirender selebar 1280px lalu diperkecil bila kotak pratinjau lebih sempit dari 1024px, jadi prototype tetap memakai tata letak desktop di HP.
+- **Desain sistem.** `prototyper new <id> -t design-system` membuat token & komponen bersama. Pasang ke prototype dengan `prototyper ds use <prototype> <desain-sistem>` (atau `new … --design-system <id>`), sebarkan perubahan dengan `prototyper ds sync <desain-sistem>`. Prototype yang punya token/komponen sendiri: `prototyper ds local`. Semuanya juga tersedia di Web UI. Contoh: `examples/sembako-ds`.
+- **Lampiran gambar** di komentar, balasan, dan pesan ke agent (PNG, JPG, GIF, WebP, SVG). Disimpan di `.prototyper/attachments/` dan diteruskan ke agent.
+- Tombol **Pilih…** di dialog Buat baru / Daftarkan membuka dialog pilih folder/file bawaan OS.
+- `prototyper update` memasang pembaruan tanpa tray, dan pembaruan diperiksa berkala. `prototyper lan <id> on|off` membuka akses LAN untuk satu prototype. `prototyper serve --detach` menjalankan daemon di latar. Teks komentar multi-baris bisa lewat `--file -` (stdin).
+
+Pembaruan ke 0.4.0 mengubah kode server, jadi Prototyper dimulai ulang sekali.
+
+## 0.3.11
 
 - **Lanjut sesi agent (Claude Code).** Klik **Kerjakan** berikutnya pada prototype yang sama melanjutkan percakapan run sebelumnya, jadi agent ingat apa yang sudah dilihat dan diubahnya dan tidak perlu membaca ulang semuanya dari awal. Hasilnya lebih nyambung dan lebih hemat.
 - Bar agent menampilkan **↻ Lanjutkan sesi · N run**. Klik untuk memulai **Sesi baru** pada run berikutnya.

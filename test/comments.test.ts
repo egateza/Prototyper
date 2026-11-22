@@ -187,7 +187,8 @@ describe('API komentar', () => {
     expect((await app.inject({ method: 'GET', url: `${base}?status=x` })).statusCode).toBe(400);
     const lan = await app.inject({ method: 'POST', url: base, remoteAddress: '192.168.1.9', payload: { text: 'x' } });
     expect(lan.statusCode).toBe(403);
-    expect((await app.inject({ method: 'GET', url: base, remoteAddress: '192.168.1.9' })).statusCode).toBe(200);
+    // perangkat LAN yang belum dipasangkan tidak bisa membaca komentar (lihat devices.test.ts)
+    expect((await app.inject({ method: 'GET', url: base, remoteAddress: '192.168.1.9' })).statusCode).toBe(401);
   });
 
   it('server static tidak menyajikan .prototyper/comments.json', async () => {

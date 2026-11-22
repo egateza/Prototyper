@@ -43,12 +43,17 @@ describe('HTTP API dasar', () => {
     expect(res.json()).toEqual({ error: { code: 'NOT_FOUND', message: expect.any(String) } });
   });
 
-  it('POST dari non-loopback ditolak, GET tetap boleh', async () => {
+  it('perangkat lain tanpa pairing: POST ditolak, GET API butuh pairing, health & Web UI terbuka', async () => {
     const post = await app.inject({ method: 'POST', url: '/api/prototypes', remoteAddress: '192.168.1.20', payload: {} });
     expect(post.statusCode).toBe(403);
     expect(post.json().error.code).toBe('FORBIDDEN');
     const get = await app.inject({ method: 'GET', url: '/api/prototypes', remoteAddress: '192.168.1.20' });
-    expect(get.statusCode).toBe(200);
+    expect(get.statusCode).toBe(401);
+    expect(get.json().error.code).toBe('UNAUTHORIZED');
+    const h = await app.inject({ method: 'GET', url: '/api/health', remoteAddress: '192.168.1.20' });
+    expect(h.json()).toMatchObject({ access: 'none', home: '', workspace: '' });
+    expect((await app.inject({ method: 'GET', url: '/api/health' })).json().access).toBe('local');
+    expect((await app.inject({ method: 'GET', url: '/', remoteAddress: '192.168.1.20' })).statusCode).toBe(200);
   });
 
   it('menyajikan Web UI di /', async () => {

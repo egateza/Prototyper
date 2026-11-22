@@ -2,6 +2,20 @@
   "releasesUrl": "https://github.com/egateza/Prototyper/releases",
   "releases": [
     {
+      "version": "0.4.0",
+      "date": "2026-11-23",
+      "title": "Edit dari HP, desain sistem & lampiran gambar",
+      "items": [
+        "**Edit dari HP.** Dengan Mode LAN **Web UI + prototype**, klik ikon **HP** di bawah sidebar lalu pindai QR-nya. Dari HP Anda bisa berkomentar, menjawab pertanyaan agent, menjalankan agent, dan start/stop prototype.",
+        "Perangkat yang belum dipasangkan tidak bisa lagi membuka daftar prototype maupun komentar. HP yang terpasang bisa dicabut kapan saja dari dialog yang sama. Hapus/daftarkan prototype, manifest, update, dan mematikan Prototyper tetap hanya dari komputer.",
+        "**Tampilan mobile**: sidebar dan panel komentar dibuka lewat tombol mengambang. Ketuk tombol panah lalu ketuk elemen di pratinjau untuk mengomentarinya. Mode **Desktop** di pratinjau kini tetap memakai tata letak desktop walau dibuka di layar kecil.",
+        "**Desain sistem**: buat token & komponen bersama dengan template *design-system*, pasang ke prototype lain, lalu sebarkan perubahannya ke semua pemakai dengan sekali klik.",
+        "**Lampiran gambar** di komentar, balasan, dan pesan ke agent: tempel, seret, atau pilih gambar.",
+        "Tombol **Pilih…** membuka dialog pilih folder/file bawaan Windows, jadi path tidak perlu diketik.",
+        "**LAN per prototype**: buka akses jaringan untuk satu prototype saja lewat tombol **LAN** di halaman prototype."
+      ]
+    },
+    {
       "version": "0.3.11",
       "date": "2026-11-17",
       "title": "Lanjut sesi agent & mode LAN dari tray",
