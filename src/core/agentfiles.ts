@@ -43,6 +43,58 @@ export function instructionsFile(m: Manifest): string {
   return m.agent?.instructions ?? 'AGENTS.md';
 }
 
+/** Aturan desain sistem: untuk desain sistem itu sendiri, atau untuk prototype yang memakainya. */
+function designSystemLines(m: Manifest): string[] {
+  const ds = m.designSystem;
+  if (ds?.source) {
+    const files = (ds.files ?? ['tokens.css', 'components.css']).map((f) => `\`${f}\``).join(', ');
+    return [
+      '### Desain sistem',
+      '',
+      `Prototype ini adalah **desain sistem** yang dipakai prototype lain. File bersama: ${files}; halaman \`index.html\` adalah katalognya.`,
+      '',
+      '- Semua nilai visual (warna, tipografi, jarak, radius, bayangan) didefinisikan sebagai token CSS (`--kategori-nama`) di file token. Komponen hanya memakai `var(--…)`, tanpa nilai mentah.',
+      '- Setiap komponen atau varian baru wajib punya contoh di katalog (`index.html`), agar pengguna bisa meninjau dan mengomentarinya.',
+      '- Jangan mengganti nama atau menghapus token/kelas yang sudah ada tanpa diminta: prototype pemakai bergantung padanya. Tambahkan yang baru, atau tandai yang lama sebagai usang di komentar CSS.',
+      `- Setelah file bersama berubah, sebarkan ke prototype pemakai: \`prototyper ds sync ${m.id}\` (daftar pemakai: \`prototyper ds list --json\`).`,
+      '',
+    ];
+  }
+  if (ds?.use) {
+    const dir = (ds.dir ?? 'design-system').replace(/\\/g, '/');
+    return [
+      '### Desain sistem',
+      '',
+      `Prototype ini memakai desain sistem **${ds.use}**. Salinan file token & komponennya ada di \`${dir}/\` dan sudah dimuat oleh halaman/entry prototype.`,
+      '',
+      '- Pakai token (`var(--color-…)`, `var(--space-…)`, `var(--text-…)`, `var(--radius-…)`, `var(--shadow-…)`) untuk nilai visual, bukan nilai mentah (hex, px).',
+      `- Pakai kelas komponen yang sudah ada (mis. \`.btn\`, \`.card\`, \`.input\`) sebelum membuat yang baru. Lihat isi \`${dir}/\` atau katalognya: \`prototyper info ${ds.use} --json\` → \`path\`/\`url\`.`,
+      `- **Jangan mengedit file di \`${dir}/\`**: tertimpa saat sinkron. Gaya khusus prototype ini ditulis di file CSS prototype sendiri.`,
+      `- Butuh token atau komponen baru yang berguna untuk prototype lain? Tambahkan di desain sistem \`${ds.use}\` (folder desain sistem, lihat \`prototyper info ${ds.use}\`), lalu \`prototyper ds sync ${m.id}\`. Bila tidak yakin, tanyakan dulu ke pengguna.`,
+      '',
+    ];
+  }
+  if (ds?.local) {
+    const where = ds.local.map((f) => `\`${f.replace(/\\/g, '/')}\``).join(', ');
+    return [
+      '### Desain sistem',
+      '',
+      `Prototype ini punya desain sistem sendiri di ${where}. Baca dulu sebelum mengubah tampilan.`,
+      '',
+      '- Pakai token (custom property, variabel, atau konstanta tema) dan komponen yang sudah ada di sana untuk nilai visual, bukan nilai mentah (hex, px) yang ditulis ulang di tempat lain.',
+      '- Butuh warna, ukuran, atau komponen baru? Tambahkan di lokasi desain sistem itu dengan penamaan yang sama, lalu pakai dari sana, agar seluruh halaman tetap konsisten.',
+      '- Jangan mengganti nama atau menghapus token/komponen yang sudah dipakai tanpa diminta.',
+      '',
+    ];
+  }
+  return [];
+}
+
+/** Petunjuk teks multi-baris (argumen terpotong lewat shim .cmd di Windows). */
+export function multilineHint(id: string): string {
+  return `Teks lebih dari satu baris (daftar, paragraf) **jangan** dikirim sebagai argumen: di Windows terpotong di baris pertama. Kirim lewat stdin dengan \`--file -\`, mis. \`prototyper comments reply ${id} <commentId> --file - <<'EOF'\` … \`EOF\` (berlaku juga untuk \`add\` dan \`ask\`), atau tulis ke file di luar folder prototype lalu \`--file <path>\`.`;
+}
+
 /** Isi bagian Prototyper (di antara penanda) untuk sebuah manifest. */
 export function prototyperSection(m: Manifest, home: string = resolveHome()): string {
   const id = m.id;
@@ -69,17 +121,21 @@ export function prototyperSection(m: Manifest, home: string = resolveHome()): st
   lines.push(
     '- Jangan mengubah `prototyper.json` kecuali memang perlu mengubah cara menjalankan prototype.',
     '',
+    ...designSystemLines(m),
     '### Komentar dari pengguna',
     '',
     'Pengguna menulis komentar di Web UI Prototyper. Bila diminta "kerjakan komentar" (atau sejenisnya):',
     '',
     `1. Ambil yang giliran agent: \`prototyper comments ${id} --waiting agent --json\`. Perhatikan \`page\`, \`anchor\` (elemen yang diklik/diblok pengguna: \`selector\` CSS, \`text\`, \`quote\`, \`html\` (potongan elemen saat komentar dibuat, berguna bila selector sudah usang) — cari elemen itu di kode), balasan, dan \`answer\` pada pertanyaan berpilihan.`,
+    '   Komentar/balasan bisa punya `attachments`: gambar dari pengguna (mis. tangkapan layar atau contoh desain), path relatif terhadap folder ini. Buka gambarnya dengan tool baca file sebelum mengerjakan.',
     `   Sebelum mengerjakan tiap komentar, lihat riwayatnya: \`prototyper comments context ${id} <commentId> --json\` → komentar selesai terkait (halaman/elemen sama) dan keputusan sebelumnya dari \`.prototyper/DECISIONS.md\`. Jangan mengulang perubahan yang sudah dibatalkan atau diminta dikembalikan.`,
     `2. Kerjakan satu per satu, lalu laporkan lewat \`prototyper comments reply ${id} <commentId> "<ringkasan perubahan>"\` dan biarkan komentar tetap open.`,
     `   **Jangan menutup komentar** (\`prototyper comments resolve\`): penggunalah yang memeriksa hasil dan menentukan pekerjaan selesai. Resolve hanya bila pengguna secara eksplisit memintanya.`,
     `3. Bila ada beberapa kemungkinan, jangan menebak: \`prototyper comments ask ${id} <commentId> "<pertanyaan>" --option "A" --option "B"\` (\`--multi\` bila boleh lebih dari satu), lalu biarkan open.`,
     `4. Pertanyaan balik atau permintaan revisi dari pengguna dijawab dengan \`prototyper comments reply ${id} <commentId> "<jawaban>"\`.`,
     '5. Komentar dengan `waitingFor: "user"` sedang menunggu pengguna — jangan dikerjakan dulu.',
+    '',
+    multilineHint(id),
     '',
     `Bila perintah \`prototyper\` tidak ditemukan, pakai shim-nya: \`"${shimCommand(home)}" <perintah>\`.`,
     MARK_END,

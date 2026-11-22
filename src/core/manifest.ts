@@ -101,6 +101,42 @@ const baseShape = {
     })
     .strict()
     .optional(),
+  designSystem: z
+    .object({
+      source: z
+        .boolean()
+        .optional()
+        .describe('true = prototype ini adalah desain sistem yang dipakai prototype lain (dibuat dengan template design-system)'),
+      files: z
+        .array(relPath)
+        .min(1)
+        .optional()
+        .describe('Desain sistem: file yang disalin ke prototype pemakai, relatif ke folder ini (default ["tokens.css", "components.css"])'),
+      use: z
+        .string()
+        .regex(ID_RE, 'id desain sistem tidak valid')
+        .optional()
+        .describe('Pemakai: id desain sistem yang dipakai. Pasang dengan: prototyper ds use <id> <desain-sistem>'),
+      dir: relPath
+        .optional()
+        .describe('Pemakai: folder salinan file desain sistem, relatif ke folder prototype (default "design-system")'),
+      local: z
+        .array(relPath)
+        .min(1)
+        .optional()
+        .describe('Desain sistem sendiri: file/folder desain sistem milik prototype ini (mis. ["src/styles/tokens.css"]), relatif ke folder prototype'),
+    })
+    .strict()
+    .refine((d) => [d.source, d.use, d.local].filter(Boolean).length <= 1, {
+      message: 'pilih salah satu: source (desain sistem), use (memakai desain sistem), atau local (desain sistem sendiri)',
+    })
+    .refine((d) => d.source || d.files === undefined, { message: 'files hanya untuk desain sistem (source: true)' })
+    .refine((d) => d.use || d.dir === undefined, { message: 'dir hanya untuk pemakai (use)' })
+    .refine((d) => d.source || d.use || d.local, {
+      message: 'isi source: true (desain sistem), use: "<id>" (memakai desain sistem), atau local: [...] (desain sistem sendiri)',
+    })
+    .optional()
+    .describe('Desain sistem: token & komponen yang dipakai bersama beberapa prototype'),
 };
 
 export const manifestSchema = z.discriminatedUnion('type', [

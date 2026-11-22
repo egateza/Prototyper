@@ -16,12 +16,14 @@ interface StateFile {
   ports: Record<string, number>;
   /** Proses command yang sedang berjalan, untuk deteksi sisa setelah daemon crash. */
   processes: Record<string, ProcessRecord>;
+  /** id prototype yang dibuka ke LAN (bind 0.0.0.0) walau mode LAN daemon mati. */
+  lan: string[];
 }
 
 /** State milik daemon (state.json). Disimpan di memori, ditulis atomik berurutan. */
 export class StateStore {
   readonly file: string;
-  private data: StateFile = { version: 1, ports: {}, processes: {} };
+  private data: StateFile = { version: 1, ports: {}, processes: {}, lan: [] };
   private saving: Promise<void> = Promise.resolve();
 
   constructor(home: string) {
@@ -30,7 +32,12 @@ export class StateStore {
 
   async load(): Promise<void> {
     const d = await readJsonFile<Partial<StateFile>>(this.file).catch(() => undefined);
-    this.data = { version: 1, ports: d?.ports ?? {}, processes: d?.processes ?? {} };
+    this.data = {
+      version: 1,
+      ports: d?.ports ?? {},
+      processes: d?.processes ?? {},
+      lan: Array.isArray(d?.lan) ? d.lan.filter((x): x is string => typeof x === 'string') : [],
+    };
   }
 
   getPort(id: string): number | undefined {
@@ -40,6 +47,16 @@ export class StateStore {
   setPort(id: string, port: number): Promise<void> {
     if (this.data.ports[id] === port) return this.saving;
     this.data.ports[id] = port;
+    return this.save();
+  }
+
+  isLanExposed(id: string): boolean {
+    return this.data.lan.includes(id);
+  }
+
+  setLanExposed(id: string, on: boolean): Promise<void> {
+    if (this.isLanExposed(id) === on) return this.saving;
+    this.data.lan = on ? [...this.data.lan, id] : this.data.lan.filter((x) => x !== id);
     return this.save();
   }
 
@@ -62,6 +79,7 @@ export class StateStore {
   forget(id: string): Promise<void> {
     delete this.data.ports[id];
     delete this.data.processes[id];
+    this.data.lan = this.data.lan.filter((x) => x !== id);
     return this.save();
   }
 

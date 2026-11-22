@@ -73,9 +73,11 @@ Lewat Web UI: **Baru** membuat prototype dari template (bisa unggah HTML), **Daf
 
 Coba dengan contoh bawaan: `prototyper add examples\hello-static` lalu `prototyper start hello-static`.
 
+Contoh desain sistem: `prototyper add examples\sembako-ds`, buka katalognya dengan `prototyper start sembako-ds`, lalu pasang ke prototype lain dengan `prototyper ds use hello-static sembako-ds`.
+
 | Perintah | Fungsi |
 |---|---|
-| `new <id>` | buat prototype dari template lalu daftarkan (`--template static\|vite-vanilla\|vite-react`, `--from <file.html>`, `--dir`, `--name`, `--no-install`, `--start`) |
+| `new <id>` | buat prototype dari template lalu daftarkan (`--template static\|vite-vanilla\|vite-react\|design-system`, `--from <file.html>`, `--design-system <id>`, `--dir`, `--name`, `--no-install`, `--start`) |
 | `init [dir]` | buat `prototyper.json` (`--type`, `--id`, `--name`, `--run`, `--force`) |
 | `add <dir>` / `remove <id>` | daftarkan (manifest dideteksi bila belum ada; `--type`, `--id`, `--run`) / hapus dari daftar (file tidak disentuh) |
 | `list` / `status` / `info <id>` | lihat prototype |
@@ -85,6 +87,8 @@ Coba dengan contoh bawaan: `prototyper add examples\hello-static` lalu `prototyp
 | `logs <id> [-n 200] [-f]` | log |
 | `agents list` | cek agent coding yang tersedia (Claude Code, Codex, Gemini CLI, Copilot CLI) |
 | `agents sync [id]` | pasang/perbarui petunjuk agent (`AGENTS.md` + `CLAUDE.md`) di folder prototype |
+| `ds list` / `ds use <id> <ds>` / `ds sync [id]` / `ds status <id>` / `ds detach <id>` | desain sistem: token & komponen bersama (`new <id> -t design-system`); file disalin ke `design-system/` di prototype pemakai, `sync` menyebarkan perubahan |
+| `ds local <id> [path…]` | prototype punya desain sistem sendiri: catat lokasi file/folder token & komponennya agar agent memakainya (tanpa path = tebakan lokasi) |
 | `comments <id>` | komentar open (`--all`, `--resolved`, `--page`, `--waiting agent\|user`); subperintah `context` (riwayat & keputusan terkait satu komentar), `add`, `reply`, `ask --option … [--multi]`, `resolve --note`, `reopen`, `rm`; `--include-archive` untuk komentar yang sudah diarsipkan |
 | `serve` | daemon di foreground (Ctrl+C untuk berhenti) |
 | `shutdown` | hentikan daemon + semua prototype |
@@ -179,6 +183,7 @@ URL LAN tampil di `prototyper info` dan Web UI. Dari perangkat lain hanya bisa m
 |---|---|---|
 | `PROTOTYPER_HOME` | `~/.prototyper` | registry, state, log (`logs/<id>.log`, `daemon.log`) |
 | `PROTOTYPER_WORKSPACE` | `<PROTOTYPER_HOME>/prototypes` | folder induk default untuk `prototyper new` |
+| `PROTOTYPER_DS_WORKSPACE` | `<PROTOTYPER_HOME>/design-systems` | folder induk default untuk desain sistem baru (`new -t design-system`) |
 | `PROTOTYPER_PORT` | `4000` | port daemon (API + UI) |
 | `PROTOTYPER_PORT_RANGE` | `4100-4199` | rentang port prototype |
 | `PROTOTYPER_LAN` | – | `1` = sama dengan `--lan`; `prototypes` = sama dengan `--lan-prototypes` |

@@ -25,8 +25,10 @@ export interface Config {
   portRange: PortRange;
   /** Mode LAN (--lan = `all`, --lan-prototypes = `prototypes`, atau PROTOTYPER_LAN). */
   lanMode: LanMode;
-  /** Folder induk default untuk `prototyper new`. */
+  /** Folder induk default untuk `prototyper new` (prototype). */
   workspace: string;
+  /** Folder induk default untuk desain sistem baru (`new -t design-system`). */
+  dsWorkspace: string;
   /** Perbarui petunjuk agent di semua prototype saat daemon menyala (PROTOTYPER_AUTO_SYNC=0 mematikan). */
   autoSyncAgents: boolean;
   /** Repo GitHub (`pemilik/nama`) sumber pembaruan untuk tray (PROTOTYPER_UPDATE_REPO). */
@@ -38,6 +40,7 @@ export interface Config {
 export interface ConfigOverrides {
   home?: string;
   workspace?: string;
+  dsWorkspace?: string;
   port?: number;
   lanMode?: LanMode;
 }
@@ -102,6 +105,8 @@ export function loadConfig(
   const portRange = parseRange(env.PROTOTYPER_PORT_RANGE);
   // Default mengikuti PROTOTYPER_HOME agar prototype baru ikut di drive yang sama (mis. D:).
   const workspace = path.resolve(overrides.workspace ?? (env.PROTOTYPER_WORKSPACE || path.join(home, 'prototypes')));
+  // Desain sistem dipisah dari prototype agar mudah dibedakan di disk.
+  const dsWorkspace = path.resolve(overrides.dsWorkspace ?? (env.PROTOTYPER_DS_WORKSPACE || path.join(home, 'design-systems')));
 
   if (port >= portRange.start && port <= portRange.end) {
     throw new Error(`Port daemon ${port} bentrok dengan rentang port prototype ${portRange.start}-${portRange.end}`);
@@ -115,6 +120,7 @@ export function loadConfig(
     portRange,
     lanMode,
     workspace,
+    dsWorkspace,
     autoSyncAgents: env.PROTOTYPER_AUTO_SYNC !== '0',
     updateRepo: parseRepo(env.PROTOTYPER_UPDATE_REPO),
     updateCheck: env.PROTOTYPER_UPDATE_CHECK !== '0',

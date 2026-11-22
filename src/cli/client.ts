@@ -54,9 +54,14 @@ export class DaemonClient {
     }
   }
 
+  /** Log daemon yang dinyalakan di background. */
+  get logFile(): string {
+    return path.join(this.config.home, 'daemon.log');
+  }
+
   private spawnDaemon(): string {
     mkdirSync(this.config.home, { recursive: true });
-    const logFile = path.join(this.config.home, 'daemon.log');
+    const logFile = this.logFile;
     const out = openSync(logFile, 'a');
     const entry = process.argv[1];
     if (APP_MODE !== 'sea' && !entry) throw new AppError('INTERNAL', 'Tidak bisa menentukan lokasi CLI untuk menyalakan daemon');

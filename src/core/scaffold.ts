@@ -1,19 +1,22 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { devRunFor } from './detect.js';
+import { useDesignSystem, type UseResult } from './designsystem.js';
+import { designSystemTemplateFiles, DS_TEMPLATE_NOTES } from './dstemplate.js';
 import { syncAgentFiles, type AgentFileResult } from './agentfiles.js';
 import { AppError } from './errors.js';
 import { isDirectory } from './fsutil.js';
 import { parseManifest, SCHEMA_URL, writeManifest, type ManifestInput } from './manifest.js';
 import type { Registry, ResolvedPrototype } from './registry.js';
 
-export const TEMPLATES = ['static', 'vite-vanilla', 'vite-react'] as const;
+export const TEMPLATES = ['static', 'vite-vanilla', 'vite-react', 'design-system'] as const;
 export type TemplateName = (typeof TEMPLATES)[number];
 
 export const TEMPLATE_INFO: Record<TemplateName, string> = {
   static: 'HTML + CSS + JS biasa, tanpa build (bisa dari HTML artifact)',
   'vite-vanilla': 'Vite + JavaScript, dengan HMR',
   'vite-react': 'Vite + React 19 (JSX), dengan HMR',
+  'design-system': 'Desain sistem: token + komponen + halaman katalog, untuk dipakai prototype lain',
 };
 
 export function isTemplate(v: unknown): v is TemplateName {
@@ -25,12 +28,16 @@ export interface NewPrototypeOptions {
   name?: string;
   description?: string;
   template?: TemplateName;
-  /** Folder tujuan persis. Default: `<workspace>/<id>`. */
+  /** Folder tujuan persis. Default: `<workspace>/<id>` (desain sistem: `<dsWorkspace>/<id>`). */
   dir?: string;
   /** Folder induk bila `dir` tidak diisi. */
   workspace: string;
+  /** Folder induk desain sistem bila `dir` tidak diisi; tanpa ini dipakai `workspace`. */
+  dsWorkspace?: string;
   /** Isi HTML (mis. artifact Claude) untuk dijadikan index.html. Hanya template static. */
   html?: string;
+  /** Id desain sistem yang langsung dipasang (lihat designsystem.ts). Bukan untuk template design-system. */
+  designSystem?: string;
 }
 
 export interface NewPrototypeResult {
@@ -40,6 +47,8 @@ export interface NewPrototypeResult {
   files: string[];
   /** Hasil pemasangan petunjuk agent (AGENTS.md / CLAUDE.md). */
   agentFiles: AgentFileResult[];
+  /** Hasil pemasangan desain sistem, bila diminta. */
+  designSystem: UseResult | null;
 }
 
 type Files = Record<string, string>;
@@ -55,7 +64,9 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 /** AGENTS.md awal: tujuan + catatan template. Bagian Prototyper ditambahkan oleh syncAgentFiles. */
 function agentsMd(name: string, template: TemplateName, imported: boolean): string {
   const notes =
-    template === 'static'
+    template === 'design-system'
+      ? DS_TEMPLATE_NOTES
+      : template === 'static'
       ? imported
         ? ['- `index.html` diimpor dari HTML yang sudah ada (mis. artifact Claude). Boleh dipecah ke file CSS/JS terpisah.']
         : ['- Titik masuk: `index.html`, gaya di `style.css`, logika di `app.js`.']
@@ -68,7 +79,9 @@ function agentsMd(name: string, template: TemplateName, imported: boolean): stri
     '',
     '## Tujuan',
     '',
-    '_(tuliskan apa yang ingin divalidasi dengan prototype ini)_',
+    template === 'design-system'
+      ? '_(tuliskan produk/brand yang dilayani desain sistem ini dan prinsip visualnya)_'
+      : '_(tuliskan apa yang ingin divalidasi dengan prototype ini)_',
     '',
     `## Catatan template (${template})`,
     '',
@@ -80,7 +93,10 @@ function agentsMd(name: string, template: TemplateName, imported: boolean): stri
 // .prototyper/comments.json sengaja tidak diabaikan: komentar boleh ikut di-commit.
 const GITIGNORE = 'node_modules\ndist\n';
 
-function staticFiles(name: string): Files {
+/** Atribut kelas tombol contoh: kelas komponen desain sistem bila dipakai. */
+const btnClass = (ds: boolean, attr = 'class') => (ds ? ` ${attr}="btn btn-primary"` : '');
+
+function staticFiles(name: string, ds: boolean): Files {
   return {
     'index.html': `<!doctype html>
 <html lang="id">
@@ -94,7 +110,7 @@ function staticFiles(name: string): Files {
   <main>
     <h1>${esc(name)}</h1>
     <p>Prototype baru. Edit <code>index.html</code>, <code>style.css</code>, dan <code>app.js</code>, lalu refresh.</p>
-    <button type="button" id="btn">Klik</button>
+    <button type="button" id="btn"${btnClass(ds)}>Klik</button>
     <p id="out"></p>
   </main>
   <script src="app.js" type="module"></script>
@@ -150,7 +166,7 @@ body { margin: 0; min-height: 100vh; display: grid; place-items: center; }
 button { font: inherit; padding: .5rem 1rem; cursor: pointer; }
 `;
 
-function viteVanillaFiles(id: string, name: string): Files {
+function viteVanillaFiles(id: string, name: string, ds: boolean): Files {
   return {
     'package.json': packageJson(id, {}, { vite: VERSIONS.vite }),
     'index.html': viteIndex(name, '/src/main.js'),
@@ -161,7 +177,7 @@ const app = document.querySelector('#app');
 app.innerHTML = \`
   <h1>${esc(name).replace(/[`$\\]/g, '\\$&')}</h1>
   <p>Prototype baru (Vite). Edit <code>src/main.js</code> — perubahan tampil otomatis.</p>
-  <button type="button" id="btn">Klik</button>
+  <button type="button" id="btn"${btnClass(ds)}>Klik</button>
   <p id="out"></p>
 \`;
 
@@ -175,7 +191,7 @@ app.querySelector('#btn').addEventListener('click', () => {
   };
 }
 
-function viteReactFiles(id: string, name: string): Files {
+function viteReactFiles(id: string, name: string, ds: boolean): Files {
   return {
     'package.json': packageJson(
       id,
@@ -212,7 +228,7 @@ export default function App() {
       <p>
         Prototype baru (Vite + React). Edit <code>src/App.jsx</code> — perubahan tampil otomatis.
       </p>
-      <button type="button" onClick={() => setN((x) => x + 1)}>
+      <button type="button"${btnClass(ds, 'className')} onClick={() => setN((x) => x + 1)}>
         Klik
       </button>
       {n > 0 && <p>Diklik {n} kali</p>}
@@ -227,17 +243,23 @@ export default function App() {
 /** Isi prototyper.json dan file awal untuk sebuah template. */
 export function renderTemplate(
   template: TemplateName,
-  { id, name, description, html }: { id: string; name: string; description?: string; html?: string },
+  { id, name, description, html, designSystem = false }: { id: string; name: string; description?: string; html?: string; designSystem?: boolean },
 ): { manifest: ManifestInput; files: Files } {
   const head = { $schema: SCHEMA_URL, id, name, ...(description ? { description } : {}) };
+  if (template === 'design-system') {
+    return {
+      manifest: { ...head, type: 'static', static: { root: '.', index: 'index.html' }, designSystem: { source: true } },
+      files: { ...designSystemTemplateFiles(name), 'AGENTS.md': agentsMd(name, template, false) },
+    };
+  }
   if (template === 'static') {
-    const files = html !== undefined ? { 'index.html': html } : staticFiles(name);
+    const files = html !== undefined ? { 'index.html': html } : staticFiles(name, designSystem);
     return {
       manifest: { ...head, type: 'static', static: { root: '.', index: 'index.html' } },
       files: { ...files, 'AGENTS.md': agentsMd(name, template, html !== undefined) },
     };
   }
-  const files = template === 'vite-react' ? viteReactFiles(id, name) : viteVanillaFiles(id, name);
+  const files = template === 'vite-react' ? viteReactFiles(id, name, designSystem) : viteVanillaFiles(id, name, designSystem);
   return {
     manifest: { ...head, type: 'command', command: { run: devRunFor('vite'), install: 'npm install' } },
     files: { ...files, 'AGENTS.md': agentsMd(name, template, false) },
@@ -257,6 +279,14 @@ export async function createPrototype(registry: Registry, opts: NewPrototypeOpti
     throw new AppError('BAD_REQUEST', 'Impor HTML hanya untuk template static');
   }
   if (opts.html !== undefined && !opts.html.trim()) throw new AppError('BAD_REQUEST', 'File HTML kosong');
+  const dsId = opts.designSystem?.trim() || undefined;
+  if (dsId && template === 'design-system') throw new AppError('BAD_REQUEST', 'Desain sistem tidak memakai desain sistem lain');
+  if (dsId) {
+    // Cek sebelum menyentuh disk agar folder tidak dibuat untuk desain sistem yang salah.
+    const ds = await registry.get(dsId);
+    if (!ds) throw new AppError('NOT_FOUND', `Desain sistem "${dsId}" tidak terdaftar. Lihat daftar: prototyper ds list`);
+    if (ds.manifest?.designSystem?.source !== true) throw new AppError('BAD_REQUEST', `"${dsId}" bukan desain sistem`);
+  }
 
   const id = (opts.id ?? '').trim();
   const name = opts.name?.trim() || id;
@@ -265,10 +295,12 @@ export async function createPrototype(registry: Registry, opts: NewPrototypeOpti
     name,
     ...(opts.description?.trim() ? { description: opts.description.trim() } : {}),
     ...(opts.html !== undefined ? { html: opts.html } : {}),
+    designSystem: !!dsId,
   });
   parseManifest(manifest); // validasi id/nama sebelum menyentuh disk
 
-  const dir = path.resolve(opts.dir?.trim() ? opts.dir.trim() : path.join(opts.workspace, id));
+  const parent = template === 'design-system' ? (opts.dsWorkspace ?? opts.workspace) : opts.workspace;
+  const dir = path.resolve(opts.dir?.trim() ? opts.dir.trim() : path.join(parent, id));
   await registry.assertCanAdd(dir, id);
 
   let created = false;
@@ -281,6 +313,7 @@ export async function createPrototype(registry: Registry, opts: NewPrototypeOpti
     created = true;
   }
 
+  let registered = false;
   try {
     for (const [rel, content] of Object.entries(files)) {
       const file = path.join(dir, ...rel.split('/'));
@@ -288,12 +321,25 @@ export async function createPrototype(registry: Registry, opts: NewPrototypeOpti
       await fs.writeFile(file, content, 'utf8');
     }
     await writeManifest(dir, manifest);
-    const prototype = await registry.add(dir);
-    const agentFiles = prototype.manifest ? await syncAgentFiles(dir, prototype.manifest, { home: registry.home }) : [];
-    const extra = agentFiles.filter((f) => f.action === 'created' && !(f.file in files)).map((f) => f.file);
-    return { prototype, template, files: ['prototyper.json', ...Object.keys(files), ...extra].sort(), agentFiles };
+    let prototype = await registry.add(dir);
+    registered = true;
+    let designSystem: UseResult | null = null;
+    let agentFiles: AgentFileResult[];
+    if (dsId) {
+      designSystem = await useDesignSystem(registry, prototype.id, dsId, { home: registry.home });
+      prototype = await registry.require(prototype.id);
+      agentFiles = designSystem.agentFiles;
+    } else {
+      agentFiles = prototype.manifest ? await syncAgentFiles(dir, prototype.manifest, { home: registry.home }) : [];
+    }
+    const extra = [
+      ...agentFiles.filter((f) => f.action === 'created' && !(f.file in files)).map((f) => f.file),
+      ...(designSystem?.files.filter((f) => f.action === 'created').map((f) => f.file) ?? []),
+    ];
+    return { prototype, template, files: ['prototyper.json', ...Object.keys(files), ...extra].sort(), agentFiles, designSystem };
   } catch (err) {
     if (created) await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+    if (registered) await registry.remove(id).catch(() => undefined);
     throw err;
   }
 }

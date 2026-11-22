@@ -1,10 +1,11 @@
 import path from 'node:path';
 import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
-import { APP_DIR, APP_HOST } from '../core/appfiles.js';
+import { APP_DIR, APP_HOST, APP_MODE } from '../core/appfiles.js';
 import { resolveWebSwap, type HostInfo } from '../core/apphost.js';
 import { AgentRunner, type AgentCommand, type AgentId } from '../core/agent.js';
 import type { Config } from '../core/config.js';
+import type { Runner } from '../core/picker.js';
 import { AppError, errorBody } from '../core/errors.js';
 import { Registry } from '../core/registry.js';
 import { Runtime } from '../core/runtime.js';
@@ -12,7 +13,12 @@ import { StateStore, type StaleProcess } from '../core/state.js';
 import { agentRoutes } from './routes/agent.js';
 import { commentRoutes } from './routes/comments.js';
 import { healthRoutes } from './routes/health.js';
+import { pickRoutes } from './routes/pick.js';
 import { prototypeRoutes } from './routes/prototypes.js';
+import { updateRoutes } from './routes/update.js';
+import { checkForUpdate, installContext, UpdateChecker } from '../core/selfupdate.js';
+import type { UpdateCheck } from '../core/update.js';
+import { spawnSelfUpdate } from '../cli/update.js';
 import { VERSION } from '../version.js';
 
 export interface BuildAppOptions {
@@ -26,6 +32,10 @@ export interface BuildAppOptions {
   web?: WebSource;
   /** Untuk tes: host exe (default `APP_HOST`; null di luar biner tunggal). */
   appHost?: Pick<HostInfo, 'root' | 'appDir' | 'runtime'> | null;
+  /** Untuk tes: ganti pemeriksaan & pemasangan pembaruan. */
+  update?: { check?: (current: string) => Promise<UpdateCheck>; install?: () => string };
+  /** Untuk tes: ganti pembuka dialog pilih file/folder OS. */
+  picker?: { run?: Runner; platform?: NodeJS.Platform };
 }
 
 /** Asal Web UI yang sedang dilayani. Berganti tanpa restart lewat `POST /api/app/reload-web`. */
@@ -51,7 +61,7 @@ function isLoopback(ip: string): boolean {
   return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
 }
 
-export async function buildApp({ config, logger = false, onShutdown, agentCommands, web, appHost = APP_HOST }: BuildAppOptions): Promise<{
+export async function buildApp({ config, logger = false, onShutdown, agentCommands, web, appHost = APP_HOST, update, picker }: BuildAppOptions): Promise<{
   app: FastifyInstance;
   ctx: AppContext;
 }> {
@@ -94,10 +104,19 @@ export async function buildApp({ config, logger = false, onShutdown, agentComman
     await runtime.stopAll();
   });
 
-  await app.register(healthRoutes, { prefix: '/api', startedAt, lanMode: config.lanMode, home: config.home, workspace: config.workspace, version: () => ctx.web.version });
+  await app.register(healthRoutes, { prefix: '/api', startedAt, lanMode: config.lanMode, home: config.home, workspace: config.workspace, dsWorkspace: config.dsWorkspace, version: () => ctx.web.version });
   await app.register(prototypeRoutes, { prefix: '/api', ctx });
   await app.register(commentRoutes, { prefix: '/api', registry });
   await app.register(agentRoutes, { prefix: '/api', registry, agent });
+  await app.register(pickRoutes, { prefix: '/api', ...(picker ?? {}) });
+  const ictx = installContext();
+  const checker = new UpdateChecker({
+    enabled: config.updateCheck,
+    mode: APP_MODE,
+    version: () => ctx.web.version,
+    check: update?.check ?? ((current) => checkForUpdate(config.updateRepo, current, ictx)),
+  });
+  await app.register(updateRoutes, { prefix: '/api', checker, install: update?.install ?? (() => spawnSelfUpdate(config)) });
 
   app.post('/api/shutdown', async (_req, reply) => {
     if (!onShutdown) throw new AppError('NOT_IMPLEMENTED', 'Shutdown tidak tersedia');

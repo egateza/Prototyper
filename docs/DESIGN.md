@@ -120,6 +120,11 @@ Diletakkan di root folder prototype. Ini *sumber kebenaran* untuk info prototype
 | `command.readyTimeoutSec` | tidak | default 60 (maks. 600) |
 | `agent.instructions` | tidak | file panduan untuk agent, default `AGENTS.md` |
 | `agent.syncInstructions` | tidak | `false` = Prototyper tidak menulis blok petunjuk di file instruksi dan `CLAUDE.md` (§10e) |
+| `designSystem.source` | tidak | `true` = prototype ini adalah desain sistem (§10h) |
+| `designSystem.files` | tidak | desain sistem: file yang disalin ke pemakai, relatif ke foldernya; default `["tokens.css", "components.css"]` |
+| `designSystem.use` | tidak | pemakai: id desain sistem yang dipakai (§10h) |
+| `designSystem.dir` | tidak | pemakai: folder salinan, relatif ke folder prototype; default `design-system` |
+| `designSystem.local` | tidak | desain sistem sendiri: file/folder token & komponen milik prototype ini, mis. `["src/styles/tokens.css"]` (§10h). `source`, `use`, dan `local` saling eksklusif |
 | `tags` | tidak | |
 
 Field tak dikenal ditolak (`strict`). Validasi memakai **zod**; JSON Schema (`schemas/prototyper.schema.json`) digenerate dari zod (`npm run schema`, ada tes yang mengecek sinkron) agar editor dan agent bisa memvalidasi tanpa menjalankan Prototyper.
@@ -135,6 +140,7 @@ Field tak dikenal ditolak (`strict`). Validasi memakai **zod**; JSON Schema (`sc
 | `PROTOTYPER_PORT_RANGE` | | `4100-4199` | rentang port prototype |
 | `PROTOTYPER_LAN` | `--lan` / `--lan-prototypes` | — | `1` = mode LAN semua, `prototypes` = prototype saja (§11) |
 | `PROTOTYPER_WORKSPACE` | | `<HOME>/prototypes` | folder induk prototype baru (`new`) |
+| `PROTOTYPER_DS_WORKSPACE` | | `<HOME>/design-systems` | folder induk desain sistem baru (`new -t design-system`), terpisah dari prototype |
 | `PROTOTYPER_AGENT_DEFAULT` | | `claude` | agent default untuk run dari Web UI |
 | `PROTOTYPER_AGENT_TIMEOUT_MIN` | | `20` | batas waktu satu run agent |
 | `PROTOTYPER_AGENT_CHECKPOINT` | | `1` | `0` = jangan buat checkpoint sebelum/sesudah run agent |
@@ -160,7 +166,7 @@ Field tak dikenal ditolak (`strict`). Validasi memakai **zod**; JSON Schema (`sc
 
 ### `state.json` — milik daemon
 
-Port terakhir tiap prototype (*sticky port*, supaya URL stabil) dan PID proses yang berjalan.
+Port terakhir tiap prototype (*sticky port*, supaya URL stabil), PID proses yang berjalan, dan `lan`: id prototype yang dibuka ke LAN satu per satu (§11).
 
 Bila daemon mati tidak wajar, PID yang tersisa **tidak dibunuh otomatis** saat daemon start berikutnya (PID bisa sudah dipakai ulang oleh proses lain, terutama di Windows). Daemon hanya menampilkan peringatan berisi PID dan perintah `taskkill` untuk dicek manual; alokasi port otomatis menghindari port yang masih terpakai.
 
@@ -200,7 +206,7 @@ Base: `http://127.0.0.1:4000/api`. Semua respons JSON (kecuali SSE). Semua reque
 | GET | `/health` | versi, uptime, `home`, `workspace` |
 | GET | `/prototypes` | daftar + status + URL + jumlah komentar |
 | POST | `/prototypes` | daftarkan `{ "path": "..." }`; opsional `manifest` (ditulis dulu sebagai `prototyper.json`, cek bentrok id/folder sebelum menulis) dan `overwrite: true` untuk menimpa file yang ada. Respons memuat `agentFiles` |
-| POST | `/prototypes/new` | buat dari template `{ "id", "template?": "static\|vite-vanilla\|vite-react", "name?", "description?", "dir?", "html?", "install?" }` lalu daftarkan; default folder `<workspace>/<id>`; template Vite menjalankan `npm install` kecuali `install: false`. Respons = view + `template`, `files`, `install`, `agentFiles` |
+| POST | `/prototypes/new` | buat dari template `{ "id", "template?": "static\|vite-vanilla\|vite-react\|design-system", "name?", "description?", "dir?", "html?", "install?", "designSystem?" }` lalu daftarkan; default folder `<workspace>/<id>`; template Vite menjalankan `npm install` kecuali `install: false`; `designSystem` = id desain sistem yang langsung dipasang (§10h). Respons = view + `template`, `files`, `install`, `agentFiles`, `designSystem` |
 | POST | `/manifest/detect` | periksa folder: manifest yang ada (`exists`, `valid`, `raw`) atau hasil deteksi untuk diedit (`detected`, `notes`); opsional `type`, `id`, `name`, `run` |
 | GET | `/prototypes/:id` | detail (manifest, path, status, url, instructions, comments) |
 | DELETE | `/prototypes/:id` | hapus dari registry (tidak menghapus file) |
@@ -208,8 +214,15 @@ Base: `http://127.0.0.1:4000/api`. Semua respons JSON (kecuali SSE). Semua reque
 | POST | `/prototypes/:id/reload` | baca ulang manifest |
 | POST | `/prototypes/:id/start` \| `stop` \| `restart` | jalankan / hentikan / restart |
 | POST | `/prototypes/:id/install` | jalankan `command.install` |
+| PUT | `/prototypes/:id/lan` | buka/tutup akses LAN satu prototype `{ "exposed": true|false }`; yang sedang berjalan di-restart bila host berubah (§11) |
+| GET | `/design-systems` | `{ designSystems: [{ id, name, path, files, missing, consumers: [{ id, use, dir, found, outdated, files: [{ file, state }] }] }], locals: [{ id, name, paths: [{ path, exists, kind }] }] }` (§10h) |
+| PUT | `/prototypes/:id/design-system` | pasang desain sistem `{ "id", "dir?", "link?": true }`, atau catat desain sistem sendiri `{ "local": ["<path>", …] }` → hasil + `prototype` (view) |
+| GET | `/prototypes/:id/design-system/candidates` | tebakan lokasi desain sistem sendiri di folder prototype `{ id, candidates }` |
+| DELETE | `/prototypes/:id/design-system` | lepas desain sistem / lokasi sendiri (tidak ada file yang dihapus) |
+| POST | `/prototypes/:id/design-system/sync` | salin ulang; id pemakai = prototype itu, id desain sistem = semua pemakainya → `{ results }` |
 | GET | `/prototypes/:id/logs?tail=200` | log terakhir |
 | GET | `/prototypes/:id/logs/stream?tail=100` | SSE log realtime |
+| POST | `/pick` | buka dialog pilih file/folder bawaan OS di komputer ini `{ "kind": "folder"\|"file", "title?", "initial?", "multiple?" }` → `{ paths, cancelled }` (§10a) |
 | POST | `/shutdown` | hentikan daemon + semua prototype |
 
 ### Komentar (§10b)
@@ -217,11 +230,13 @@ Base: `http://127.0.0.1:4000/api`. Semua respons JSON (kecuali SSE). Semua reque
 | Method | Path | Fungsi |
 |---|---|---|
 | GET | `/prototypes/:id/comments?status=open\|resolved\|all&page=&waiting=user\|agent` | `{ id, counts: { open, resolved, waitingUser }, comments }` |
-| POST | `/prototypes/:id/comments` | tambah `{ text, page?, author?, role?, anchor? }` |
-| POST | `/prototypes/:id/comments/:cid/replies` | balas `{ text, author?, role? }`; pertanyaan berpilihan `{ text, options: [...], multi? }`; jawaban `{ answerTo, choices: [...], text? }` |
+| POST | `/prototypes/:id/comments` | tambah `{ text, page?, author?, role?, anchor?, attachments? }` (teks boleh kosong bila ada `attachments`) |
+| POST | `/prototypes/:id/comments/:cid/replies` | balas `{ text, author?, role?, attachments? }`; pertanyaan berpilihan `{ text, options: [...], multi? }`; jawaban `{ answerTo, choices: [...], text? }` |
 | POST | `/prototypes/:id/comments/:cid/resolve` | selesai `{ note?, author? }` |
 | POST | `/prototypes/:id/comments/:cid/reopen` | buka lagi |
-| DELETE | `/prototypes/:id/comments/:cid` | hapus |
+| DELETE | `/prototypes/:id/comments/:cid` | hapus (gambar lampirannya ikut dihapus bila tidak dipakai komentar lain) |
+| POST | `/prototypes/:id/attachments` | unggah gambar `{ data }` (base64/data URL; PNG/JPG/GIF/WebP/SVG, jenis dikenali dari isi file, maks. 5 MB) → `{ name, path, type, size }`; disimpan di `.prototyper/attachments/<hash>.<ext>`, `path` dipakai di `attachments` (maks. 6) |
+| GET | `/prototypes/:id/attachments/:name` | sajikan gambar lampiran (SVG dengan `Content-Security-Policy: … sandbox` agar skrip di dalamnya tidak jalan walau dibuka langsung) |
 
 ### Agent (§10f)
 
@@ -229,7 +244,7 @@ Base: `http://127.0.0.1:4000/api`. Semua respons JSON (kecuali SSE). Semua reque
 |---|---|---|
 | GET | `/agents?refresh=1` | agent lokal: tersedia/tidak, versi, path, dukungan, izin, cara install; `refresh=1` memaksa cek ulang |
 | GET | `/prototypes/:id/agent` | run yang sedang/terakhir berjalan |
-| POST | `/prototypes/:id/agent/run` | `{ agent?, commentIds?, message? }` → 202; satu run per prototype |
+| POST | `/prototypes/:id/agent/run` | `{ agent?, commentIds?, message?, attachments? }` → 202; satu run per prototype |
 | POST | `/prototypes/:id/agent/stop` | hentikan run |
 | POST | `/prototypes/:id/agent/undo` | `{ force? }` batalkan perubahan file run terakhir (checkpoint); 409 + `details` (file) bila file itu sudah diedit lagi |
 | GET | `/prototypes/:id/agent/logs?tail=` | log run |
@@ -257,7 +272,8 @@ Opsi global (boleh di mana saja): `--json`, `--home <dir>`, `-p/--port <port>`, 
 
 ```
 prototyper serve                             # jalankan daemon (foreground)
-prototyper new <id> [-t static|vite-vanilla|vite-react] [--from <file.html>] [-d <folder>] [--name] [--description] [--no-install] [--start]
+prototyper serve --detach                    # jalankan daemon di background (semua OS); terminal boleh ditutup
+prototyper new <id> [-t static|vite-vanilla|vite-react|design-system] [--from <file.html>] [--design-system <id>] [-d <folder>] [--name] [--description] [--no-install] [--start]
 prototyper init [dir] [-t static|command] [--id] [--name] [--run "<cmd>"] [-f]
 prototyper add <dir> [-t] [--id] [--run] [--start]   # daftarkan; manifest dideteksi bila belum ada
 prototyper remove <id>
@@ -272,17 +288,26 @@ prototyper shutdown                          # hentikan daemon + semua prototype
 prototyper tray [--foreground] [--restore a,b]   # Windows: ikon tray (lihat §10g); default berjalan di latar
 prototyper agents list                       # agent coding lokal yang terdeteksi
 prototyper agents sync [id]                  # tulis ulang blok petunjuk AGENTS.md/CLAUDE.md
+prototyper ds list                           # desain sistem + pemakai + status salinan (§10h)
+prototyper ds use <id> <desain-sistem> [--dir <folder>] [--no-link]
+prototyper ds sync [id]                      # id pemakai | id desain sistem (semua pemakai) | kosong = semua
+prototyper ds local <id> [path…]             # catat desain sistem milik prototype sendiri; tanpa path = tebakan lokasi
+prototyper ds status <id>
+prototyper ds detach <id>
 prototyper comments <id> [-a|--resolved] [--page /x] [-w agent|user]
 prototyper comments add <id> "<teks>" [--page /x] [--selector <css> [--quote <teks>]] [--author] [--role]
 prototyper comments reply <id> <commentId> "<teks>" [--author] [--role user]
 prototyper comments ask <id> <commentId> "<pertanyaan>" -o A -o B [--multi]
-prototyper comments resolve <id> <commentId> [--note "<ringkasan>"]
+prototyper comments resolve <id> <commentId> [--note "<ringkasan>" | --note-file <path>]
+prototyper comments reply <id> <commentId> --file -  <<'EOF' … EOF   # teks multi-baris lewat stdin (juga add/ask; -F <path> = file)
 prototyper comments reopen|rm <id> <commentId>
 ```
 
+Teks multi-baris wajib lewat `--file` (`-` = stdin): bila CLI dipanggil lewat shim `prototyper.cmd`, cmd.exe memotong argumen di newline pertama sehingga balasan agent tersimpan hanya baris pertamanya. Petunjuk agent (AGENTS.md dan prompt agent) menyebut ini.
+
 `comments` membaca/menulis file langsung (tanpa daemon). Penulis default dari CLI `agent` (role `agent`), dari Web UI `pengguna` (role `user`); `--author`/`--role` untuk mengganti.
 
-`new`: folder tujuan harus belum ada atau kosong; id dicek bentrok sebelum menulis apa pun, dan folder yang baru dibuat dihapus lagi bila gagal. Template static = `index.html` + `style.css` + `app.js` (atau satu `index.html` dari `--from`); template Vite = `package.json` (Vite 8; `vite-react` + React 19, JSX tanpa TypeScript) dengan `command.run` memakai `{port}`/`{host}`. Semua template menulis `AGENTS.md` awal. Folder induk default: `PROTOTYPER_WORKSPACE`, atau `<PROTOTYPER_HOME>/prototypes`.
+`new`: folder tujuan harus belum ada atau kosong; id dicek bentrok sebelum menulis apa pun, dan folder yang baru dibuat dihapus lagi bila gagal. Template static = `index.html` + `style.css` + `app.js` (atau satu `index.html` dari `--from`); template Vite = `package.json` (Vite 8; `vite-react` + React 19, JSX tanpa TypeScript) dengan `command.run` memakai `{port}`/`{host}`. Semua template menulis `AGENTS.md` awal. Folder induk default: `PROTOTYPER_WORKSPACE`, atau `<PROTOTYPER_HOME>/prototypes`; template `design-system` memakai `PROTOTYPER_DS_WORKSPACE`, atau `<PROTOTYPER_HOME>/design-systems` (`-d/--dir` selalu menang). Keduanya dikirim di `GET /health` (`workspace`, `dsWorkspace`) untuk placeholder & dialog Pilih… di Web UI.
 
 Deteksi `init` (juga dipakai `add` dan `/manifest/detect` bila manifest belum ada): ada `package.json` dengan script `dev` → `command` (Vite/Next/Astro otomatis diberi `--port {port} --host {host}`); ada `index.html` di `.`, `dist`, `build`, atau `public` → `static`; hanya script `start` → `npm start`; selain itu wajib `--type`/`--run`.
 
@@ -320,6 +345,10 @@ Mendaftarkan folder di UI selalu memanggil `/manifest/detect` lebih dulu:
 - ada tapi tidak valid → editor berisi isi mentah file, simpan menimpa file.
 
 Error validasi ditampilkan per field (`details`). File baru tidak ditulis bila manifest tidak valid atau id/folder bentrok.
+
+### Pilih file/folder lewat dialog OS (`src/core/picker.ts`)
+
+Browser tidak bisa memberi path lengkap dari `<input type="file">`, jadi tombol **Pilih…** di Web UI memanggil `POST /api/pick` dan daemon (di komputer yang sama) membuka dialog bawaan sistem, lalu mengembalikan path absolut. Windows: `powershell.exe -STA` + IFileOpenDialog (dialog Explorer modern, juga untuk folder; parameter lewat env, kode C# dikompilasi `Add-Type`), dengan form kecil TopMost sebagai pemilik agar dialog muncul di depan browser. macOS: `osascript` (`choose folder` / `choose file`). Linux: `zenity`, lalu `kdialog`; tanpa keduanya → `NOT_IMPLEMENTED`. Satu dialog sekaligus (`CONFLICT`); batal → `{ paths: [], cancelled: true }`. Dipakai di: Daftarkan (path folder; setelah dipilih langsung diperiksa), Baru (folder induk → `<induk>/<id>`, ikut berubah saat id diketik), dan dialog Desain sistem (folder salinan & lokasi desain sistem sendiri; path diubah menjadi relatif dan ditolak bila di luar folder prototype). Seperti request non-GET lain, hanya dari mesin lokal.
 
 ## 10b. Komentar
 
@@ -369,7 +398,7 @@ Tujuan: agent yang mengerjakan sebuah komentar tahu riwayat dan keputusan sebelu
 
 - Preset per agent di `PRESETS` (`src/core/agent.ts`): executable, argumen non-interaktif, izin, format output (`claude-stream` = stream-json diringkas; `text` = output apa adanya, ringkasan = baris terakhir), dan cara install. Aturan untuk agent dibuat per agent (`agentRules`): Claude/Gemini/Copilot memakai tool baca/edit dan shell hanya `prototyper`; Codex membaca file lewat shell dan mengedit dengan `apply_patch`, jadi shell diizinkan untuk membaca/mencari (batas tulis dijaga sandbox). Claude dan Codex `tested`; Gemini/Copilot `experimental` sampai diuji dengan versi aslinya. Codex: `exec --ignore-user-config --sandbox workspace-write --skip-git-repo-check` + `-c windows.sandbox="<nilai [windows] sandbox dari config.toml>"` (tanpanya sandbox Windows turun ke read-only); `PROTOTYPER_AGENT_CODEX_MODEL` → `-m`. Deteksi juga membaca PATH terbaru dari registry Windows (user + mesin), sehingga agent yang baru diinstal terdeteksi tanpa me-restart VS Code/daemon.
 - Deteksi: `PROTOTYPER_AGENT_BIN_<ID>` bila di-set, selain itu cari di PATH (`.exe/.com`; di Windows juga shim npm `.cmd` → skrip JS-nya dijalankan langsung dengan Node), lalu `--version` (batas 15 dtk). Agent tersedia hanya bila `--version` sukses (mis. shim Copilot VS Code tanpa CLI terpasang = tidak tersedia). Hasil di-cache; `GET /agents?refresh=1` / tombol **Cek ulang** memaksa cek ulang. CLI: `prototyper agents list`.
-- Run: `POST /prototypes/:id/agent/run { agent?, commentIds?, message?, resume? }`; default `PROTOTYPER_AGENT_DEFAULT` atau `claude`. Satu run per prototype; batas waktu `PROTOTYPER_AGENT_TIMEOUT_MIN` (default 20 menit); stop memakai `killTree`. Info run memuat `agent`, status (`running`/`done`/`failed`/`stopped`), ringkasan, exit code, `checkpoint`, `sessionId`, dan `resumed`.
+- Run: `POST /prototypes/:id/agent/run { agent?, commentIds?, message?, attachments?, resume? }`; path lampiran dicantumkan di prompt (agent membukanya dengan tool baca file), khusus Codex juga diberikan lewat `--image` bersama lampiran komentar yang akan dikerjakan; default `PROTOTYPER_AGENT_DEFAULT` atau `claude`. Satu run per prototype; batas waktu `PROTOTYPER_AGENT_TIMEOUT_MIN` (default 20 menit); stop memakai `killTree`. Info run memuat `agent`, status (`running`/`done`/`failed`/`stopped`), ringkasan, exit code, `checkpoint`, `sessionId`, dan `resumed`.
 - **Checkpoint & Batalkan** (`src/core/checkpoint.ts`): sebelum agent dijalankan dan sesudah selesai (termasuk gagal/dihentikan), folder prototype di-snapshot ke repo git bayangan `<PROTOTYPER_HOME>/checkpoints/<id>.git` (bare, work-tree = folder prototype, `GIT_*` env dibuang, config lokal mematikan hooks/tanda tangan/autocrlf). Repo git milik pengguna (index, stash, branch) tidak disentuh dan folder prototype tidak mendapat file baru. `.gitignore` pengguna dihormati; `.prototyper/`, `node_modules/`, `.git/` selalu dikecualikan, sehingga komentar dan balasan agent tidak ikut dibatalkan. Info run: `checkpoint = { before, after, changes: [{status: added|modified|deleted, path}], undoneAt }` atau `checkpointError` (mis. git tidak ada — run tetap jalan). `POST …/agent/undo` hanya mengembalikan file di `changes` (file baru dihapus beserta folder yang jadi kosong); file lain yang diedit pengguna tidak tersentuh. Bila salah satu file itu sudah berubah sejak `after`, ditolak 409 dengan daftar file, kecuali `force`. Setelah berhasil, `noteUndo` (`src/core/comments.ts`) menambahkan balasan (author `prototyper`, role `agent`, sehingga giliran kembali ke pengguna) ke komentar yang dibalas/di-resolve agent selama run plus `commentIds` run; komentar yang di-resolve selama run dibuka lagi. Respons undo memuat `comments` (id yang dibalas). Hanya run terakhir, sekali, dan tidak bertahan setelah daemon restart (info run ada di memori; snapshot tetap di repo bayangan). Repo bayangan dihapus saat prototype dihapus dari daftar (API `DELETE` maupun CLI `remove` tanpa daemon). `PROTOTYPER_AGENT_CHECKPOINT=0` mematikan.
 - **Lanjut sesi** (`src/core/agentsession.ts`, hanya preset ber-`session`, saat ini Claude Code): run baru diberi `--session-id <uuid>` buatan Prototyper; run berikutnya memakai `--resume <id>` sehingga agent ingat apa yang dilihat dan diubahnya. Sesi terakhir per prototype disimpan di `<PROTOTYPER_HOME>/agent-sessions.json` (`agent`, `sessionId`, `cwd`, `runs`, `endedAt`, `undoneAt`), jadi bertahan setelah daemon restart. Sesi dilanjutkan hanya bila agent sama, folder sama, `endedAt` belum lewat `PROTOTYPER_AGENT_RESUME_HOURS` (default 24; 0 = mati), dan run terakhirnya tidak dibatalkan (undo mengisi `undoneAt`, karena sesi itu berisi perubahan yang sudah tidak ada). Sesi baru dicatat hanya bila agent benar-benar mulai, yaitu event `system init` diterima. Event `result` tidak dipakai sebagai penanda karena resume yang gagal tetap mengirim `result` ber-`session_id` (`num_turns: 0`, "No conversation found"). Resume yang gagal sebelum ada `init` diulang sekali otomatis dengan sesi baru. `GET /prototypes/:id/agent?agent=<id>` memuat `resume: { agent, resumable, session, reason }` untuk Web UI; `resume: false` di body run memaksa sesi baru. Prompt sesi lanjutan menambahkan bahwa file dan komentar bisa sudah berubah, jadi harus dibaca ulang.
 - Prompt: id prototype, fokus komentar (opsional), pesan pengguna (opsional), langkah alur komentar. Instruksi tambahan: tidak interaktif → bertanya lewat `comments ask/reply`; hanya ubah folder ini; jangan ubah `prototyper.json`, `.prototyper/`, `AGENTS.md`, `CLAUDE.md`.
@@ -396,11 +425,30 @@ Rancangannya divalidasi lewat prototype `prototyper-runtime`: hanya ikon tray, t
 - **Pembaruan** (`src/core/update.ts`): GitHub Releases `PROTOTYPER_UPDATE_REPO`, diperiksa otomatis 10 detik setelah menyala lalu tiap 24 jam (`PROTOTYPER_UPDATE_CHECK=0` mematikan). Biner tunggal Windows: berkas diunduh ke `<home>/updates/` dan dicocokkan dengan `SHA256SUMS.txt`. Urutan pilihan: paket aplikasi `-app-r<runtime>.tar.gz` bila runtime exe sama (±0,6 MB, dipasang ke `<PROTOTYPER_HOME>/app/` tanpa mengganti exe), lalu MSI untuk instalasi MSI, lalu exe. Paket aplikasi dipasang selagi daemon berjalan; bila hanya `web/` yang berubah (`codeHash` sama), daemon cukup dialihkan lewat `POST /api/app/reload-web` tanpa restart, dan prototype tetap berjalan; tombolnya "Pasang" (bukan "Mulai ulang") bila `codeHash` di `app.json` paket yang diunduh sama dengan kode tray (`packCodeHash`). Selain itu, "Mulai ulang": daemon dimatikan, berkas dipasang (lihat docs/RELEASE.md "Runtime dan aplikasi terpisah"), dan tray baru dijalankan dengan `--restore <prototype yang tadi berjalan>`. Bentuk rilis lain: buka halaman rilis.
 - Belum ada: tray untuk macOS/Linux.
 
+## 10h. Desain sistem (`src/core/designsystem.ts`)
+
+Agar beberapa prototype konsisten (warna, tipografi, jarak, komponen) dan agent tidak menebak nilai visual tiap kali.
+
+- **Desain sistem = prototype biasa** (mode static) dengan `designSystem.source: true`, dibuat dari template `design-system` (`src/core/dstemplate.ts`): `tokens.css` (custom property `--kategori-nama`, tema terang/gelap), `components.css` (komponen dasar yang hanya memakai token), dan katalog `index.html` + `catalog.css`/`catalog.js` (token dibaca langsung dari `tokens.css`, jadi token baru tampil otomatis). Karena prototype biasa, katalog bisa dibuka, dikomentari, dan dikerjakan agent seperti prototype lain.
+- **Pemakai** (`designSystem.use`): file di `designSystem.files` milik desain sistem **disalin** ke `<prototype>/<dir>/` (default `design-system/`) dengan baris pembuka "jangan diedit di sini". Salinan, bukan tautan ke folder lain: prototype tetap mandiri (bisa di-commit, dibagikan, dan jalan di mode static maupun Vite tanpa konfigurasi `server.fs`).
+- `ds use` menyisipkan pemuatan CSS sekali (idempoten): mode static → `<link rel="stylesheet">` di `static.index`, sebelum stylesheet pertama (gaya prototype tetap menang) atau sebelum `</head>`; mode command → `import '<relatif>'` di awal entry pertama yang ada (`src/main.{jsx,tsx,js,ts}`, `src/index.*`, relatif ke `command.cwd`). Bila tidak bisa (folder di luar `static.root`, entry tidak ditemukan), hasilnya `link.action = "skipped"` dengan `note`. Template baru dengan desain sistem juga memakai kelas `btn btn-primary` pada tombol contoh.
+- **Sinkron manual**: `ds sync` membandingkan isi (baris pembuka + file sumber) dan hanya menulis yang berbeda. Status `outdated` (berbeda/belum disalin) tampil di `ds list`, `GET /design-systems`, dan Web UI (dicek berkala bila ada prototype yang memakai desain sistem). Tidak ada sinkron otomatis: perubahan desain sistem sampai ke pemakai saat pengguna/agent memintanya.
+- `ds detach` hanya menghapus `designSystem` dari manifest dan memperbarui petunjuk; folder salinan dan tautan CSS dibiarkan agar tampilan tidak rusak tiba-tiba.
+- Petunjuk agent (§10e) mendapat bagian "Desain sistem": di desain sistem → token sebagai satu-satunya sumber nilai, setiap komponen punya contoh di katalog, jangan mengganti nama/menghapus token, sebarkan dengan `ds sync`; di pemakai → pakai token & kelas komponen, jangan mengedit `<dir>/`, token/komponen baru ditambahkan di desain sistem.
+- **Desain sistem sendiri** (`designSystem.local`): prototype yang sudah punya token/komponen di foldernya sendiri cukup mencatat lokasinya (file atau folder, boleh belum ada). Tidak ada yang disalin; gunanya agar petunjuk agent menyuruh memakai dan menambah token di sana, dan Web UI/CLI menampilkannya. `ds local <id>` tanpa path (dan `GET …/design-system/candidates`) menebak lokasi dari nama file (`tokens`, `variables`, `theme`, `design-tokens`, … `.css/.scss/.json/.js/.ts`) dan folder (`design-system`, `tokens`, `theme`, `styles`, …) sampai 4 tingkat, melewati `node_modules`, folder tersembunyi, build, dan salinan `design-system/`. Memakai `local` menggantikan `use` (salinan lama dibiarkan), begitu pula sebaliknya. Belum ada "promosi" desain sistem sendiri menjadi desain sistem bersama.
+- **Desain sistem dibedakan dari prototype di tampilan**, bukan di model data (tetap prototype, agar pratinjau, komentar, agent, Batalkan, dan LAN berlaku tanpa pengecualian):
+  - Sidebar: grup **Desain sistem** di atas grup status, avatar bersudut tajam dengan cincin aksen, jumlah pemakai (titik oranye bila ada yang perlu sinkron); prototype pemakai diberi ◇ (◇ oranye = perlu sinkron), desain sistem sendiri ◆. Filter **Desain sistem**.
+  - Beranda: bagian **Desain sistem** terpisah dari kartu prototype (pemakai sebagai chip yang bisa diklik, **Buka katalog**, **Sebarkan (N)**); kartu prototype menampilkan chip desain sistemnya; "Perlu perhatian" memuat desain sistem yang pemakainya tertinggal; statistik Prototype tidak menghitung desain sistem.
+  - Agent di desain sistem: bar agent menampilkan "◇ dipakai N prototype"; sebelum run pertama per sesi browser muncul konfirmasi berisi daftar pemakai; setelah run yang mengubah file, status pemakai dimuat ulang dan bila ada yang tertinggal muncul toast + tombol **Sebarkan ke N** di bar agent (alur: agent mengubah → tinjau katalog → sebarkan).
+  - Detail: baris **Desain sistem** (Atur…/Ubah…: dialog dengan mode **Bersama** atau **Milik sendiri** + kandidat lokasi; Sinkronkan/Sebarkan; Lepas). Template **desain sistem** dan pilihan **Desain sistem** di dialog Baru; palet perintah "Buat desain sistem baru".
+  - CLI: `prototyper list` mengurutkan desain sistem di atas dan menambah kolom `DS` (`desain sistem`, `→ <id>`, `sendiri`); `info` menampilkan baris Desain sistem.
+
 ## 11. Mode LAN
 
 - Default semua bind ke `127.0.0.1`.
 - `prototyper serve --lan` (atau `PROTOTYPER_LAN=1`, atau toggle **Mode LAN** lingkup *Semua* di tray, §10g): UI dan server static prototype bind ke `0.0.0.0`; `{host}` di perintah command diisi `0.0.0.0`. UI menampilkan URL `http://<ip-lan>:<port>`.
 - `--lan-prototypes` (atau `PROTOTYPER_LAN=prototypes`, atau lingkup *Prototype saja* di tray): hanya server prototype yang bind ke `0.0.0.0` (`config.prototypeHost`; `{host}`/`HOST` ikut), sedangkan daemon/Web UI tetap `127.0.0.1` (`config.host`). Skrip embed & live-reload dilayani server prototype sendiri, jadi tetap jalan dari perangkat lain. `lanUrls` di view tetap diisi; `/api/health` mengirim `lanMode`.
+- **Per prototype** (`prototyper lan <id> on|off`, tombol **LAN** di header detail Web UI, atau `PUT /api/prototypes/:id/lan`): hanya prototype itu yang bind ke `0.0.0.0` walau mode LAN daemon mati; daemon/Web UI tetap `127.0.0.1`. Disimpan di `state.json` (`lan`), dilupakan saat prototype dihapus. Host dipilih saat start (`Runtime.hostFor`), jadi prototype yang berjalan di-restart saat toggle. View berisi `lanExposed`; `lanUrls` diisi bila proses yang berjalan bind `0.0.0.0` (dari mode daemon atau per prototype). Pada mode LAN daemon semua prototype sudah terbuka, tombol di Web UI tampil aktif & nonaktif.
 - Endpoint API yang **mengubah** (POST/PUT/DELETE) hanya diterima dari loopback; dari LAN hanya baca (GET) dan akses prototype. Web UI dari LAN otomatis mode baca saja.
 - `.prototyper/` (komentar) tidak disajikan server static.
 - Catatan: Windows Firewall perlu mengizinkan Node pada port 4000 dan 4100–4199.
@@ -416,15 +464,15 @@ prototyper/
 ├─ schemas/   prototyper.schema.json   # digenerate (npm run schema)
 ├─ src/
 │  ├─ version.ts
-│  ├─ core/   config manifest detect scaffold agentfiles comments embed agent
+│  ├─ core/   config manifest detect scaffold dstemplate designsystem agentfiles comments embed agent
 │  │          registry state ports logs runtime views errors fsutil net
-│  │          autosync open startup update
+│  │          autosync open startup update picker
 │  ├─ server/ index.ts app.ts errors.ts
-│  │          routes/health.ts routes/prototypes.ts routes/comments.ts routes/agent.ts
-│  ├─ cli/    index.ts comments.ts client.ts output.ts launcher.ts
+│  │          routes/health.ts routes/prototypes.ts routes/comments.ts routes/agent.ts routes/pick.ts
+│  ├─ cli/    index.ts comments.ts designsystem.ts client.ts output.ts launcher.ts
 │  └─ tray/   index.ts controller.ts popup.ts menu.ts host.ts (ikon tray Windows, §10g)
 ├─ web/       index.html app.js style.css embed.js
-├─ examples/  hello-static, hello-command (dipakai tes)
+├─ examples/  hello-static, hello-command, sembako-ds (contoh desain sistem); dipakai tes
 ├─ scripts/   gen-schema.ts vitest.mjs
 └─ test/      *.test.ts (route diuji dengan app.inject(); runtime memakai port 47100-47149)
 ```

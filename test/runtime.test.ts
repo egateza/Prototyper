@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { probePort } from '../src/core/ports.js';
@@ -237,6 +238,55 @@ describe('mode LAN prototype saja', () => {
       expect(logs.lines.some((l: { line: string }) => l.line.includes(`Listening on http://0.0.0.0:${v.port}`))).toBe(true);
       expect(v.lanUrls.every((u) => u.endsWith(`:${v.port}`))).toBe(true);
       await app.inject({ method: 'POST', url: '/api/prototypes/hello-command/stop' });
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe('akses LAN per prototype', () => {
+  it('toggle membuka/menutup satu prototype ke LAN (restart bila berjalan) dan tersimpan di state.json', async () => {
+    const config = testConfig();
+    const { app } = await buildApp({ config });
+    const put = (id: string, payload: unknown) => app.inject({ method: 'PUT', url: `/api/prototypes/${id}/lan`, payload: payload as object });
+    const listening = async (host: string, port: number | null) => {
+      const logs = (await app.inject({ method: 'GET', url: '/api/prototypes/hello-command/logs?tail=200' })).json();
+      return logs.lines.some((l: { line: string }) => l.line.includes(`Listening on http://${host}:${port}`));
+    };
+    try {
+      await app.inject({ method: 'POST', url: '/api/prototypes', payload: { path: copyExample('hello-command') } });
+      expect((await put('hello-command', {})).json().error.code).toBe('BAD_REQUEST');
+      expect((await put('tidak-ada', { exposed: true })).statusCode).toBe(404);
+
+      let v = (await app.inject({ method: 'POST', url: '/api/prototypes/hello-command/start' })).json<PrototypeView>();
+      expect(v).toMatchObject({ status: 'running', lanExposed: false, lanUrls: [] });
+      expect(await listening('127.0.0.1', v.port)).toBe(true);
+
+      // dibuka saat berjalan → restart dengan host 0.0.0.0, tetap terbuka di localhost
+      v = (await put('hello-command', { exposed: true })).json<PrototypeView>();
+      expect(v).toMatchObject({ status: 'running', lanExposed: true });
+      expect(await listening('0.0.0.0', v.port)).toBe(true);
+      expect(await (await fetch(`${v.url}/`)).text()).toContain('Hello dari prototype command');
+      expect(v.lanUrls.every((u) => u.endsWith(`:${v.port}`))).toBe(true);
+      expect(JSON.parse(readFileSync(path.join(config.home, 'state.json'), 'utf8')).lan).toEqual(['hello-command']);
+
+      // dibuka lagi: tidak restart
+      const pid = v.pid;
+      expect((await put('hello-command', { exposed: true })).json<PrototypeView>().pid).toBe(pid);
+
+      // ditutup → kembali ke 127.0.0.1
+      v = (await put('hello-command', { exposed: false })).json<PrototypeView>();
+      expect(v).toMatchObject({ status: 'running', lanExposed: false, lanUrls: [] });
+      expect(v.pid).not.toBe(pid);
+      await app.inject({ method: 'POST', url: '/api/prototypes/hello-command/stop' });
+
+      // prototype berhenti: hanya disimpan, berlaku saat start
+      v = (await put('hello-command', { exposed: true })).json<PrototypeView>();
+      expect(v).toMatchObject({ status: 'stopped', lanExposed: true });
+
+      // dihapus dari daftar → pengaturan LAN ikut dilupakan
+      await app.inject({ method: 'DELETE', url: '/api/prototypes/hello-command' });
+      expect(JSON.parse(readFileSync(path.join(config.home, 'state.json'), 'utf8')).lan).toEqual([]);
     } finally {
       await app.close();
     }

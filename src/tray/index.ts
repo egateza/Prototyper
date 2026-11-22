@@ -91,6 +91,9 @@ export function quitDeps(config: Config): QuitDeps {
   };
 }
 
+/** Argumen tray untuk menyalakan lagi prototype `restore` (setelah pembaruan). */
+export const restoreArgs = (restore: string[]) => (restore.length ? ['--restore', restore.join(',')] : []);
+
 export const trayFiles = (home: string) => ({
   lock: path.join(home, 'tray.pid'),
   log: path.join(home, 'tray.log'),
@@ -179,7 +182,7 @@ export async function launchTray(config: Config, extra: string[] = []): Promise<
   return { alreadyRunning: false, pid: null, log: spawnTray(config, extra) };
 }
 
-function httpApi(config: Config): DaemonApi {
+export function httpApi(config: Config): DaemonApi {
   const client = new DaemonClient(config);
   const enc = encodeURIComponent;
   return {
@@ -239,7 +242,6 @@ export async function runTray(config: Config, opts: { restore?: string[] } = {})
     runtime: APP_HOST?.runtime ?? null,
     installer: APP_MODE === 'sea' ? detectInstaller(process.execPath) : null,
   };
-  const restoreArgs = (restore: string[]) => (restore.length ? ['--restore', restore.join(',')] : []);
   // Setelah pembaruan Web UI tanpa restart, proses ini tetap menjalankan kode lama tetapi versinya sudah baru.
   let currentVersion = VERSION;
   let liveWebApp: string | null = null;
@@ -334,7 +336,7 @@ export async function runTray(config: Config, opts: { restore?: string[] } = {})
 }
 
 /** `prototyper --version` lewat exe ini harus mencetak versi aplikasi baru. */
-function verifyApp(info: AppInfo): void {
+export function verifyApp(info: AppInfo): void {
   const r = spawnSync(process.execPath, ['--version'], { encoding: 'utf8', timeout: 30_000, windowsHide: true, env: process.env });
   const out = (r.stdout ?? '').trim();
   if (r.status !== 0 || out !== info.version) {
@@ -344,7 +346,7 @@ function verifyApp(info: AppInfo): void {
 }
 
 /** Pasang berkas pembaruan sesuai jenisnya. Daemon sudah dimatikan oleh controller. */
-async function installUpdate(config: Config, file: string, check: UpdateCheck, restore: string[]): Promise<void> {
+export async function installUpdate(config: Config, file: string, check: UpdateCheck, restore: string[]): Promise<void> {
   switch (check.kind) {
     case 'app': {
       if (!APP_HOST) throw new AppError('NOT_IMPLEMENTED', 'Exe ini belum mendukung pembaruan aplikasi');

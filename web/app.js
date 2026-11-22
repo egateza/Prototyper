@@ -36,11 +36,16 @@ const ICON = {
   plus: svg('M12 5v14M5 12h14', 'fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"'),
   chev: svg('M6 9l6 6 6-6', 'fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"'),
   pick: svg('M4 4l7 17 2.5-7.5L21 11 4 4Z', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"'),
+  panel: svg('M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1ZM15 5v14', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"'),
+  globe: svg('M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18ZM3.5 9h17M3.5 15h17M12 3c-2.5 2.6-3.5 5.6-3.5 9s1 6.4 3.5 9M12 3c2.5 2.6 3.5 5.6 3.5 9s-1 6.4-3.5 9', 'fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"'),
+  clip: svg('M20.5 11.5l-8.4 8.4a5 5 0 0 1-7.1-7.1l8.4-8.4a3.3 3.3 0 0 1 4.7 4.7l-8.4 8.4a1.7 1.7 0 0 1-2.4-2.4l7.7-7.7', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'),
 };
 
 // Request yang mengubah state hanya diterima dari mesin lokal (lihat app.ts).
 const LOCAL = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
 const RO_TITLE = 'Hanya bisa dari mesin lokal';
+/** Mode LAN daemon dari /api/health: `off`, `prototypes`, atau `all`. */
+let daemonLan = 'off';
 
 // ---------- API ----------
 async function api(method, url, body) {
@@ -124,6 +129,8 @@ const WHATSNEW = '!whatsnew';
 const st = (p) => (p.valid ? p.status : 'invalid');
 const isActive = (p) => p.valid && ACTIVE.includes(p.status);
 const isProblem = (p) => ['crashed', 'failed', 'invalid'].includes(st(p));
+/** Prototype ini adalah desain sistem (designSystem.source). */
+const isDs = (p) => p.manifest?.designSystem?.source === true;
 /** URL yang dibuka dari browser ini: host sama dengan UI (penting di mode LAN). */
 const openUrl = (p) => (p.url && p.port ? `${location.protocol}//${location.hostname}:${p.port}/` : null);
 function hue(id) { let h = 0; for (const c of id) h = (h * 31 + c.charCodeAt(0)) % 360; return h; }
@@ -143,17 +150,31 @@ function visible() {
   return list.filter((p) => {
     if (ui.filter === 'aktif' && !isActive(p)) return false;
     if (ui.filter === 'masalah' && !isProblem(p)) return false;
+    if (ui.filter === 'ds' && !isDs(p)) return false;
     return !q || [p.id, p.name, p.description, p.path, ...p.tags].join(' ').toLowerCase().includes(q);
   });
 }
 
 // ---------- Komponen ----------
 const statusHtml = (p) => `<span class="status ${st(p)}" title="${LABEL[st(p)]}"><i class="dot"></i>${LABEL[st(p)]}</span>`;
-const avatar = (p, cls = '') => `<span class="mono-av ${cls} ${isActive(p) ? '' : 'off'}" style="--h:${hue(p.id)}">${esc(initials(p))}</span>`;
-function btn(act, p, { label, icon, cls = '', title = label, mutating = true, disabled = false }) {
+const avatar = (p, cls = '') => `<span class="mono-av ${cls} ${isDs(p) ? 'ds' : ''} ${isActive(p) ? '' : 'off'}" style="--h:${hue(p.id)}" ${isDs(p) ? 'title="Desain sistem"' : ''}>${esc(initials(p))}</span>`;
+function btn(act, p, { label, icon, cls = '', title = label, mutating = true, disabled = false, pressed }) {
   const ro = mutating && !LOCAL;
   const dis = disabled || ro || ui.busy.has(p.id);
-  return `<button type="button" class="btn sm ${cls}" data-act="${act}" data-id="${esc(p.id)}" title="${esc(ro ? RO_TITLE : title)}" ${dis ? 'disabled' : ''}>${icon}${label ? esc(label) : ''}</button>`;
+  const ap = pressed === undefined ? '' : ` aria-pressed="${pressed}"`;
+  return `<button type="button" class="btn sm ${cls}" data-act="${act}" data-id="${esc(p.id)}" title="${esc(ro ? RO_TITLE : title)}"${ap} ${dis ? 'disabled' : ''}>${icon}${label ? esc(label) : ''}</button>`;
+}
+/** Tombol akses LAN satu prototype; pada mode LAN daemon semua prototype sudah terbuka. */
+function lanBtn(p) {
+  if (daemonLan !== 'off') {
+    return btn('lan', p, { label: 'LAN', icon: ICON.globe, cls: 'ghost lan-btn', pressed: true, disabled: true, mutating: false,
+      title: 'Semua prototype sudah terbuka ke LAN (mode LAN daemon dari tray atau --lan / --lan-prototypes)' });
+  }
+  const on = !!p.lanExposed;
+  const restart = isActive(p) ? ' (prototype di-restart)' : '';
+  return btn('lan', p, { label: 'LAN', icon: ICON.globe, cls: `ghost lan-btn${on ? ' on' : ''}`, pressed: on, disabled: !p.valid,
+    title: on ? `Terbuka untuk perangkat lain di jaringan yang sama. Klik untuk menutup${restart}.`
+      : `Buka prototype ini untuk perangkat lain di jaringan yang sama (Web UI tetap hanya dari komputer ini)${restart}.` });
 }
 function actionsHtml(p) {
   const b = ui.busy.has(p.id);
@@ -167,6 +188,7 @@ function actionsHtml(p) {
   if (p.type === 'command' && p.manifest?.command?.install) {
     out.push(btn('install', p, { label: 'Install', icon: ICON.install, cls: 'ghost', title: `Jalankan: ${p.manifest.command.install}`, disabled: isActive(p) }));
   }
+  out.push(lanBtn(p));
   out.push(btn('remove', p, { label: '', icon: ICON.trash, cls: 'ghost danger', title: 'Hapus dari daftar' }));
   return out.join('');
 }
@@ -188,17 +210,20 @@ function urlsHtml(p) {
 let lastSide = '';
 function renderSide() {
   const vis = visible();
+  // Desain sistem dikelompokkan sendiri di atas (fondasi bersama), prototype per status di bawahnya.
+  const protos = vis.filter((x) => !isDs(x));
   const groups = [
-    ['Aktif', vis.filter(isActive)],
-    ['Bermasalah', vis.filter(isProblem)],
-    ['Berhenti', vis.filter((x) => !isActive(x) && !isProblem(x))],
+    ['Desain sistem', vis.filter(isDs)],
+    ['Aktif', protos.filter(isActive)],
+    ['Bermasalah', protos.filter(isProblem)],
+    ['Berhenti', protos.filter((x) => !isActive(x) && !isProblem(x))],
   ].filter(([, xs]) => xs.length);
   const empty = !loaded ? '' : list.length === 0
     ? '<div class="empty"><b>Belum ada prototype</b>Daftarkan folder pertama Anda.</div>'
     : vis.length === 0 ? '<div class="empty"><b>Tidak ada yang cocok</b>Coba kata kunci lain atau ganti filter.</div>' : '';
   const html = groups.map(([g, xs]) => `<div class="ws-group">${g} · ${xs.length}</div>${xs.map((x) => `
     <button type="button" class="ws-item" data-act="select" data-id="${esc(x.id)}" aria-current="${x.id === ui.selected}">
-      ${avatar(x, 'sm')}<span class="t"><b>${esc(x.name)}</b><span>${x.url ? `:${x.port}` : esc(x.id)}</span></span>${x.comments?.open ? `<span class="cm-badge${x.comments.waitingUser ? ' wait' : ''}" title="${x.comments.open} komentar open${x.comments.waitingUser ? `, ${x.comments.waitingUser} menunggu jawaban Anda` : ''}">${x.comments.open}</span>` : ''}${statusHtml(x)}
+      ${avatar(x, 'sm')}<span class="t"><b>${esc(x.name)}</b><span>${x.url ? `:${x.port}` : esc(x.id)}${sideDsHtml(x)}</span></span>${x.comments?.open ? `<span class="cm-badge${x.comments.waitingUser ? ' wait' : ''}" title="${x.comments.open} komentar open${x.comments.waitingUser ? `, ${x.comments.waitingUser} menunggu jawaban Anda` : ''}">${x.comments.open}</span>` : ''}${statusHtml(x)}
     </button>`).join('')}`).join('') + empty;
   const home = loaded && list.length ? `<button type="button" class="ws-item ws-home" data-act="select" data-id="" aria-current="${!ui.selected}">
       <span class="home-ic">${ICON.home}</span><span class="t"><b>Beranda</b><span>ringkasan semua prototype</span></span>${totalWaitingUser() ? `<span class="cm-badge wait" title="Komentar menunggu jawaban Anda">${totalWaitingUser()}</span>` : ''}
@@ -206,6 +231,23 @@ function renderSide() {
   const fullHtml = home + html;
   if (fullHtml !== lastSide) { $('#side-list').innerHTML = fullHtml; lastSide = fullHtml; }
   for (const b of $$('#filter button')) b.setAttribute('aria-pressed', String(b.dataset.f === ui.filter));
+}
+
+/** Penanda desain sistem di item sidebar: jumlah pemakai, desain sistem yang dipakai, atau milik sendiri. */
+function sideDsHtml(p) {
+  const d = p.manifest?.designSystem;
+  if (!d) return '';
+  if (d.source) {
+    const info = ds.list?.find((x) => x.id === p.id);
+    if (!info) return '';
+    const stale = info.consumers.filter((c) => c.outdated).length;
+    return ` · ${info.consumers.length} pemakai${stale ? `<span class="ds-mark stale" title="${stale} prototype perlu sinkron">●</span>` : ''}`;
+  }
+  if (d.use) {
+    const c = ds.list?.find((x) => x.id === d.use)?.consumers.find((x) => x.id === p.id);
+    return `<span class="ds-mark${c?.outdated ? ' stale' : ''}" title="Memakai desain sistem ${esc(d.use)}${c?.outdated ? ' (perlu sinkron)' : ''}">◇</span>`;
+  }
+  return `<span class="ds-mark" title="Desain sistem sendiri: ${esc(d.local.join(', '))}">◆</span>`;
 }
 
 // ---------- Panel utama ----------
@@ -228,8 +270,8 @@ function renderMain() {
     for (const k of Object.keys(last)) delete last[k];
     $('#main').innerHTML = p ? skeleton(p) : placeholderMain(key);
     if (p) connectLog(p.id); else disconnectLog();
-    cm.id = p ? p.id : null; cm.data = null; cm.replyTo = null; cm.lastHtml = ''; cm.anchor = null;
-    if (p) { renderComments(); loadComments(); }
+    cm.id = p ? p.id : null; cm.data = null; cm.replyTo = null; cm.lastHtml = ''; cm.anchor = null; clearFiles();
+    if (p) { applyPanel(); watchWsBody(); renderComments(); loadComments(); }
     disconnectAgentLog(); ag.state = null; ag.lastHtml = ''; ag.open = false;
     if (p && LOCAL) loadAgent();
     if (key === 'none' && !ag.agents && !ag.loading) loadAgents();
@@ -239,7 +281,7 @@ function renderMain() {
   if (!p) return;
 
   patch('#d-head', `${avatar(p)}
-    <div class="grow"><h2>${esc(p.name)} ${p.type ? `<span class="type-tag">${p.type}</span>` : ''}</h2>
+    <div class="grow"><h2>${esc(p.name)} ${p.type ? `<span class="type-tag">${p.type}</span>` : ''}${p.manifest?.designSystem?.source ? ' <span class="type-tag ds">desain sistem</span>' : ''}</h2>
       <p class="meta">${statusHtml(p)}${uptime(p) ? `<span>· ${uptime(p)}</span>` : ''}</p>
       ${p.description ? `<p class="desc" title="${esc(p.description)}">${esc(p.description)}</p>` : ''}</div>
     <div class="actions">${actionsHtml(p)}</div>`);
@@ -263,37 +305,47 @@ function renderMain() {
 
   patch('#d-err', p.error ? `<div class="callout err">${esc(p.error)}</div>` : '');
   patch('#d-info', infoHtml(p));
+  applySections();
 }
 
 function skeleton(p) {
   return `<div class="detail-head" id="d-head"></div>
     <div class="ws-body">
-      <div class="col">
+      <div class="col ws-left">
         <div class="browser">
           <div class="browser-bar"><span class="dots"><i></i><i></i><i></i></span>
-            <span class="addr" id="d-addr"></span><span class="bar-btns" id="d-bar-btns"></span></div>
+            <span class="addr" id="d-addr"></span><span class="bar-btns" id="d-bar-btns"></span>
+            <button type="button" class="icon-btn panel-btn" id="btn-panel-show" data-act="toggle-panel"></button></div>
           <div id="d-view"></div>
         </div>
         <div id="d-err"></div>
-        <div class="ws-log">
-          <div class="log-tools"><h3 class="section-title">Log</h3><span class="live" id="log-live"><i></i>Live</span><span class="spacer"></span>
+        <div class="ws-log sec" data-sec="log">
+          <div class="log-tools sec-head">${secTitle('log', 'Log')}<span class="live" id="log-live"><i></i>Live</span><span class="spacer"></span>
             <button type="button" class="btn sm ghost" data-act="clear-log">Bersihkan tampilan</button></div>
           <pre class="log" id="log" data-id="${esc(p.id)}"></pre>
         </div>
       </div>
-      <div class="col">
-        <section class="cm-panel">
-          <div class="log-tools"><h3 class="section-title">Komentar</h3><span class="cm-count" id="cm-count"></span><span class="spacer"></span>
+      <div class="col ws-right">
+        <section class="cm-panel sec" data-sec="comments">
+          <div class="log-tools sec-head">${secTitle('comments', 'Komentar')}<span class="cm-count" id="cm-count"></span><span class="spacer"></span>
+            <button type="button" class="btn sm ghost cm-collapse-all" id="cm-collapse-all" data-act="cm-collapse-all" hidden></button>
             <div class="seg cm-filter" id="cm-filter">
               <button type="button" data-f="open">Open</button><button type="button" data-f="resolved">Selesai</button><button type="button" data-f="all">Semua</button>
-            </div></div>
+            </div>
+            <button type="button" class="icon-btn panel-btn" id="btn-panel-hide" data-act="toggle-panel"></button></div>
           ${LOCAL ? '<div class="agent-bar" id="agent-bar" hidden></div><pre class="log agent-log" id="agent-log" hidden></pre>' : ''}
-          <div class="cm-list" id="cm-list"><p class="muted cm-empty">Memuat…</p></div>
+          <div class="cm-list-wrap">
+            <div class="cm-list" id="cm-list"><p class="muted cm-empty">Memuat…</p></div>
+            <button type="button" class="cm-latest" id="cm-latest" data-act="cm-latest" title="Gulir ke pesan terbaru" hidden>↓ <span>Terbaru</span></button>
+          </div>
           ${LOCAL ? `<form class="cm-form" id="cm-form">
             <div class="cm-replying" id="cm-replying" hidden><span></span><button type="button" class="btn sm ghost" data-act="cm-cancel-reply">Batal</button></div>
             <div class="cm-anchor" id="cm-anchor" hidden><span class="cm-anchor-ic">${ICON.pick}</span><span class="cm-anchor-t"></span><button type="button" class="icon-btn" data-act="cm-clear-anchor" title="Lepas elemen">✕</button></div>
+            <div class="cm-files" id="cm-files" hidden></div>
             <textarea id="cm-text" rows="2" placeholder="Tulis komentar untuk prototype ini…  (Ctrl+Enter untuk kirim)"></textarea>
             <div class="cm-form-row">
+              <button type="button" class="icon-btn" data-act="cm-attach" title="Lampirkan gambar (atau tempel dengan Ctrl+V / seret ke kolom komentar)">${ICON.clip}</button>
+              <input type="file" id="cm-file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml,.svg" multiple hidden>
               <label class="cm-page-field" id="cm-page-field"><span>Halaman</span><input id="cm-page" value="${esc(cm.pages[p.id] ?? '/')}" spellcheck="false" autocomplete="off" title="Path halaman yang dikomentari, mis. /kasir"></label>
               <span class="spacer"></span>
               <button type="submit" class="btn primary sm" id="cm-send">Kirim</button>
@@ -323,6 +375,20 @@ function placeholderMain(key) {
 
 // Mode tablet/mobile: iframe diberi ukuran perangkat sebenarnya lalu diperkecil (transform)
 // agar muat di panel, sehingga breakpoint CSS prototype tetap sesuai perangkat.
+// Tinggi konten area kerja → --ws-h, dipakai CSS agar pratinjau mengisi tinggi layar.
+let wsObs = null;
+function watchWsBody() {
+  const body = $('.ws-body');
+  if (!body || !('ResizeObserver' in window)) return;
+  wsObs?.disconnect();
+  wsObs = new ResizeObserver(() => {
+    const cs = getComputedStyle(body);
+    const h = body.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    body.style.setProperty('--ws-h', `${Math.max(0, Math.floor(h))}px`);
+  });
+  wsObs.observe(body);
+}
+
 let fitObs = null;
 function fitDevice() {
   const view = $('#d-view');
@@ -383,16 +449,70 @@ function infoHtml(p) {
       : `<span class="muted">Belum ada ${esc(p.instructions.path.split(/[\\/]/).pop())}</span>`}${LOCAL && p.valid
       ? ` <button type="button" class="btn sm ghost instr-sync" data-act="sync-instr" data-id="${esc(p.id)}" title="Pasang/perbarui petunjuk Prototyper di AGENTS.md dan CLAUDE.md (sama dengan prototyper agents sync)" ${ui.busy.has(`sync:${p.id}`) ? 'disabled' : ''}>${ICON.restart}Sinkronkan</button>`
       : ''}`],
+    ['Desain sistem', dsRowHtml(p)],
   ];
   const editBtn = LOCAL
     ? `<button type="button" class="btn sm ${p.valid ? 'ghost' : 'primary'}" data-act="edit-manifest" data-id="${esc(p.id)}">${p.valid ? 'Edit' : 'Perbaiki manifest'}</button>`
     : '';
-  return `<h3 class="section-title">Detail</h3>
-    <dl class="kv">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
-    ${p.tags.length ? `<div class="chips">${p.tags.map((t) => `<span class="tag">#${esc(t)}</span>`).join('')}</div>` : ''}
-    <div class="callout info">Untuk agent: <code>prototyper info ${esc(p.id)} --json</code></div>
-    <div class="log-tools"><h3 class="section-title">prototyper.json</h3><span class="spacer"></span>${editBtn}</div>
-    ${p.manifest ? `<pre class="json">${jsonHtml(p.manifest)}</pre>` : '<p class="muted" style="margin:0">Manifest tidak bisa dibaca.</p>'}`;
+  return `<section class="sec" data-sec="detail">
+      <div class="log-tools sec-head">${secTitle('detail', 'Detail')}</div>
+      <dl class="kv">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
+      ${p.tags.length ? `<div class="chips">${p.tags.map((t) => `<span class="tag">#${esc(t)}</span>`).join('')}</div>` : ''}
+      <div class="callout info">Untuk agent: <code>prototyper info ${esc(p.id)} --json</code></div>
+    </section>
+    <section class="sec" data-sec="manifest">
+      <div class="log-tools sec-head">${secTitle('manifest', 'prototyper.json')}<span class="spacer"></span>${editBtn}</div>
+      ${p.manifest ? `<pre class="json">${jsonHtml(p.manifest)}</pre>` : '<p class="muted" style="margin:0">Manifest tidak bisa dibaca.</p>'}
+    </section>`;
+}
+
+// ---------- Section panel kanan: ciutkan per section & sembunyikan seluruh panel ----------
+// State disimpan global (bukan per prototype). Kelas diterapkan lewat DOM agar tidak
+// mengganggu cache patch() dan form komentar yang sedang diketik.
+const secTitle = (key, label) => `<h3 class="section-title"><button type="button" class="sec-toggle" data-act="sec-toggle" data-sec="${key}"><span class="sec-chev" aria-hidden="true">▾</span>${label}</button></h3>`;
+function readSecs() { try { return new Set(JSON.parse(readPref('prototyper:sections', '[]'))); } catch { return new Set(); } }
+ui.secCollapsed = readSecs();
+ui.panelHidden = readPref('prototyper:panel', 'shown') === 'hidden';
+
+function applySections() {
+  for (const el of $$('.sec[data-sec]')) {
+    const collapsed = ui.secCollapsed.has(el.dataset.sec);
+    el.classList.toggle('sec-collapsed', collapsed);
+    const b = el.querySelector('.sec-toggle');
+    if (b) { b.setAttribute('aria-expanded', String(!collapsed)); b.title = collapsed ? 'Tampilkan section' : 'Ciutkan section'; }
+  }
+}
+function toggleSection(key) {
+  if (ui.secCollapsed.has(key)) ui.secCollapsed.delete(key); else ui.secCollapsed.add(key);
+  writePref('prototyper:sections', JSON.stringify([...ui.secCollapsed]));
+  applySections();
+  if (key === 'comments' && !ui.secCollapsed.has(key)) updateLatestBtn();
+}
+
+function setPanelHidden(hidden) {
+  ui.panelHidden = hidden;
+  writePref('prototyper:panel', hidden ? 'hidden' : 'shown');
+  applyPanel();
+}
+function applyPanel() {
+  const root = document.documentElement;
+  if (ui.panelHidden) root.dataset.panel = 'hidden'; else delete root.dataset.panel;
+  // Panel terbuka: tombol sembunyikan di kanan atas panel. Panel tersembunyi: tombol tampilkan
+  // di kanan atas area kerja (ujung kanan bilah pratinjau), dengan badge jumlah komentar.
+  const hide = $('#btn-panel-hide');
+  if (hide && !hide.innerHTML) {
+    hide.innerHTML = ICON.panel;
+    hide.title = 'Sembunyikan panel kanan (])';
+    hide.setAttribute('aria-label', hide.title);
+  }
+  const show = $('#btn-panel-show');
+  if (!show) return;
+  const label = 'Tampilkan panel kanan (])';
+  const c = cm.data?.counts;
+  const n = c ? (c.waitingUser || c.open || 0) : 0;
+  show.innerHTML = `${ICON.panel}${n ? `<span class="panel-badge${c.waitingUser ? ' wait' : ''}">${n}</span>` : ''}`;
+  show.title = n ? `${label} — ${c.waitingUser ? `${n} komentar menunggu Anda` : `${n} komentar open`}` : label;
+  show.setAttribute('aria-label', label);
 }
 
 function render() {
@@ -434,12 +554,13 @@ let lastKey = '';
 async function refresh(force = false) {
   try {
     const next = await api('GET', '/api/prototypes');
-    $('#offline').hidden = true;
+    if (!upd.installing) $('#offline').hidden = true;
     if (ui.shutdown) { ui.shutdown = false; $('#offline').textContent = 'Daemon tidak terjangkau. Mencoba lagi…'; }
     const key = JSON.stringify(next);
     loaded = true;
     if (force || key !== lastKey) { lastKey = key; list = next; }
     render();
+    if (list.some((x) => x.manifest?.designSystem) && (force || !ds.list || ++ds.tick % 3 === 0)) loadDesignSystems().then(render);
     if (cm.id && (force || ++cm.tick % 2 === 0)) loadComments();
     if (cm.id && LOCAL && (force || ag.state?.running || cm.tick % 2 === 0)) loadAgent();
   } catch {
@@ -457,6 +578,13 @@ async function run(act, p) {
       toast(`Menjalankan install untuk ${p.name}…`);
       const r = await api('POST', `/api/prototypes/${enc(p.id)}/install`);
       toast(r.ok ? `Install ${p.name} selesai` : `Install ${p.name} gagal (kode ${r.exitCode})`, !r.ok);
+    } else if (act === 'lan') {
+      const on = !p.lanExposed;
+      const v = await api('PUT', `/api/prototypes/${enc(p.id)}/lan`, { exposed: on });
+      if (!on) toast(`Akses LAN ${p.name} ditutup`);
+      else if (v.lanUrls.length) toast(`${p.name} terbuka di LAN: ${v.lanUrls[0]}`);
+      else if (isActive(v)) toast(`Akses LAN ${p.name} dibuka, tapi tidak ada jaringan terdeteksi`, true);
+      else toast(`Akses LAN ${p.name} dibuka; berlaku saat Start`);
     } else {
       const v = await api('POST', `/api/prototypes/${enc(p.id)}/${act}`);
       if (act === 'stop') toast(`${p.name} dihentikan`);
@@ -509,11 +637,12 @@ async function syncAllInstructions() {
 }
 
 /** Dialog konfirmasi; resolve true bila tombol OK ditekan. */
-function confirmDialog({ title, body, ok, list }) {
+function confirmDialog({ title, body, ok, list, tone = 'danger' }) {
   const d = $('#dlg-confirm');
   $('#cf-title').textContent = title;
   $('#cf-body').textContent = body;
   $('#cf-ok').textContent = ok;
+  $('#cf-ok').className = `btn ${tone === 'primary' ? 'primary' : 'danger-solid'}`;
   const ul = $('#cf-list');
   ul.hidden = !list?.length;
   ul.innerHTML = (list ?? []).map((x) => `<li>${esc(x)}</li>`).join('');
@@ -576,7 +705,7 @@ document.addEventListener('click', (e) => {
   const { act, id } = t.dataset;
   const p = id ? byId(id) : null;
   switch (act) {
-    case 'start': case 'stop': case 'restart': case 'install': return run(act, p);
+    case 'start': case 'stop': case 'restart': case 'install': case 'lan': return run(act, p);
     case 'remove': return p && confirmRemove(p);
     case 'select': return select(id);
     case 'copy':
@@ -588,6 +717,9 @@ document.addEventListener('click', (e) => {
     case 'device': return setDevice(t.dataset.dev);
     case 'edit-manifest': return p && openManifestEditor(p);
     case 'sync-instr': return p && syncInstructions(p);
+    case 'ds-sync': return p && dsSync(p);
+    case 'ds-use': return p && openDsDialog(p);
+    case 'ds-detach': return p && dsDetach(p);
     case 'add': return openAdd();
     case 'new': return openNew();
     case 'agent-run': return runAgent();
@@ -598,8 +730,18 @@ document.addEventListener('click', (e) => {
     case 'agent-log-toggle': ag.open = !ag.open; return renderAgent();
     case 'agent-resume': if (ag.fresh.has(cm.id)) ag.fresh.delete(cm.id); else ag.fresh.add(cm.id); return renderAgent();
     case 'cm-pick': return togglePick();
+    case 'cm-attach': return $('#cm-file')?.click();
+    case 'cm-rm-file': return removeFile(t.dataset.k);
     case 'cm-clear-anchor': return setAnchor(null);
     case 'cm-focus': return focusAnchor(t.dataset.cid);
+    case 'cm-latest': return scrollToLatest();
+    case 'cm-toggle': {
+      const c = cm.data?.comments?.find((x) => x.id === t.dataset.cid);
+      return c && setCollapsed([c.id], !isCollapsed(c));
+    }
+    case 'cm-collapse-all': return toggleCollapseAll();
+    case 'sec-toggle': return toggleSection(t.dataset.sec);
+    case 'toggle-panel': return setPanelHidden(!ui.panelHidden);
     case 'cm-reply': return startReply(t.dataset.cid);
     case 'cm-cancel-reply': return startReply(null);
     case 'cm-resolve': return commentAction('resolve', t.dataset.cid);
@@ -628,6 +770,7 @@ document.addEventListener('keydown', (e) => {
   if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
   if (e.key === '/') { e.preventDefault(); return $('#q').focus(); }
   if (e.key === '[') { e.preventDefault(); return setSidePinned(!ui.sidePinned); }
+  if (e.key === ']') { e.preventDefault(); return setPanelHidden(!ui.panelHidden); }
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'j' || e.key === 'k') {
     // Urutan sama dengan sidebar (dikelompokkan).
     const order = $$('#side-list .ws-item').map((b) => b.dataset.id);
@@ -709,6 +852,107 @@ document.addEventListener('pointerdown', (e) => {
   if (!ui.sidePinned && !e.target.closest('.ws-side, #side-edge, dialog')) openSide(false);
 });
 
+// ---------- Pembaruan Prototyper ----------
+// GET /api/update di-cache daemon (6 jam); `refresh` memaksa memeriksa GitHub lagi.
+const upd = { info: null, checking: false, installing: null };
+
+async function loadUpdate(refresh = false) {
+  if (upd.checking || upd.installing) return;
+  upd.checking = true;
+  if (refresh) renderUpdateDialog();
+  try {
+    upd.info = await api('GET', `/api/update${refresh ? '?refresh=1' : ''}`);
+  } catch (err) {
+    if (refresh) toast(err.message, true);
+  } finally {
+    upd.checking = false;
+  }
+  renderUpdateBar();
+  renderUpdateDialog();
+}
+
+function renderUpdateBar() {
+  const i = upd.info;
+  const bar = $('#upd-bar');
+  bar.hidden = !(i?.available || upd.installing);
+  if (bar.hidden) return;
+  bar.innerHTML = upd.installing
+    ? `<span class="upd-dot spin"></span><span><b>Memasang ${esc(upd.installing)}…</b><small>Prototyper dimulai ulang</small></span>`
+    : `<span class="upd-dot"></span><span><b>Pembaruan ${esc(i.latest)}</b><small>${i.autoInstall && LOCAL ? 'Klik untuk memasang' : 'Lihat cara memperbarui'}</small></span>`;
+}
+
+function openUpdateDialog() {
+  if (!$('#dlg-update').open) $('#dlg-update').showModal();
+  renderUpdateDialog();
+}
+
+function renderUpdateDialog() {
+  const dlg = $('#dlg-update');
+  if (!dlg.open && !upd.checking) return;
+  const i = upd.info;
+  const checked = i?.checkedAt ? new Date(i.checkedAt).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : null;
+  let body;
+  if (upd.checking) body = '<p class="muted">Memeriksa pembaruan…</p>';
+  else if (!i) body = '<p class="muted">Belum diperiksa.</p>';
+  else if (i.available) {
+    body = `<p>Prototyper <b>${esc(i.latest)}</b> sudah rilis. Versi Anda <b>${esc(i.current)}</b>.</p>
+      ${i.autoInstall
+        ? `<p class="muted">Daemon dan semua prototype akan dihentikan sebentar, lalu dinyalakan lagi otomatis setelah pembaruan terpasang${i.kind === 'msi' ? ' (lewat installer MSI)' : ''}.</p>`
+        : `<div class="callout info">${esc(i.hint ?? 'Instalasi ini tidak bisa diperbarui otomatis.')}</div>`}
+      ${LOCAL ? '' : `<div class="callout warn">${RO_TITLE}.</div>`}`;
+  } else body = `<p>Prototyper <b>${esc(i.current)}</b> sudah versi terbaru${i.latest ? '' : ' (belum pernah diperiksa)'}.</p>`;
+  const err = i?.error ? `<div class="callout err">Gagal memeriksa: ${esc(i.error)}</div>` : '';
+  const canInstall = i?.available && i.autoInstall && LOCAL && !upd.checking;
+  $('#upd-form').innerHTML = `<h2>Pembaruan Prototyper</h2>${body}${err}
+    ${checked ? `<p class="muted upd-checked">Terakhir diperiksa ${esc(checked)}${i.enabled ? '' : ' · pemeriksaan otomatis mati (PROTOTYPER_UPDATE_CHECK=0)'}</p>` : ''}
+    <div class="dlg-foot">
+      ${i?.pageUrl ? `<a class="btn ghost" href="${esc(i.pageUrl)}" target="_blank" rel="noopener">Catatan rilis</a>` : ''}
+      <span class="spacer"></span>
+      <button type="button" class="btn" data-upd="check"${upd.checking ? ' disabled' : ''}>Periksa lagi</button>
+      ${canInstall ? '<button type="button" class="btn primary" data-upd="install">Perbarui sekarang</button>' : '<button value="close" class="btn">Tutup</button>'}
+    </div>`;
+}
+
+async function installUpdate() {
+  if (!LOCAL) return toast(RO_TITLE, true);
+  let r;
+  try {
+    r = await api('POST', '/api/update/install');
+  } catch (err) {
+    return toast(err.message, true);
+  }
+  $('#dlg-update').close();
+  upd.installing = r.version;
+  renderUpdateBar();
+  disconnectLog();
+  const offline = $('#offline');
+  offline.textContent = `Memasang Prototyper ${r.version}… Halaman dimuat ulang otomatis setelah selesai. Log: ${r.log}`;
+  // Tunggu daemon versi baru menyala (MSI bisa makan waktu beberapa menit).
+  const deadline = Date.now() + 10 * 60_000;
+  const poll = async () => {
+    const h = await fetch('/api/health', { cache: 'no-store' }).then((res) => (res.ok ? res.json() : null)).catch(() => null);
+    if (h?.version === r.version) return location.reload();
+    if (Date.now() > deadline) {
+      upd.installing = null;
+      renderUpdateBar();
+      offline.textContent = `Pembaruan belum selesai setelah 10 menit. Periksa log: ${r.log}`;
+      offline.hidden = false;
+      return;
+    }
+    if (!h) offline.hidden = false;
+    setTimeout(poll, 1500);
+  };
+  setTimeout(poll, 2000);
+}
+
+$('#upd-bar').addEventListener('click', () => { if (!upd.installing) openUpdateDialog(); });
+$('#upd-form').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-upd]');
+  if (!b) return;
+  if (b.dataset.upd === 'check') loadUpdate(true);
+  else if (b.dataset.upd === 'install') installUpdate();
+});
+
 // ---------- Toast ----------
 function toast(msg, err = false) {
   const el = document.createElement('div');
@@ -716,7 +960,22 @@ function toast(msg, err = false) {
   el.innerHTML = '<i></i>';
   el.append(msg);
   $('#toasts').appendChild(el);
+  raiseToasts();
   setTimeout(() => el.remove(), err ? 7000 : 3000);
+}
+/**
+ * Dialog modal (<dialog>.showModal) berada di top layer, di atas elemen biasa. Wadah toast adalah
+ * popover; tampilkan (ulang) agar ia menjadi lapisan teratas, di atas dialog yang sedang terbuka.
+ */
+function raiseToasts() {
+  const box = $('#toasts');
+  if (typeof box.showPopover !== 'function') return; // browser lama: z-index biasa
+  try {
+    const open = box.matches(':popover-open');
+    if (open && !document.querySelector('dialog[open]')) return;
+    if (open) box.hidePopover(); // urutan top layer = urutan tampil: tampilkan ulang di atas dialog
+    box.showPopover();
+  } catch { /* abaikan */ }
 }
 
 // ---------- Dialog daftarkan / edit manifest ----------
@@ -889,6 +1148,38 @@ function renderWhatsNew() {
 }
 
 // ---------- Beranda ----------
+/** Chip desain sistem pada kartu prototype di Beranda. */
+function dsChipHtml(p) {
+  const d = p.manifest?.designSystem;
+  if (d?.use) {
+    const c = ds.list?.find((x) => x.id === d.use)?.consumers.find((x) => x.id === p.id);
+    return `<span class="h-chip ${c?.outdated ? 'warn' : 'ds'}" title="Memakai desain sistem ${esc(d.use)}${c?.outdated ? ' — perlu sinkron' : ''}">◇ ${esc(d.use)}</span>`;
+  }
+  if (d?.local) return `<span class="h-chip ds" title="Desain sistem sendiri: ${esc(d.local.join(', '))}">◆ desain sistem sendiri</span>`;
+  return '';
+}
+/** Kartu desain sistem di Beranda: pemakai (klik untuk membuka), status sinkron, dan aksi. */
+function dsCardHtml(p) {
+  const info = ds.list?.find((x) => x.id === p.id);
+  const users = info?.consumers ?? [];
+  const stale = users.filter((c) => c.outdated);
+  const u = openUrl(p);
+  const act = isActive(p)
+    ? btn('stop', p, { label: 'Stop', icon: ICON.stop })
+    : btn('start', p, { label: ui.busy.has(p.id) ? 'Memproses…' : 'Buka katalog', icon: ICON.play, cls: 'primary', disabled: !p.valid });
+  const sync = stale.length && LOCAL
+    ? `<button type="button" class="btn sm" data-act="ds-sync" data-id="${esc(p.id)}" title="Salin ulang token & komponen ke ${stale.length} prototype" ${ui.busy.has(`ds:${p.id}`) ? 'disabled' : ''}>${ICON.restart}Sebarkan (${stale.length})</button>` : '';
+  return `<article class="h-card ds ${isActive(p) ? 'on' : ''}" data-act="select" data-id="${esc(p.id)}" tabindex="0">
+      <div class="h-card-top">${avatar(p)}<div class="t"><b>${esc(p.name)}</b><span>${esc(p.id)} · desain sistem</span></div>${statusHtml(p)}</div>
+      ${p.description ? `<p class="h-desc">${esc(p.description)}</p>` : ''}
+      <div class="h-meta">
+        ${u ? `<a href="${esc(u)}" target="_blank" rel="noopener" class="h-url">${esc(u.replace(/^https?:\/\//, '').replace(/\/$/, ''))} ${ICON.ext}</a>` : `<span class="muted">${info ? (users.length ? `dipakai ${users.length} prototype` : 'belum dipakai prototype lain') : ''}</span>`}
+      </div>
+      ${users.length ? `<div class="h-ds-users">${users.map((c) => `<span class="h-chip ${c.outdated ? 'warn' : 'ds'}" data-act="select" data-id="${esc(c.id)}" title="${c.outdated ? 'Perlu sinkron' : 'Terbaru'} — buka ${esc(c.name)}">${esc(c.id)}${c.outdated ? ' ●' : ''}</span>`).join('')}</div>` : ''}
+      <div class="h-card-actions">${act}${sync}<span class="spacer"></span><span class="h-open">Buka detail →</span></div>
+    </article>`;
+}
+
 const sum = (f) => list.reduce((n, p) => n + (f(p) || 0), 0);
 const totalWaitingUser = () => sum((p) => p.comments?.waitingUser);
 
@@ -903,6 +1194,7 @@ function homeSkeleton() {
     </header>
     <section class="home-stats" id="h-stats"></section>
     <section id="h-attn"></section>
+    <section id="h-ds"></section>
     <section>
       <div class="log-tools"><h3 class="section-title">Prototype</h3><span class="spacer"></span><span class="muted" id="h-count"></span></div>
       <div class="home-cards" id="h-cards"></div>
@@ -917,9 +1209,11 @@ function renderHome() {
   const waitUser = totalWaitingUser();
   const waitAgent = open - waitUser;
   const problems = list.filter(isProblem).length;
+  const dss = list.filter(isDs);
+  const protos = list.filter((p) => !isDs(p));
   const stat = (n, label, cls = '', sub = '') => `<div class="h-stat ${cls}"><b>${n}</b><span>${label}</span>${sub ? `<small>${sub}</small>` : ''}</div>`;
   patch('#h-stats', [
-    stat(list.length, 'Prototype', '', problems ? `${problems} bermasalah` : ''),
+    stat(protos.length, 'Prototype', '', [problems ? `${problems} bermasalah` : '', dss.length ? `+ ${dss.length} desain sistem` : ''].filter(Boolean).join(' · ')),
     stat(running, 'Berjalan', running ? 'ok' : ''),
     stat(waitUser, 'Menunggu Anda', waitUser ? 'warn' : '', 'komentar perlu jawaban'),
     stat(waitAgent, 'Menunggu agent', waitAgent ? 'accent' : '', 'siap dikerjakan'),
@@ -931,13 +1225,18 @@ function renderHome() {
     if (c.waitingUser) attn.push({ p, cls: 'warn', text: `${c.waitingUser} komentar menunggu jawaban Anda` });
     if (c.open - c.waitingUser > 0) attn.push({ p, cls: 'accent', text: `${c.open - c.waitingUser} komentar menunggu agent` });
     if (isProblem(p)) attn.push({ p, cls: 'err', text: p.valid ? `${LABEL[st(p)]}${p.error ? ` — ${p.error}` : ''}` : 'Manifest tidak valid' });
+    const stale = isDs(p) ? (ds.list?.find((x) => x.id === p.id)?.consumers ?? []).filter((c) => c.outdated) : [];
+    if (stale.length) attn.push({ p, cls: 'accent', text: `${stale.length} prototype perlu sinkron desain sistem: ${stale.map((c) => c.id).join(', ')}` });
   }
   patch('#h-attn', attn.length ? `<div class="log-tools"><h3 class="section-title">Perlu perhatian</h3></div>
     <div class="h-attn">${attn.map((a) => `<button type="button" class="h-attn-item ${a.cls}" data-act="select" data-id="${esc(a.p.id)}">
       ${avatar(a.p, 'sm')}<span class="t"><b>${esc(a.p.name)}</b><span>${esc(a.text)}</span></span><span class="h-go">Buka →</span></button>`).join('')}</div>` : '');
 
-  $('#h-count').textContent = `${list.length} terdaftar`;
-  const order = [...list].sort((a, b) => Number(isActive(b)) - Number(isActive(a)) || Number(isProblem(b)) - Number(isProblem(a)));
+  patch('#h-ds', dss.length ? `<div class="log-tools"><h3 class="section-title">Desain sistem</h3><span class="spacer"></span>
+      <span class="muted">token &amp; komponen yang dipakai bersama</span></div>
+    <div class="home-cards">${dss.map(dsCardHtml).join('')}</div>` : '');
+  $('#h-count').textContent = `${protos.length} terdaftar`;
+  const order = [...protos].sort((a, b) => Number(isActive(b)) - Number(isActive(a)) || Number(isProblem(b)) - Number(isProblem(a)));
   patch('#h-cards', order.map((p) => {
     const u = openUrl(p);
     const c = p.comments ?? { open: 0, waitingUser: 0 };
@@ -950,6 +1249,7 @@ function renderHome() {
       <div class="h-meta">
         ${u ? `<a href="${esc(u)}" target="_blank" rel="noopener" class="h-url">${esc(u.replace(/^https?:\/\//, '').replace(/\/$/, ''))} ${ICON.ext}</a>` : `<span class="muted">${p.valid ? 'tidak berjalan' : 'tidak valid'}</span>`}
         <span class="spacer"></span>
+        ${dsChipHtml(p)}
         ${c.waitingUser ? `<span class="h-chip warn" title="Menunggu jawaban Anda">${c.waitingUser} menunggu Anda</span>` : ''}
         ${c.open - c.waitingUser > 0 ? `<span class="h-chip accent" title="Menunggu agent">${c.open - c.waitingUser} untuk agent</span>` : ''}
       </div>
@@ -968,7 +1268,7 @@ function renderHome() {
 // ---------- Komentar ----------
 // Dimuat terpisah dari polling daftar; daftar komentar di-render ulang hanya bila isinya berubah,
 // sedangkan form tulis berada di luar daftar sehingga teks yang sedang diketik tidak hilang.
-const cm = { id: null, data: null, filter: readPref('prototyper:cm-filter', 'open'), replyTo: null, tick: 0, lastHtml: '', pages: {} };
+const cm = { id: null, data: null, filter: readPref('prototyper:cm-filter', 'open'), replyTo: null, tick: 0, lastHtml: '', pages: {}, files: [] };
 
 async function loadComments() {
   const id = cm.id;
@@ -1000,13 +1300,13 @@ function questionHtml(c, r) {
     <p class="cm-text">${esc(r.text)}</p>`;
   if (r.answer || c.status !== 'open' || !LOCAL) {
     const chosen = r.answer?.choices ?? [];
-    return `<div class="cm-question answered">${head}
+    return `<div class="cm-question answered" data-rid="${esc(r.id)}">${head}
       <ul class="cm-opts-done">${r.options.map((o) => `<li class="${chosen.includes(o) ? 'on' : ''}">${chosen.includes(o) ? '✓' : '○'} ${esc(o)}</li>`).join('')}</ul>
       ${r.answer ? '' : `<p class="muted cm-q-none">${c.status === 'open' ? 'Belum dijawab.' : 'Tidak dijawab.'}</p>`}
     </div>`;
   }
   const name = `q-${r.id}`;
-  return `<form class="cm-question cm-q" data-cid="${esc(c.id)}" data-qid="${esc(r.id)}">${head}
+  return `<form class="cm-question cm-q" data-cid="${esc(c.id)}" data-qid="${esc(r.id)}" data-rid="${esc(r.id)}">${head}
     <div class="cm-opts" role="${r.multi ? 'group' : 'radiogroup'}">
       ${r.options.map((o) => `<label class="cm-opt"><input type="${type}" name="${esc(name)}" value="${esc(o)}"><span>${esc(o)}</span></label>`).join('')}
     </div>
@@ -1015,15 +1315,93 @@ function questionHtml(c, r) {
   </form>`;
 }
 
+/** URL lampiran (path relatif ".prototyper/attachments/<nama>") lewat API daemon. */
+const attachmentUrl = (rel) => `/api/prototypes/${enc(cm.id)}/attachments/${enc(rel.split('/').pop())}`;
+function attachmentsHtml(list) {
+  if (!list?.length) return '';
+  return `<div class="cm-atts">${list.map((a) => `<a href="${esc(attachmentUrl(a))}" target="_blank" rel="noopener" title="${esc(a)}"><img src="${esc(attachmentUrl(a))}" alt="Lampiran gambar" loading="lazy"></a>`).join('')}</div>`;
+}
+const textHtml = (t) => (t ? `<p class="cm-text">${esc(t)}</p>` : '');
+
 function replyHtml(c, r) {
   if (r.options) return questionHtml(c, r);
   if (r.answerTo) {
-    return `<div class="cm-reply cm-answer"><b>${esc(r.author)}</b><span>memilih</span>${(r.choices ?? []).map((x) => `<span class="cm-chip">${esc(x)}</span>`).join('')}<span class="cm-meta">${fmtTime(r.createdAt)}</span>${r.text ? `<p class="cm-text">${esc(r.text)}</p>` : ''}</div>`;
+    return `<div class="cm-reply cm-answer ${r.role === 'agent' ? 'agent' : 'user'}" data-rid="${esc(r.id)}"><b>${esc(r.author)}</b><span>memilih</span>${(r.choices ?? []).map((x) => `<span class="cm-chip">${esc(x)}</span>`).join('')}<span class="cm-meta">${fmtTime(r.createdAt)}</span>${r.text ? `<p class="cm-text">${esc(r.text)}</p>` : ''}</div>`;
   }
-  return `<div class="cm-reply ${r.role === 'agent' ? 'agent' : ''}"><b>${esc(r.author)}</b><span class="cm-meta">${fmtTime(r.createdAt)}</span><p class="cm-text">${esc(r.text)}</p></div>`;
+  return `<div class="cm-reply ${r.role === 'agent' ? 'agent' : 'user'}" data-rid="${esc(r.id)}"><b>${r.role === 'agent' ? '<span class="cm-role-ic" aria-hidden="true">✦</span>' : ''}${esc(r.author)}</b><span class="cm-meta">${fmtTime(r.createdAt)}</span>${textHtml(r.text)}${attachmentsHtml(r.attachments)}</div>`;
+}
+
+// ---------- Ciutkan / bentangkan percakapan komentar ----------
+// Pilihan eksplisit pengguna disimpan per prototype; tanpa pilihan: komentar selesai diciutkan,
+// komentar open dibentangkan.
+const collapseKey = (id) => `prototyper:cm-collapsed:${id}`;
+function collapsedMap() {
+  if (cm.collapsedFor !== cm.id) {
+    cm.collapsedFor = cm.id;
+    try { cm.collapsed = JSON.parse(readPref(collapseKey(cm.id), '{}')) || {}; } catch { cm.collapsed = {}; }
+  }
+  return cm.collapsed;
+}
+function saveCollapsed() {
+  const m = collapsedMap();
+  // Buang id komentar yang sudah tidak ada agar penyimpanan tidak terus membesar.
+  const ids = new Set((cm.data?.comments ?? []).map((c) => c.id));
+  for (const k of Object.keys(m)) if (cm.data?.comments && !ids.has(k)) delete m[k];
+  writePref(collapseKey(cm.id), JSON.stringify(m));
+}
+function isCollapsed(c) {
+  const v = collapsedMap()[c.id];
+  return typeof v === 'boolean' ? v : c.status === 'resolved';
+}
+function setCollapsed(cids, value) {
+  const m = collapsedMap();
+  for (const cid of cids) m[cid] = value;
+  saveCollapsed();
+  cm.lastHtml = ''; renderComments();
+}
+const visibleComments = () => (cm.data?.comments ?? []).filter((c) => cm.filter === 'all' || c.status === cm.filter);
+function toggleCollapseAll() {
+  const list = visibleComments();
+  setCollapsed(list.map((c) => c.id), !list.every(isCollapsed));
+}
+
+/** Komentar yang sedang dikerjakan agent: id-nya, atau semua yang menunggu agent bila run tanpa commentIds. */
+function isWorking(c) {
+  const st = ag.state;
+  if (!st?.running) return false;
+  const ids = st.run?.commentIds;
+  return ids?.length ? ids.includes(c.id) : c.status === 'open' && c.waitingFor === 'agent';
+}
+
+const snippet = (t, n = 90) => { const s = String(t ?? '').replace(/\s+/g, ' ').trim(); return s.length > n ? `${s.slice(0, n)}…` : s; };
+
+function collapsedSummary(c) {
+  const n = c.replies.length;
+  const last = c.replies[n - 1];
+  const lastText = last ? (last.options ? `❓ ${last.text}` : last.answerTo ? `memilih ${(last.choices ?? []).join(', ')}` : last.text || '(gambar)') : '';
+  return `<button type="button" class="cm-summary" data-act="cm-toggle" data-cid="${esc(c.id)}" title="Tampilkan percakapan lengkap">
+      <span class="cm-sum-n">${n ? `${n} balasan` : 'Tanpa balasan'}</span>
+      ${last ? `<span class="cm-sum-last"><b>${esc(last.author)}:</b> ${esc(snippet(lastText))}</span>` : ''}
+      <span class="cm-sum-more">Tampilkan</span>
+    </button>`;
 }
 
 function commentHtml(c) {
+  const collapsed = isCollapsed(c);
+  const working = isWorking(c);
+  const wait = c.waitingFor ? WAIT[c.waitingFor] : null;
+  const head = `<header data-act="cm-toggle" data-cid="${esc(c.id)}" title="${collapsed ? 'Bentangkan' : 'Ciutkan'} percakapan">
+      <span class="cm-chev" aria-hidden="true">▸</span><code>${esc(c.id)}</code><span class="cm-page">${esc(c.page)}</span>
+      ${working ? '<span class="cm-working"><i></i>Sedang dikerjakan</span>' : ''}
+      ${wait ? `<span class="cm-wait ${wait[0]}">${wait[1]}</span>` : ''}
+      <span class="cm-meta">${esc(c.author)} · ${fmtTime(c.createdAt)}</span></header>`;
+  const cls = `cm ${c.status}${collapsed ? ' collapsed' : ''}${working ? ' working' : ''}${cm.replyTo === c.id ? ' replying' : ''}${c.waitingFor === 'user' ? ' needs-you' : ''}`;
+  if (collapsed) {
+    return `<article class="${cls}" data-cid="${esc(c.id)}">${head}
+      ${c.text ? `<p class="cm-text cm-clamp">${esc(c.text)}</p>` : ''}
+      ${collapsedSummary(c)}
+    </article>`;
+  }
   const actions = LOCAL ? `<div class="cm-actions">
       ${c.waitingFor === 'agent' && pickedAgent() ? `<button type="button" class="btn sm ghost agent-one" data-act="agent-run-one" data-cid="${esc(c.id)}" title="Minta ${esc(pickedAgent().name)} mengerjakan komentar ini saja" ${ag.state?.running ? 'disabled' : ''}>${ICON.spark}Kerjakan</button>` : ''}
       <button type="button" class="btn sm ghost" data-act="cm-reply" data-cid="${esc(c.id)}">Balas</button>
@@ -1033,11 +1411,10 @@ function commentHtml(c) {
       <span class="spacer"></span>
       <button type="button" class="icon-btn" data-act="cm-delete" data-cid="${esc(c.id)}" title="Hapus komentar">${ICON.trash}</button>
     </div>` : '';
-  const wait = c.waitingFor ? WAIT[c.waitingFor] : null;
-  return `<article class="cm ${c.status}${cm.replyTo === c.id ? ' replying' : ''}${c.waitingFor === 'user' ? ' needs-you' : ''}" data-cid="${esc(c.id)}">
-    <header><code>${esc(c.id)}</code><span class="cm-page">${esc(c.page)}</span>${wait ? `<span class="cm-wait ${wait[0]}">${wait[1]}</span>` : ''}<span class="cm-meta">${esc(c.author)} · ${fmtTime(c.createdAt)}</span></header>
+  return `<article class="${cls}" data-cid="${esc(c.id)}">${head}
     ${c.anchor ? `<button type="button" class="cm-anchor-chip" data-act="cm-focus" data-cid="${esc(c.id)}" title="${esc(c.anchor.selector)}">${ICON.pick}<span>${esc(anchorLabel(c.anchor))}</span></button>` : ''}
-    <p class="cm-text">${esc(c.text)}</p>
+    ${textHtml(c.text)}
+    ${attachmentsHtml(c.attachments)}
     ${c.replies.map((r) => replyHtml(c, r)).join('')}
     ${c.status === 'resolved' ? `<div class="cm-res">✓ Selesai${c.resolvedBy ? ` oleh ${esc(c.resolvedBy)}` : ''}${c.resolvedAt ? ` · ${fmtTime(c.resolvedAt)}` : ''}${c.resolution ? `<p class="cm-text">${esc(c.resolution)}</p>` : ''}</div>` : ''}
     ${actions}
@@ -1101,6 +1478,14 @@ function renderComments() {
   $('#cm-count').innerHTML = d && !d.error
     ? `${d.counts.open} open${d.counts.waitingUser ? ` · <b class="cm-count-wait">${d.counts.waitingUser} menunggu Anda</b>` : ''} · ${d.counts.resolved} selesai`
     : '';
+  const allBtn = $('#cm-collapse-all');
+  if (allBtn) {
+    const vis = d && !d.error ? visibleComments() : [];
+    const allCollapsed = vis.length > 0 && vis.every(isCollapsed);
+    allBtn.hidden = vis.length < 2;
+    allBtn.textContent = allCollapsed ? '▾ Bentangkan semua' : '▸ Ciutkan semua';
+    allBtn.title = allCollapsed ? 'Tampilkan semua percakapan lengkap' : 'Ciutkan semua percakapan menjadi ringkasan satu baris';
+  }
   sendPins();
   if (html !== cm.lastHtml) {
     const st = saveQForms();
@@ -1108,7 +1493,74 @@ function renderComments() {
     cm.lastHtml = html;
     restoreQForms(st);
   }
+  trackLatest(d && !d.error ? d.comments.filter((c) => cm.filter === 'all' || c.status === cm.filter) : []);
+  if (ui.panelHidden) applyPanel(); // perbarui badge jumlah komentar di tombol panel
 }
+
+// ---------- Tombol "Terbaru": gulir daftar komentar ke pesan (komentar/balasan) paling baru ----------
+/** Pesan paling baru di antara komentar yang tampil. createdAt berformat ISO, jadi bisa dibandingkan sebagai string. */
+function trackLatest(items) {
+  let best = null;
+  for (const c of items) {
+    for (const m of [c, ...c.replies]) {
+      const at = String(m.createdAt ?? '');
+      if (!best || at > best.at) best = { at, cid: c.id, rid: m === c ? null : m.id };
+    }
+  }
+  const key = best ? `${best.cid}/${best.rid ?? ''}` : null;
+  // Pesan baru masuk (bukan muat awal / ganti prototype / ganti filter) → tandai tombol.
+  if (key && cm.latest?.key && key !== cm.latest.key && cm.latest.for === cm.id && cm.latest.filter === cm.filter && best.at > cm.latest.at) cm.latestNew = true;
+  if (!key || cm.latest?.for !== cm.id) cm.latestNew = false;
+  cm.latest = best ? { ...best, key, for: cm.id, filter: cm.filter } : null;
+  updateLatestBtn();
+}
+
+function latestEl() {
+  const l = cm.latest;
+  if (!l) return null;
+  const art = $(`#cm-list article[data-cid="${CSS.escape(l.cid)}"]`);
+  return (l.rid && art?.querySelector(`[data-rid="${CSS.escape(l.rid)}"]`)) || art;
+}
+
+/** Tampilkan tombol bila pesan terbaru tidak terlihat di area gulir daftar. */
+function updateLatestBtn() {
+  const btn = $('#cm-latest');
+  const list = $('#cm-list');
+  if (!btn || !list) return;
+  const el = latestEl();
+  let hidden = true;
+  if (el) {
+    const a = el.getBoundingClientRect();
+    const b = list.getBoundingClientRect();
+    hidden = a.bottom <= b.bottom + 4 && a.bottom >= b.top + 24;
+  }
+  if (hidden) cm.latestNew = false;
+  btn.hidden = hidden;
+  btn.classList.toggle('new', !!cm.latestNew);
+  btn.querySelector('span').textContent = cm.latestNew ? 'Pesan baru' : 'Terbaru';
+}
+
+function scrollToLatest(smooth = true) {
+  const l = cm.latest;
+  const c = l && cm.data?.comments?.find((x) => x.id === l.cid);
+  if (c && isCollapsed(c)) setCollapsed([c.id], false); // bentangkan agar pesannya terlihat
+  const el = latestEl();
+  const list = $('#cm-list');
+  if (!el || !list) return;
+  const a = el.getBoundingClientRect();
+  const b = list.getBoundingClientRect();
+  // Pesan pendek: sejajarkan bagian bawahnya dengan bawah daftar; pesan lebih tinggi dari daftar: tampilkan awalnya.
+  const delta = a.height > b.height - 16 ? a.top - b.top - 8 : a.bottom - b.bottom + 8;
+  list.scrollTo({ top: list.scrollTop + delta, behavior: smooth ? 'smooth' : 'auto' });
+  cm.latestNew = false;
+  el.classList.remove('cm-flash');
+  void el.offsetWidth; // mulai ulang animasi
+  el.classList.add('cm-flash');
+  setTimeout(() => el.classList.remove('cm-flash'), 1400);
+}
+
+document.addEventListener('scroll', (e) => { if (e.target.id === 'cm-list') updateLatestBtn(); }, true);
+window.addEventListener('resize', () => updateLatestBtn());
 
 function startReply(cid) {
   cm.replyTo = cid;
@@ -1165,6 +1617,7 @@ document.addEventListener('submit', async (e) => {
     for (const i of $$('input', f)) i.checked = false;
     f.querySelector('textarea').value = '';
     await loadComments();
+    scrollToLatest();
     refresh(true);
   } catch (err) {
     toast(err.message, true);
@@ -1180,28 +1633,127 @@ document.addEventListener('submit', async (e) => {
   e.preventDefault();
   const id = cm.id;
   const text = $('#cm-text').value.trim();
-  if (!id || !text) return $('#cm-text').focus();
+  if (cm.files.some((f) => !f.path)) return toast('Tunggu gambar selesai diunggah', true);
+  const attachments = cm.files.map((f) => f.path);
+  if (!id || (!text && !attachments.length)) return $('#cm-text').focus();
+  const extra = attachments.length ? { attachments } : {};
   const send = $('#cm-send');
   send.disabled = true;
   try {
     if (cm.replyTo) {
-      await api('POST', `/api/prototypes/${enc(id)}/comments/${enc(cm.replyTo)}/replies`, { text });
+      await api('POST', `/api/prototypes/${enc(id)}/comments/${enc(cm.replyTo)}/replies`, { text, ...extra });
       startReply(null);
     } else {
       const page = $('#cm-page').value.trim() || '/';
       cm.pages[id] = page;
-      await api('POST', `/api/prototypes/${enc(id)}/comments`, { text, page, ...(cm.anchor ? { anchor: cm.anchor } : {}) });
+      await api('POST', `/api/prototypes/${enc(id)}/comments`, { text, page, ...(cm.anchor ? { anchor: cm.anchor } : {}), ...extra });
       setAnchor(null);
       if (cm.filter === 'resolved') { cm.filter = 'open'; writePref('prototyper:cm-filter', 'open'); }
     }
     $('#cm-text').value = '';
+    clearFiles();
     await loadComments();
+    scrollToLatest(); // tampilkan pesan yang baru dikirim
     refresh(true);
   } catch (err) {
     toast(err.message, true);
   } finally {
     send.disabled = false;
   }
+});
+
+// ---------- Lampiran gambar komentar (tempel / seret / tombol) ----------
+const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml'];
+/** Tipe file; sebagian OS/browser tidak memberi tipe untuk .svg. */
+const fileType = (f) => f.type || (/\.svg$/i.test(f.name ?? '') ? 'image/svg+xml' : '');
+const MAX_FILE_MB = 5;
+const MAX_FILES = 6;
+let fileSeq = 0;
+
+function renderFiles() {
+  const box = $('#cm-files');
+  if (!box) return;
+  box.hidden = !cm.files.length;
+  box.innerHTML = cm.files.map((f) => `<span class="cm-file${f.path ? '' : ' uploading'}">
+      <img src="${esc(f.preview)}" alt="">
+      <button type="button" class="cm-file-x" data-act="cm-rm-file" data-k="${f.key}" title="Hapus lampiran">✕</button>
+    </span>`).join('');
+}
+
+function clearFiles() {
+  for (const f of cm.files) URL.revokeObjectURL(f.preview);
+  cm.files = [];
+  renderFiles();
+}
+
+function removeFile(key) {
+  const f = cm.files.find((x) => String(x.key) === String(key));
+  if (!f) return;
+  URL.revokeObjectURL(f.preview);
+  cm.files = cm.files.filter((x) => x !== f);
+  renderFiles();
+}
+
+const readDataUrl = (file) => new Promise((resolve, reject) => {
+  const r = new FileReader();
+  r.onload = () => resolve(r.result);
+  r.onerror = () => reject(r.error ?? new Error('Gagal membaca file'));
+  r.readAsDataURL(file);
+});
+
+async function addFiles(files) {
+  const id = cm.id;
+  if (!id || !LOCAL) return;
+  for (const file of files) {
+    if (!IMAGE_TYPES.includes(fileType(file))) { toast(`${file.name || 'File'}: hanya gambar PNG, JPG, GIF, WebP, atau SVG`, true); continue; }
+    if (file.size > MAX_FILE_MB * 1024 * 1024) { toast(`${file.name || 'Gambar'} terlalu besar (maks. ${MAX_FILE_MB} MB)`, true); continue; }
+    if (cm.files.length >= MAX_FILES) { toast(`Maksimal ${MAX_FILES} gambar per komentar`, true); break; }
+    const f = { key: ++fileSeq, preview: URL.createObjectURL(file), path: null };
+    cm.files.push(f);
+    renderFiles();
+    try {
+      const a = await api('POST', `/api/prototypes/${enc(id)}/attachments`, { data: await readDataUrl(file) });
+      if (!cm.files.includes(f)) continue; // dihapus / pindah prototype selama mengunggah
+      f.path = a.path;
+      renderFiles();
+    } catch (err) {
+      toast(`Gagal mengunggah gambar: ${err.message}`, true);
+      removeFile(f.key);
+    }
+  }
+}
+
+const imagesOf = (list) => [...(list ?? [])].filter((f) => f && fileType(f).startsWith('image/'));
+document.addEventListener('paste', (e) => {
+  if (e.target.id !== 'cm-text') return;
+  const files = imagesOf([...(e.clipboardData?.items ?? [])].filter((i) => i.kind === 'file').map((i) => i.getAsFile()));
+  if (!files.length) return; // teks biasa: tempel seperti biasa
+  e.preventDefault();
+  addFiles(files);
+});
+document.addEventListener('change', (e) => {
+  if (e.target.id !== 'cm-file') return;
+  addFiles([...e.target.files]);
+  e.target.value = '';
+});
+const hasFiles = (e) => [...(e.dataTransfer?.types ?? [])].includes('Files');
+document.addEventListener('dragover', (e) => {
+  const form = e.target.closest?.('#cm-form');
+  if (!form || !hasFiles(e)) return;
+  e.preventDefault();
+  form.classList.add('drop');
+});
+document.addEventListener('dragleave', (e) => {
+  const form = e.target.closest?.('#cm-form');
+  if (form && !form.contains(e.relatedTarget)) form.classList.remove('drop');
+});
+document.addEventListener('drop', (e) => {
+  const form = e.target.closest?.('#cm-form');
+  if (!form || !hasFiles(e)) return;
+  e.preventDefault();
+  form.classList.remove('drop');
+  const files = imagesOf(e.dataTransfer.files);
+  if (files.length) addFiles(files); else toast('Hanya gambar yang bisa dilampirkan', true);
 });
 document.addEventListener('keydown', (e) => {
   if (e.target.id === 'cm-text' && e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -1285,6 +1837,14 @@ function agentFinished(run) {
   if (run?.status === 'done') toast(run.summary ? `${name} selesai: ${run.summary.slice(0, 140)}${run.summary.length > 140 ? '…' : ''}` : `${name} selesai`);
   else if (run?.status === 'stopped') toast(`${name} dihentikan`);
   else toast(`${name} gagal: ${run?.error ?? 'lihat log agent'}`, true);
+  if (p && isDs(p) && run?.checkpoint?.changes?.length) {
+    // Perubahan di desain sistem: perbarui status pemakai, lalu ingatkan untuk meninjau & menyebarkan.
+    loadDesignSystems().then(() => {
+      const stale = (ds.list?.find((x) => x.id === p.id)?.consumers ?? []).filter((c) => c.outdated);
+      if (stale.length) toast(`Desain sistem berubah. Tinjau katalog, lalu Sebarkan ke ${stale.length} prototype (${stale.map((c) => c.id).join(', ')}).`);
+      ag.lastHtml = ''; renderAgent(); render();
+    });
+  }
   cm.lastHtml = '';
   loadComments();
   refresh(true);
@@ -1308,7 +1868,7 @@ function renderAgent() {
   let html = '';
   if (st?.running) {
     const r = st.run;
-    html = `<span class="agent-dot"></span><b>${esc(agentName(r?.agent))} sedang bekerja…</b><span class="muted">${r?.commentIds?.length ? r.commentIds.join(', ') : 'semua komentar'}${r?.resumed ? ' · lanjut sesi' : ''} · ${ago(r.startedAt)}</span>
+    html = `<span class="agent-dot"></span><b>${esc(agentName(r?.agent))} sedang bekerja…</b><span class="muted">${r?.commentIds?.length ? r.commentIds.join(', ') : 'semua komentar'}${r?.resumed ? ' · lanjut sesi' : ''} · ${ago(r.startedAt)}</span>${agentDsHtml(false)}
       <span class="spacer"></span>
       <button type="button" class="btn sm ghost" data-act="agent-log-toggle">${ag.open ? 'Tutup log' : 'Log'}</button>
       <button type="button" class="btn sm" data-act="agent-stop">Stop</button>`;
@@ -1338,7 +1898,7 @@ function renderAgent() {
         ${menu}
       </div>
       ${resumeHtml(st, cur)}
-      <span class="muted">${waiting ? `${waiting} menunggu agent` : 'tidak ada yang menunggu agent'}${lastTxt ? ` · terakhir: ${lastTxt}` : ''}</span>
+      <span class="muted">${waiting ? `${waiting} menunggu agent` : 'tidak ada yang menunggu agent'}${lastTxt ? ` · terakhir: ${lastTxt}` : ''}</span>${agentDsHtml(true)}
       <span class="spacer"></span>
       ${undoHtml(r)}
       ${r ? `<button type="button" class="btn sm ghost" data-act="agent-log-toggle">${ag.open ? 'Tutup log' : 'Log'}</button>` : ''}${gear}`;
@@ -1349,6 +1909,22 @@ function renderAgent() {
   const showLog = ag.open && !!st;
   pre.hidden = !showLog;
   if (showLog) connectAgentLog(cm.id); else disconnectAgentLog();
+}
+
+/**
+ * Di desain sistem: tunjukkan dampaknya (jumlah pemakai) dan, bila ada salinan yang tertinggal,
+ * tombol Sebarkan — alur "agent mengubah token → tinjau katalog → sebarkan".
+ */
+function agentDsHtml(withSync) {
+  const p = byId(cm.id);
+  if (!p || !isDs(p)) return '';
+  const users = ds.list?.find((x) => x.id === p.id)?.consumers ?? [];
+  if (!users.length) return '';
+  const stale = users.filter((c) => c.outdated);
+  const note = `<span class="agent-ds" title="Perubahan token/komponen sampai ke prototype pemakai setelah disebarkan: ${esc(users.map((c) => c.id).join(', '))}">◇ dipakai ${users.length} prototype</span>`;
+  const sync = withSync && stale.length && LOCAL
+    ? ` <button type="button" class="btn sm" data-act="ds-sync" data-id="${esc(p.id)}" title="Tinjau katalog dulu, lalu salin ulang ke: ${esc(stale.map((c) => c.id).join(', '))}" ${ui.busy.has(`ds:${p.id}`) ? 'disabled' : ''}>${ICON.restart}Sebarkan ke ${stale.length}</button>` : '';
+  return ` ${note}${sync}`;
 }
 
 /** Tombol lanjut sesi: tampil bila agent terpilih bisa melanjutkan sesi run sebelumnya. Klik = sesi baru untuk run berikutnya. */
@@ -1367,6 +1943,19 @@ async function runAgent(commentIds) {
   const id = cm.id;
   const cur = pickedAgent();
   if (!id || !cur) return;
+  const p = byId(id);
+  const users = p && isDs(p) ? (ds.list?.find((x) => x.id === id)?.consumers ?? []) : [];
+  if (users.length && !ds.warned.has(id)) {
+    const yes = await confirmDialog({
+      title: `${p.name} adalah desain sistem`,
+      body: `Perubahan token/komponen di sini nantinya berdampak ke ${users.length} prototype di bawah. Prototype pemakai tidak berubah sampai Anda menekan Sebarkan, jadi tinjau katalog dulu setelah agent selesai.`,
+      list: users.map((c) => `${c.name} (${c.id})`),
+      ok: 'Kerjakan',
+      tone: 'primary',
+    });
+    if (!yes) return;
+    ds.warned.add(id);
+  }
   try {
     const fresh = ag.fresh.has(id);
     const st = await api('POST', `/api/prototypes/${enc(id)}/agent/run`, { agent: cur.id, ...(commentIds ? { commentIds } : {}), ...(fresh ? { resume: false } : {}) });
@@ -1641,31 +2230,297 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && embed.mode && !$('dialog[open]')) { embed.mode = false; sendEmbed('prototyper:mode', { on: false }); patchBar(); }
 });
 
-// ---------- Dialog buat prototype baru ----------
-const nw = { template: 'static', workspace: '' };
+// ---------- Desain sistem ----------
+// Daftar desain sistem + status salinan di tiap pemakai (GET /api/design-systems). Dimuat saat
+// dibutuhkan dan berkala bila ada prototype yang memakai/menjadi desain sistem.
+const ds = { list: null, locals: null, tick: 0, dlgFor: null, mode: 'shared', warned: new Set() };
+async function loadDesignSystems() {
+  try {
+    const r = await api('GET', '/api/design-systems');
+    ds.list = r.designSystems;
+    ds.locals = r.locals ?? [];
+    ag.lastHtml = ''; // bar agent menampilkan jumlah pemakai desain sistem
+  } catch { /* daemon sedang tidak terjangkau */ }
+}
+function dsRowHtml(p) {
+  const d = p.manifest?.designSystem;
+  const dis = ui.busy.has(`ds:${p.id}`) ? 'disabled' : '';
+  const b = (act, label, title, icon = '') => LOCAL
+    ? ` <button type="button" class="btn sm ghost ds-btn" data-act="${act}" data-id="${esc(p.id)}" title="${esc(title)}" ${dis}>${icon}${label}</button>` : '';
+  if (d?.source) {
+    const info = ds.list?.find((x) => x.id === p.id);
+    if (!info) return '<span class="type-tag ds">desain sistem</span>';
+    const stale = info.consumers.filter((c) => c.outdated).length;
+    const users = info.consumers.length
+      ? `dipakai ${info.consumers.length} prototype${stale ? ` · <span class="ds-stale">${stale} perlu sinkron</span>` : ''}`
+      : '<span class="muted">belum dipakai prototype lain</span>';
+    const missing = info.missing.length ? `<br><span class="ds-stale">File tidak ditemukan: ${esc(info.missing.join(', '))}</span>` : '';
+    return `<span class="type-tag ds">desain sistem</span> ${users}${info.consumers.length ? b('ds-sync', 'Sebarkan', `Salin ulang token & komponen ke semua prototype pemakai (prototyper ds sync ${p.id})`, ICON.restart) : ''}${missing}`;
+  }
+  if (d?.use) {
+    const info = ds.list?.find((x) => x.id === d.use);
+    const c = info?.consumers.find((x) => x.id === p.id);
+    const name = info
+      ? `<button type="button" class="ds-link" data-act="select" data-id="${esc(d.use)}" title="Buka desain sistem">${esc(info.name)}</button>`
+      : `<code>${esc(d.use)}</code>${ds.list ? ' <span class="ds-stale">tidak terdaftar</span>' : ''}`;
+    const state = c ? (c.outdated ? ' · <span class="ds-stale">perlu sinkron</span>' : ' · <span class="muted">terbaru</span>') : '';
+    return `${name} <span class="mono muted">${esc(d.dir ?? 'design-system')}/</span>${state}${c ? b('ds-sync', 'Sinkronkan', `Salin ulang file desain sistem ke prototype ini (prototyper ds sync ${p.id})`, ICON.restart) : ''}${b('ds-use', 'Ubah…', 'Ganti desain sistem atau pakai milik sendiri')}${b('ds-detach', 'Lepas', 'Berhenti memakai desain sistem (file salinan dibiarkan)')}`;
+  }
+  if (d?.local) {
+    const info = ds.locals?.find((x) => x.id === p.id);
+    const paths = info?.paths ?? d.local.map((x) => ({ path: x, exists: true }));
+    return `<span class="muted">sendiri:</span> ${paths.map((x) => `<span class="mono">${esc(x.path)}</span>${x.exists ? '' : ' <span class="ds-stale" title="Belum ada di folder prototype">tidak ditemukan</span>'}`).join(', ')}${b('ds-use', 'Ubah…', 'Ubah lokasi atau pakai desain sistem bersama')}${b('ds-detach', 'Lepas', 'Berhenti mencatat lokasi desain sistem (file tidak disentuh)')}`;
+  }
+  return `<span class="muted">—</span>${p.valid ? b('ds-use', 'Atur…', 'Pakai desain sistem bersama, atau catat lokasi desain sistem milik prototype ini') : ''}`;
+}
+async function dsAction(p, fn) {
+  const key = `ds:${p.id}`;
+  if (ui.busy.has(key)) return;
+  ui.busy.add(key);
+  render();
+  try { await fn(); } catch (err) { toast(err.message, true); } finally {
+    ui.busy.delete(key);
+    await loadDesignSystems();
+    await refresh(true);
+  }
+}
+function dsSync(p) {
+  return dsAction(p, async () => {
+    const { results } = await api('POST', `/api/prototypes/${enc(p.id)}/design-system/sync`);
+    const failed = results.filter((r) => r.error);
+    const changed = results.filter((r) => r.files.some((f) => f.action === 'created' || f.action === 'updated'));
+    if (failed.length) toast(`Gagal sinkron: ${failed.map((r) => `${r.id} (${r.error})`).join(', ')}`, true);
+    else if (!results.length) toast('Belum ada prototype yang memakai desain sistem ini');
+    else toast(changed.length ? `Desain sistem disinkronkan ke: ${changed.map((r) => r.id).join(', ')}` : 'Semua salinan sudah terbaru');
+  });
+}
+async function dsDetach(p) {
+  const d = p.manifest?.designSystem ?? {};
+  const dir = d.dir ?? 'design-system';
+  const ok = await confirmDialog({
+    title: `Lepas desain sistem dari ${p.name}?`,
+    body: d.local
+      ? `Lokasi desain sistem sendiri tidak lagi dicatat di prototyper.json dan AGENTS.md. File-nya tidak disentuh.`
+      : `"${d.use}" dihapus dari prototyper.json dan aturannya dari AGENTS.md. Folder ${dir}/ dan tautan CSS-nya dibiarkan agar tampilan tidak berubah; hapus manual bila tidak dipakai.`,
+    ok: 'Lepas',
+  });
+  if (!ok) return;
+  return dsAction(p, async () => {
+    await api('DELETE', `/api/prototypes/${enc(p.id)}/design-system`);
+    toast(d.local ? `Lokasi desain sistem ${p.name} tidak lagi dicatat` : `${p.name} tidak lagi memakai "${d.use}"`);
+  });
+}
+async function openDsDialog(p) {
+  if (!LOCAL) return toast(RO_TITLE, true);
+  await loadDesignSystems();
+  const cur = p.manifest?.designSystem ?? {};
+  const opts = (ds.list ?? []).filter((d) => d.id !== p.id);
+  ds.dlgFor = p.id;
+  $('#ds-form').reset();
+  $('#ds-err').hidden = true;
+  $('#ds-sub').textContent = `Untuk ${p.name}. Bisa diubah atau dilepas lagi kapan saja.`;
+  $('#ds-pick').innerHTML = opts.map((d) => `<option value="${esc(d.id)}">${esc(d.name)} (${esc(d.id)})</option>`).join('');
+  if (cur.use && opts.some((d) => d.id === cur.use)) $('#ds-pick').value = cur.use;
+  $('#ds-dir').value = cur.use && cur.dir ? cur.dir : '';
+  $('#ds-none').hidden = opts.length > 0;
+  $('#ds-pick-row').hidden = $('#ds-dir-row').hidden = !opts.length;
+  $('#ds-paths').value = (cur.local ?? []).join('\n');
+  $('#ds-cands').innerHTML = '';
+  setDsMode(cur.local || !opts.length ? 'local' : 'shared');
+  $('#dlg-ds').showModal();
+  // Tebakan lokasi desain sistem sendiri; klik untuk menambah/menghapus dari daftar.
+  api('GET', `/api/prototypes/${enc(p.id)}/design-system/candidates`).then((r) => {
+    if (ds.dlgFor !== p.id) return;
+    ds.cands = r.candidates;
+    renderDsCands();
+  }).catch(() => {});
+}
+const dsPaths = () => $('#ds-paths').value.split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+function renderDsCands() {
+  const c = ds.cands ?? [];
+  const on = new Set(dsPaths());
+  $('#ds-cands').innerHTML = c.length
+    ? `<span class="lbl">Terdeteksi di folder prototype — klik untuk menambah:</span>${c.map((x) => `<button type="button" class="ds-cand" data-path="${esc(x)}" aria-pressed="${on.has(x)}">${esc(x)}</button>`).join('')}`
+    : '';
+}
+function setDsMode(m) {
+  ds.mode = m;
+  for (const b of $$('#ds-mode button')) b.setAttribute('aria-pressed', String(b.dataset.val === m));
+  $('#ds-shared').hidden = m !== 'shared';
+  $('#ds-local').hidden = m !== 'local';
+  $('#ds-go').disabled = m === 'shared' && !(ds.list ?? []).some((d) => d.id !== ds.dlgFor);
+}
+$('#ds-mode').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-val]');
+  if (b) setDsMode(b.dataset.val);
+});
+$('#ds-cands').addEventListener('click', (e) => {
+  const b = e.target.closest('.ds-cand');
+  if (!b) return;
+  const cur = dsPaths();
+  const x = b.dataset.path;
+  $('#ds-paths').value = (cur.includes(x) ? cur.filter((y) => y !== x) : [...cur, x]).join('\n');
+  renderDsCands();
+});
+$('#ds-paths').addEventListener('input', renderDsCands);
+$('#ds-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const p = byId(ds.dlgFor);
+  if (!p) return $('#dlg-ds').close();
+  const go = $('#ds-go');
+  go.disabled = true;
+  $('#ds-err').hidden = true;
+  try {
+    if (ds.mode === 'local') {
+      const paths = dsPaths();
+      if (!paths.length) throw new Error('Isi minimal satu lokasi file/folder desain sistem.');
+      const r = await api('PUT', `/api/prototypes/${enc(p.id)}/design-system`, { local: paths });
+      $('#dlg-ds').close();
+      toast(r.missing.length ? `Dicatat. Belum ada di folder: ${r.missing.join(', ')}` : `${p.name} memakai desain sistem sendiri (${r.local.join(', ')})`, r.missing.length > 0);
+    } else {
+      const body = { id: $('#ds-pick').value };
+      const dir = $('#ds-dir').value.trim();
+      if (dir) body.dir = dir;
+      const r = await api('PUT', `/api/prototypes/${enc(p.id)}/design-system`, body);
+      $('#dlg-ds').close();
+      if (r.link.action === 'skipped' && r.link.note) toast(`Desain sistem dipasang. ${r.link.note}`, true);
+      else toast(`${p.name} memakai "${r.designSystem}" (${r.dir}/)`);
+    }
+    await loadDesignSystems();
+    refresh(true);
+  } catch (err) {
+    const el = $('#ds-err');
+    el.textContent = err.message;
+    el.hidden = false;
+  } finally {
+    go.disabled = false;
+  }
+});
+$$('#dlg-ds [data-close]').forEach((b) => b.addEventListener('click', () => $('#dlg-ds').close()));
 
-function openNew() {
+// ---------- Pilih file/folder lewat dialog OS ----------
+// Browser tidak bisa memberi path lengkap, jadi daemon (di komputer yang sama) yang membuka dialog
+// bawaan sistem lewat POST /api/pick. Dialog bisa muncul di belakang browser bila fokus tertahan.
+async function pickFromOs(btn, kind, { title, initial, multiple } = {}) {
+  if (!LOCAL) { toast(RO_TITLE, true); return null; }
+  if (btn) btn.setAttribute('aria-busy', 'true');
+  const t = setTimeout(() => toast('Dialog pilih sudah dibuka — bila tidak terlihat, cek taskbar (mungkin di belakang jendela browser).'), 2500);
+  try {
+    const r = await api('POST', '/api/pick', { kind, ...(title ? { title } : {}), ...(initial ? { initial } : {}), ...(multiple ? { multiple: true } : {}) });
+    return r.cancelled ? null : r.paths;
+  } catch (err) {
+    toast(err.message, true);
+    return null;
+  } finally {
+    clearTimeout(t);
+    if (btn) btn.removeAttribute('aria-busy');
+  }
+}
+const winPath = (s) => /^[a-zA-Z]:[\\/]|^\\\\/.test(s);
+const sepOf = (s) => (winPath(s) ? '\\' : '/');
+/** Path relatif (pakai "/") bila `abs` berada di dalam `base`; '' bila sama; null bila di luar. */
+function relInside(base, abs) {
+  const norm = (s) => s.replace(/[\\/]+/g, '/').replace(/\/$/, '');
+  const ci = winPath(base);
+  const b = norm(base), a = norm(abs);
+  const eq = (x, y) => (ci ? x.toLowerCase() === y.toLowerCase() : x === y);
+  if (eq(a, b)) return '';
+  const pre = a.slice(0, b.length + 1);
+  return eq(pre, `${b}/`) ? a.slice(b.length + 1) : null;
+}
+
+$('#add-browse').addEventListener('click', async (e) => {
+  const cur = $('#add-path').value.trim();
+  const paths = await pickFromOs(e.currentTarget, 'folder', { title: 'Pilih folder prototype', ...(cur ? { initial: cur } : {}) });
+  if (!paths?.length) return;
+  $('#add-path').value = paths[0];
+  $('#add-form').requestSubmit(); // langsung periksa folder (langkah berikutnya)
+});
+
+// Dialog Baru: folder yang dipilih = folder induk; prototype dibuat di <induk>/<id>.
+$('#new-browse').addEventListener('click', async (e) => {
+  const paths = await pickFromOs(e.currentTarget, 'folder', { title: 'Pilih folder induk — prototype dibuat di subfolder bernama id', ...(nwParent() ? { initial: nwParent() } : {}) });
+  if (!paths?.length) return;
+  nw.parent = paths[0];
+  newDirFromParent();
+  if (!$('#new-id').value.trim()) $('#new-id').focus();
+});
+function newDirFromParent() {
+  if (!nw.parent) return;
+  const id = $('#new-id').value.trim();
+  $('#new-dir').value = id ? `${nw.parent}${sepOf(nw.parent)}${id}` : nw.parent;
+}
+$('#new-dir').addEventListener('input', () => { nw.parent = null; }); // diketik manual: jangan diubah lagi
+
+/** Tambahkan path hasil dialog ke daftar lokasi desain sistem sendiri (relatif ke folder prototype). */
+async function dsAddLocal(btn, kind) {
+  const p = byId(ds.dlgFor);
+  if (!p) return;
+  const paths = await pickFromOs(btn, kind, { title: kind === 'folder' ? 'Pilih folder desain sistem' : 'Pilih file desain sistem', initial: p.path, multiple: kind === 'file' });
+  if (!paths?.length) return;
+  const rels = paths.map((x) => relInside(p.path, x));
+  const outside = paths.filter((_, i) => !rels[i]);
+  const add = rels.filter(Boolean);
+  if (add.length) {
+    const cur = dsPaths();
+    $('#ds-paths').value = [...cur, ...add.filter((x) => !cur.includes(x))].join('\n');
+    renderDsCands();
+  }
+  if (outside.length) toast(`Harus di dalam folder prototype (${p.path}): ${outside.join(', ')}`, true);
+}
+$('#ds-add-file').addEventListener('click', (e) => dsAddLocal(e.currentTarget, 'file'));
+$('#ds-add-folder').addEventListener('click', (e) => dsAddLocal(e.currentTarget, 'folder'));
+$('#ds-dir-browse').addEventListener('click', async (e) => {
+  const p = byId(ds.dlgFor);
+  if (!p) return;
+  const paths = await pickFromOs(e.currentTarget, 'folder', { title: 'Pilih folder salinan desain sistem (di dalam folder prototype)', initial: p.path });
+  if (!paths?.length) return;
+  const rel = relInside(p.path, paths[0]);
+  if (!rel) return toast(rel === '' ? 'Pilih subfolder di dalam folder prototype, bukan folder prototype itu sendiri.' : `Harus di dalam folder prototype (${p.path}).`, true);
+  $('#ds-dir').value = rel;
+});
+
+// ---------- Dialog buat prototype baru ----------
+const nw = { template: 'static', workspace: '', dsWorkspace: '' };
+/** Folder induk default untuk template terpilih: desain sistem dipisah dari prototype. */
+const nwParent = () => (nw.template === 'design-system' ? nw.dsWorkspace || nw.workspace : nw.workspace);
+
+function openNew(template = 'static') {
   if (!LOCAL) return toast(RO_TITLE, true);
   $('#new-form').reset();
   $('#new-err').hidden = true;
-  setTemplate('static');
+  nw.parent = null;
+  fillNewDs();
+  setTemplate(template);
   $('#dlg-new').showModal();
   $('#new-id').focus();
+  loadDesignSystems().then(() => { fillNewDs(); setTemplate(nw.template); });
+}
+/** Pilihan desain sistem di dialog Baru; pilihan yang sedang dipilih dipertahankan. */
+function fillNewDs() {
+  const sel = $('#new-ds');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">Tanpa desain sistem</option>' + (ds.list ?? []).map((d) => `<option value="${esc(d.id)}">${esc(d.name)} (${esc(d.id)})</option>`).join('');
+  sel.value = (ds.list ?? []).some((d) => d.id === cur) ? cur : '';
 }
 function setTemplate(t) {
   nw.template = t;
   for (const b of $$('#new-tpl button')) b.setAttribute('aria-pressed', String(b.dataset.val === t));
   $('#new-html-row').hidden = t !== 'static';
-  $('#new-install-row').hidden = t === 'static';
+  $('#new-install-row').hidden = !t.startsWith('vite');
+  $('#new-ds-row').hidden = t === 'design-system' || !ds.list?.length;
   newHint();
 }
 function newHint() {
   const id = $('#new-id').value.trim() || '<id>';
-  const sep = nw.workspace.includes('\\') ? '\\' : '/';
-  $('#new-dir').placeholder = nw.workspace ? `${nw.workspace}${sep}${id}` : '';
-  $('#new-hint').textContent = nw.template === 'static'
-    ? 'Tanpa impor HTML, dibuat contoh index.html + style.css + app.js.'
-    : 'Dijalankan dengan npm run dev (Vite, HMR). npm install bisa memakan waktu sekitar satu menit.';
+  const base = nwParent();
+  const sep = base.includes('\\') ? '\\' : '/';
+  $('#new-dir').placeholder = base ? `${base}${sep}${id}` : '';
+  $('#new-hint').textContent = nw.template === 'design-system'
+    ? 'Dibuat tokens.css (token), components.css (komponen), dan katalog index.html. Prototype lain bisa memakainya lewat pilihan Desain sistem saat dibuat, atau tombol Pakai di panel Detail.'
+    : nw.template === 'static'
+      ? 'Tanpa impor HTML, dibuat contoh index.html + style.css + app.js.'
+      : 'Dijalankan dengan npm run dev (Vite, HMR). npm install bisa memakan waktu sekitar satu menit.';
 }
 function showNewErr(message, details = []) {
   const el = $('#new-err');
@@ -1676,7 +2531,7 @@ $('#new-tpl').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-val]');
   if (b) setTemplate(b.dataset.val);
 });
-$('#new-id').addEventListener('input', newHint);
+$('#new-id').addEventListener('input', () => { newHint(); newDirFromParent(); });
 $('#new-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const go = $('#new-go');
@@ -1687,7 +2542,9 @@ $('#new-form').addEventListener('submit', async (e) => {
   const dir = $('#new-dir').value.trim();
   if (name) body.name = name;
   if (dir) body.dir = dir;
-  if (nw.template !== 'static') body.install = $('#new-install').checked;
+  if (nw.template.startsWith('vite')) body.install = $('#new-install').checked;
+  const dsId = $('#new-ds').value;
+  if (dsId && nw.template !== 'design-system') body.designSystem = dsId;
   const file = nw.template === 'static' ? $('#new-html').files[0] : null;
   $('#new-err').hidden = true;
   go.disabled = true;
@@ -1699,7 +2556,9 @@ $('#new-form').addEventListener('submit', async (e) => {
     $('#dlg-new').close();
     ui.selected = r.id;
     if (r.install && !r.install.ok) toast(`"${r.id}" dibuat, tetapi npm install gagal (kode ${r.install.exitCode}). Lihat log.`, true);
+    else if (r.designSystem?.link?.action === 'skipped' && r.designSystem.link.note) toast(`"${r.id}" dibuat. ${r.designSystem.link.note}`, true);
     else toast(`"${r.id}" dibuat di ${r.path}`);
+    if (r.designSystem || r.template === 'design-system') await loadDesignSystems();
     refresh(true);
   } catch (err) {
     showNewErr(err.message, err.details);
@@ -1718,11 +2577,13 @@ function commands() {
   if (LOCAL) {
     out.push({ ic: '⌂', label: 'Beranda', grp: 'Umum', run: () => select('') });
     out.push({ ic: '+', label: 'Buat prototype baru', grp: 'Umum', run: () => openNew() });
+    out.push({ ic: '◇', label: 'Buat desain sistem baru', grp: 'Umum', run: () => openNew('design-system') });
     out.push({ ic: '⇲', label: 'Daftarkan folder yang sudah ada', grp: 'Umum', run: () => openAdd() });
   }
   for (const p of list) {
     out.push({ ic: '→', label: `Buka ${p.name}`, grp: p.id, run: () => select(p.id) });
     if (LOCAL && !p.valid) out.push({ ic: '!', label: `Perbaiki manifest ${p.name}`, grp: p.id, run: () => openManifestEditor(p) });
+    if (LOCAL && p.manifest?.designSystem) out.push({ ic: '◇', label: p.manifest.designSystem.source ? `Sebarkan desain sistem ${p.name} ke pemakai` : `Sinkronkan desain sistem ${p.name}`, grp: p.id, run: () => dsSync(p) });
     if (LOCAL && p.valid) {
       if (isActive(p)) {
         out.push({ ic: '■', label: `Stop ${p.name}`, grp: p.id, run: () => run('stop', p) });
@@ -1733,7 +2594,9 @@ function commands() {
   }
   out.push({ ic: '◐', label: 'Tema: otomatis / terang / gelap', grp: 'Tampilan', run: () => $('#btn-theme').click() });
   out.push({ ic: '⇤', label: ui.sidePinned ? 'Sidebar: sembunyi otomatis' : 'Sidebar: sematkan', grp: 'Tampilan', run: () => setSidePinned(!ui.sidePinned) });
+  out.push({ ic: '⇥', label: ui.panelHidden ? 'Panel kanan: tampilkan' : 'Panel kanan: sembunyikan', grp: 'Tampilan', run: () => setPanelHidden(!ui.panelHidden) });
   if (LOCAL) out.push({ ic: '⏻', label: 'Matikan Prototyper', grp: 'Umum', run: () => confirmShutdown() });
+  out.push({ ic: '⇡', label: upd.info?.available ? `Pasang pembaruan Prototyper ${upd.info.latest}` : 'Periksa pembaruan Prototyper', grp: 'Umum', run: () => { openUpdateDialog(); if (!upd.info?.available) loadUpdate(true); } });
   out.push({ ic: '✦', label: 'Agent lokal: cek agent yang tersedia', grp: 'Umum', run: () => openAgentsDialog() });
   if (LOCAL && list.length) out.push({ ic: '↻', label: 'Sinkronkan petunjuk agent (semua prototype)', grp: 'Umum', run: () => syncAllInstructions() });
   for (const [k, d] of Object.entries(DEVICES)) {
@@ -1773,11 +2636,13 @@ for (const d of $$('dialog')) d.addEventListener('click', (e) => { if (e.target 
 // ---------- Mulai ----------
 applyTheme();
 applySide();
+applyPanel();
 render();
 api('GET', '/api/health')
   .then((h) => {
-    nw.workspace = h.workspace ?? ''; wn.version = h.version;
+    nw.workspace = h.workspace ?? ''; nw.dsWorkspace = h.dsWorkspace ?? ''; wn.version = h.version;
     const lanMode = h.lanMode ?? (h.lan ? 'all' : 'off');
+    daemonLan = lanMode;
     $('#meta').textContent = `v${h.version}${lanMode === 'all' ? ' · LAN' : lanMode === 'prototypes' ? ' · LAN (prototype)' : ''}${LOCAL ? '' : ' · baca saja'}`;
     $('#meta').title = 'Yang baru di versi ini';
     wnMark();
@@ -1786,3 +2651,5 @@ api('GET', '/api/health')
   .catch(() => undefined);
 refresh(true);
 setInterval(refresh, 2000);
+loadUpdate();
+setInterval(() => loadUpdate(), 60 * 60_000);

@@ -25,6 +25,8 @@ export interface RunInfo {
   startedAt: string | null;
   exitCode: number | null;
   error: string | null;
+  /** true bila proses yang berjalan bind 0.0.0.0 (bisa dibuka dari perangkat lain di LAN). */
+  lan: boolean;
 }
 
 export const STOPPED_INFO: RunInfo = {
@@ -34,12 +36,18 @@ export const STOPPED_INFO: RunInfo = {
   startedAt: null,
   exitCode: null,
   error: null,
+  lan: false,
 };
+
+/** Host untuk prototype yang dibuka ke LAN. */
+export const LAN_HOST = '0.0.0.0';
 
 interface Run {
   id: string;
   status: RunStatus;
   port: number;
+  /** Host yang di-bind run ini (127.0.0.1, atau 0.0.0.0 bila terbuka ke LAN). */
+  host: string;
   startedAt: string;
   exitCode: number | null;
   error: string | null;
@@ -100,7 +108,35 @@ export class Runtime {
       startedAt: r.startedAt,
       exitCode: r.exitCode,
       error: r.error,
+      lan: live && r.host === LAN_HOST,
     };
+  }
+
+  /** Host yang dipakai saat prototype ini dijalankan: 0.0.0.0 pada mode LAN daemon atau bila dibuka ke LAN sendiri. */
+  hostFor(id: string): string {
+    return this.state.isLanExposed(id) ? LAN_HOST : this.config.prototypeHost;
+  }
+
+  /** Apakah prototype ini dibuka ke LAN secara tersendiri (lepas dari mode LAN daemon). */
+  isLanExposed(id: string): boolean {
+    return this.state.isLanExposed(id);
+  }
+
+  /**
+   * Buka/tutup akses LAN satu prototype. Host baru berlaku saat start, jadi prototype yang sedang
+   * berjalan di-restart bila host-nya berubah.
+   */
+  setLanExposed(p: ResolvedPrototype, on: boolean): Promise<RunInfo> {
+    return this.exclusive(p.id, async () => {
+      await this.state.setLanExposed(p.id, on);
+      const run = this.runs.get(p.id);
+      if (run && ACTIVE.has(run.status) && run.host !== this.hostFor(p.id)) {
+        (await this.logs(p.id)).system(on ? 'akses LAN dibuka: restart' : 'akses LAN ditutup: restart');
+        await this.doStop(p.id);
+        return this.doStart(p);
+      }
+      return this.info(p.id);
+    });
   }
 
   /** true bila prototype sedang starting/running/stopping. */
@@ -205,17 +241,18 @@ export class Runtime {
     const existing = this.runs.get(p.id);
     if (existing && ACTIVE.has(existing.status)) return this.info(p.id);
 
+    const host = this.hostFor(p.id);
     const port = await allocatePort({
       range: this.config.portRange,
       preferred: this.state.getPort(p.id),
       exclude: this.activePorts(p.id),
-      hosts: probeHosts(this.config.prototypeHost),
+      hosts: probeHosts(host),
     });
     await this.state.setPort(p.id, port);
     const logs = await this.logs(p.id);
-    const run: Run = { id: p.id, status: 'starting', port, startedAt: new Date().toISOString(), exitCode: null, error: null };
+    const run: Run = { id: p.id, status: 'starting', port, host, startedAt: new Date().toISOString(), exitCode: null, error: null };
     this.runs.set(p.id, run);
-    logs.system(`start (${m.type}) di port ${port}`);
+    logs.system(`start (${m.type}) di port ${port}${host === LAN_HOST ? ' (terbuka ke LAN)' : ''}`);
 
     try {
       if (m.type === 'static') await this.startStatic(run, p.path, m.static, logs);
@@ -293,7 +330,7 @@ export class Runtime {
       server.addHook('onResponse', async (req, reply) => {
         logs.write('stdout', `${req.method} ${req.url} ${reply.statusCode}\n`);
       });
-      await server.listen({ host: this.config.prototypeHost, port: run.port });
+      await server.listen({ host: run.host, port: run.port });
     } catch (err) {
       await server.close().catch(() => undefined);
       throw err;
@@ -306,7 +343,7 @@ export class Runtime {
   private async startCommand(run: Run, dir: string, cfg: CommandConfig, logs: LogStore): Promise<void> {
     const cwd = path.resolve(dir, cfg.cwd);
     if (!(await isDirectory(cwd))) throw new Error(`folder command.cwd tidak ditemukan: ${cwd}`);
-    const host = this.config.prototypeHost;
+    const host = run.host;
     const cmd = cfg.run.replaceAll('{port}', String(run.port)).replaceAll('{host}', host);
     const env: NodeJS.ProcessEnv = {
       ...process.env,
@@ -364,7 +401,7 @@ export class Runtime {
       const msg = `tidak siap dalam ${cfg.readyTimeoutSec} detik`;
       run.status = 'stopping';
       await killTree(child, run.exited);
-      await this.waitPortReleased(run.port, 3000);
+      await this.waitPortReleased(run, 3000);
       run.status = 'failed';
       run.error = msg;
       throw new Error(msg);
@@ -410,8 +447,8 @@ export class Runtime {
     });
   }
 
-  private async waitPortReleased(port: number, timeoutMs: number): Promise<boolean> {
-    const hosts = probeHosts(this.config.prototypeHost);
+  private async waitPortReleased({ port, host }: Run, timeoutMs: number): Promise<boolean> {
+    const hosts = probeHosts(host);
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       if (await isPortFree(port, hosts)) return true;
@@ -432,7 +469,7 @@ export class Runtime {
     } else if (run.child) {
       await killTree(run.child, run.exited);
       // Proses cucu (mis. node di bawah npm/cmd) bisa melepas port sedikit lebih lambat.
-      if (!(await this.waitPortReleased(run.port, 5000))) {
+      if (!(await this.waitPortReleased(run, 5000))) {
         logs.system(`peringatan: port ${run.port} masih dipakai setelah stop; mungkin ada proses anak yang tersisa`);
       }
     }

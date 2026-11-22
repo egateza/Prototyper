@@ -1,4 +1,6 @@
+import { createReadStream, promises as fs } from 'node:fs';
 import type { FastifyPluginAsync } from 'fastify';
+import { ATTACHMENT_BODY_LIMIT, attachmentFile, attachmentName, attachmentType, saveAttachment, SVG_CSP, type Attachment } from '../../core/attachments.js';
 import {
   addComment,
   commentContext,
@@ -59,7 +61,7 @@ export const commentRoutes: FastifyPluginAsync<{ registry: Registry }> = async (
 
   app.post<Params & { Body: Body }>('/prototypes/:id/comments', async (req, reply) => {
     const b = req.body ?? {};
-    const c = await addComment(await dirOf(req.params.id), { text: b.text, page: b.page, author: b.author, role: b.role, anchor: b.anchor });
+    const c = await addComment(await dirOf(req.params.id), { text: b.text, page: b.page, author: b.author, role: b.role, anchor: b.anchor, attachments: b.attachments });
     reply.code(201);
     return c;
   });
@@ -67,7 +69,7 @@ export const commentRoutes: FastifyPluginAsync<{ registry: Registry }> = async (
   app.post<CParams & { Body: Body }>('/prototypes/:id/comments/:cid/replies', async (req, reply) => {
     const b = req.body ?? {};
     const c = await replyComment(await dirOf(req.params.id), req.params.cid, {
-      text: b.text, author: b.author, role: b.role, options: b.options, multi: b.multi, answerTo: b.answerTo, choices: b.choices,
+      text: b.text, author: b.author, role: b.role, options: b.options, multi: b.multi, answerTo: b.answerTo, choices: b.choices, attachments: b.attachments,
     });
     reply.code(201);
     return c;
@@ -81,6 +83,26 @@ export const commentRoutes: FastifyPluginAsync<{ registry: Registry }> = async (
   app.post<CParams>('/prototypes/:id/comments/:cid/reopen', async (req) =>
     reopenComment(await dirOf(req.params.id), req.params.cid),
   );
+
+  // Lampiran gambar (komentar & pesan agent): unggah dulu, lalu kirim `path`-nya di `attachments`.
+  app.post<Params & { Body: Body }>('/prototypes/:id/attachments', { bodyLimit: ATTACHMENT_BODY_LIMIT }, async (req, reply): Promise<Attachment> => {
+    const a = await saveAttachment(await dirOf(req.params.id), req.body?.data);
+    reply.code(201);
+    return a;
+  });
+
+  app.get<{ Params: { id: string; name: string } }>('/prototypes/:id/attachments/:name', async (req, reply) => {
+    const name = attachmentName(req.params.name);
+    if (!name) throw new AppError('NOT_FOUND', 'Lampiran tidak ditemukan');
+    const file = attachmentFile(await dirOf(req.params.id), name);
+    const st = await fs.stat(file).catch(() => null);
+    if (!st?.isFile()) throw new AppError('NOT_FOUND', `Lampiran "${name}" tidak ditemukan`);
+    // Nama = hash isi, jadi isi tidak pernah berubah.
+    reply.header('Content-Type', attachmentType(name)).header('Content-Length', st.size)
+      .header('Cache-Control', 'private, max-age=31536000, immutable').header('X-Content-Type-Options', 'nosniff');
+    if (name.endsWith('.svg')) reply.header('Content-Security-Policy', SVG_CSP);
+    return reply.send(createReadStream(file));
+  });
 
   app.delete<CParams>('/prototypes/:id/comments/:cid', async (req) => {
     const c = await deleteComment(await dirOf(req.params.id), req.params.cid);

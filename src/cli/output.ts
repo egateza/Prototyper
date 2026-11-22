@@ -19,6 +19,15 @@ export function reportError(err: unknown, json: boolean): void {
   if (details?.length) for (const d of details) console.error(`  - ${d}`);
 }
 
+/** Peran desain sistem untuk kolom DS: desain sistem, memakai <id>, atau milik sendiri. */
+export function dsLabel(v: PrototypeView): string {
+  const d = v.manifest?.designSystem;
+  if (d?.source) return 'desain sistem';
+  if (d?.use) return `→ ${d.use}`;
+  if (d?.local) return 'sendiri';
+  return '-';
+}
+
 function statusLabel(v: PrototypeView): string {
   return v.valid ? v.status : 'invalid';
 }
@@ -28,8 +37,10 @@ export function printTable(views: PrototypeView[]): void {
     console.log('Belum ada prototype. Daftarkan dengan: prototyper init <folder> lalu prototyper add <folder>');
     return;
   }
-  const head = ['ID', 'STATUS', 'TYPE', 'URL', 'PATH'];
-  const rows = views.map((v) => [v.id, statusLabel(v), v.type ?? '-', v.url ?? '-', v.path]);
+  // Desain sistem di atas, lalu prototype; urutan lain dipertahankan.
+  const sorted = [...views].sort((a, b) => Number(!!b.manifest?.designSystem?.source) - Number(!!a.manifest?.designSystem?.source));
+  const head = ['ID', 'STATUS', 'TYPE', 'DS', 'URL', 'PATH'];
+  const rows = sorted.map((v) => [v.id, statusLabel(v), v.type ?? '-', dsLabel(v), v.url ?? '-', v.path]);
   const widths = head.map((h, i) => Math.max(h.length, ...rows.map((r) => (r[i] ?? '').length)));
   const fmt = (r: string[]) => r.map((c, i) => (i === r.length - 1 ? c : c.padEnd(widths[i] ?? 0))).join('  ');
   console.log(fmt(head));
@@ -56,6 +67,10 @@ export function printInfo(v: PrototypeView): void {
     if (m.command.install) lines.push(['Install', m.command.install]);
   }
   if (m?.type === 'static') lines.push(['Root', m.static.root]);
+  const ds = m?.designSystem;
+  if (ds?.source) lines.push(['Desain sistem', 'ya, dipakai prototype lain (lihat: prototyper ds list)']);
+  else if (ds?.use) lines.push(['Desain sistem', `${ds.use} (salinan di ${ds.dir ?? 'design-system'}/)`]);
+  else if (ds?.local) lines.push(['Desain sistem', `sendiri: ${ds.local.join(', ')}`]);
   if (v.pid) lines.push(['PID', String(v.pid)]);
   if (v.error) lines.push(['Error', v.error]);
   const w = Math.max(...lines.map(([k]) => k.length));

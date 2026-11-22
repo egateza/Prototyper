@@ -10,10 +10,11 @@ const TSX = path.join(ROOT, 'node_modules', 'tsx', 'dist', 'cli.mjs');
 const ENTRY = path.join(ROOT, 'src', 'cli', 'index.ts');
 
 /** Jalankan CLI dengan home + workspace sementara; port daemon dibuat tidak terpakai. */
-function cli(home: string, args: string[]): { code: number | null; json: Record<string, unknown> } {
+function cli(home: string, args: string[], input?: string): { code: number | null; json: Record<string, unknown> } {
   const r = spawnSync(process.execPath, [TSX, ENTRY, '--json', '--home', home, ...args], {
     cwd: ROOT,
     encoding: 'utf8',
+    ...(input !== undefined ? { input } : {}),
     env: { ...process.env, PROTOTYPER_PORT: '47199', PROTOTYPER_PORT_RANGE: '47150-47159', PROTOTYPER_WORKSPACE: path.join(home, 'ws') },
     timeout: 60_000,
   });
@@ -74,6 +75,44 @@ describe('CLI', () => {
     expect(r.json).toMatchObject({ type: 'command', template: 'vite-vanilla', install: null });
   }, 60_000);
 
+  it('serve --detach: daemon tetap hidup setelah CLI keluar, idempoten, lalu shutdown', async () => {
+    const home = tmpDir('prototyper-home-');
+    const port = '47198';
+    const run = (args: string[]) => cli(home, ['--port', port, ...args]);
+    try {
+      const first = run(['serve', '--detach']);
+      expect(first.code).toBe(0);
+      expect(first.json).toMatchObject({ ok: true, alreadyRunning: false, url: `http://localhost:${port}`, log: path.join(home, 'daemon.log') });
+      expect(existsSync(path.join(home, 'daemon.log'))).toBe(true);
+
+      // proses CLI sudah selesai; daemon masih menjawab
+      const res = await fetch(`http://127.0.0.1:${port}/api/health`);
+      expect(((await res.json()) as { home: string }).home).toBe(home);
+
+      const second = run(['serve', '--detach']);
+      expect(second.code).toBe(0);
+      expect(second.json).toMatchObject({ ok: true, alreadyRunning: true });
+    } finally {
+      expect(run(['shutdown']).json).toMatchObject({ ok: true });
+    }
+  }, 90_000);
+
+  it('lan: buka/tutup akses LAN satu prototype lewat daemon', () => {
+    const home = tmpDir('prototyper-home-');
+    const dir = tmpDir('prototyper-proto-');
+    writeFileSync(path.join(dir, 'index.html'), '<p>lan</p>');
+    const run = (args: string[]) => cli(home, ['--port', '47197', ...args]);
+    expect(run(['add', dir, '--id', 'lan-cli']).code).toBe(0);
+    expect(run(['lan', 'lan-cli', 'nyala']).json).toMatchObject({ error: { code: 'BAD_REQUEST' } });
+    try {
+      expect(run(['lan', 'lan-cli', 'on']).json).toMatchObject({ id: 'lan-cli', lanExposed: true });
+      expect(run(['lan', 'lan-cli']).json).toMatchObject({ lanExposed: true });
+      expect(run(['lan', 'lan-cli', 'off']).json).toMatchObject({ lanExposed: false });
+    } finally {
+      expect(run(['shutdown']).json).toMatchObject({ ok: true });
+    }
+  }, 90_000);
+
   it('comments: add, list (default open), resolve dengan --note', () => {
     const home = tmpDir('prototyper-home-');
     expect(cli(home, ['new', 'komen-cli']).code).toBe(0);
@@ -93,5 +132,25 @@ describe('CLI', () => {
     const missing = cli(home, ['comments', 'resolve', 'komen-cli', 'c9']);
     expect(missing.code).toBe(1);
     expect(missing.json).toMatchObject({ error: { code: 'NOT_FOUND' } });
+  }, 120_000);
+
+  it('comments: teks multi-baris lewat --file (file atau stdin) tidak terpotong', () => {
+    const home = tmpDir('prototyper-home-');
+    expect(cli(home, ['new', 'komen-multi']).code).toBe(0);
+    expect(cli(home, ['comments', 'add', 'komen-multi', 'Rapikan form']).json).toMatchObject({ id: 'c1' });
+
+    const text = 'Sudah diubah:\n- tombol diperbesar\n- warna diganti';
+    const viaStdin = cli(home, ['comments', 'reply', 'komen-multi', 'c1', '--file', '-'], `${text}\r\n`);
+    expect((viaStdin.json.replies as Array<{ text: string }>)[0]?.text).toBe(text);
+
+    const file = path.join(home, 'balasan.txt');
+    writeFileSync(file, `﻿${text.replace(/\n/g, '\r\n')}\r\n`);
+    const viaFile = cli(home, ['comments', 'reply', 'komen-multi', 'c1', '-F', file]);
+    expect((viaFile.json.replies as Array<{ text: string }>)[1]?.text).toBe(text);
+
+    expect(cli(home, ['comments', 'reply', 'komen-multi', 'c1']).json).toMatchObject({ error: { code: 'BAD_REQUEST' } });
+    expect(cli(home, ['comments', 'reply', 'komen-multi', 'c1', 'x', '--file', file]).json).toMatchObject({ error: { code: 'BAD_REQUEST' } });
+    const done = cli(home, ['comments', 'resolve', 'komen-multi', 'c1', '--note-file', '-'], text);
+    expect(done.json).toMatchObject({ resolution: text });
   }, 120_000);
 });

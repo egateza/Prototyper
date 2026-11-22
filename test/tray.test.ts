@@ -30,6 +30,7 @@ function view(id: string, status: PrototypeView['status'] = 'stopped', port: num
     pid: null,
     url: live && port ? `http://localhost:${port}` : null,
     lanUrls: [],
+    lanExposed: false,
     startedAt: null,
     exitCode: STOPPED_INFO.exitCode,
     instructions: { path: '', exists: false },

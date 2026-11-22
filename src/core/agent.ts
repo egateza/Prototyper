@@ -5,7 +5,7 @@ import path from 'node:path';
 import { APP_MODE, cliCommand, type AppMode } from './appfiles.js';
 import { DEFAULT_RESUME_HOURS, resumeState, SessionStore, type ResumeState } from './agentsession.js';
 import { Checkpoints, removeCheckpoints, type FileChange, type UndoResult } from './checkpoint.js';
-import { noteUndo } from './comments.js';
+import { attachmentsOf, listComments, noteUndo } from './comments.js';
 import type { Config } from './config.js';
 import { AppError, errorMessage } from './errors.js';
 import { LogStore } from './logs.js';
@@ -78,6 +78,8 @@ export interface AgentRunOptions {
   agent?: AgentId;
   commentIds?: string[];
   message?: string;
+  /** Gambar lampiran pesan: path relatif terhadap folder prototype (sudah divalidasi). */
+  attachments?: string[];
   /** Lanjutkan sesi run sebelumnya bila bisa (default true). false = selalu sesi baru. */
   resume?: boolean;
   /** Internal: prompt untuk sesi lanjutan. */
@@ -100,7 +102,9 @@ interface Preset {
   install: string;
   permissions: string;
   output: 'claude-stream' | 'text';
-  args(prompt: string, opts: { apikey: boolean; env: NodeJS.ProcessEnv; supports(flag: string): boolean }): string[];
+  args(prompt: string, opts: { apikey: boolean; env: NodeJS.ProcessEnv; supports(flag: string): boolean; images?: readonly string[] }): string[];
+  /** true bila gambar lampiran perlu diberikan lewat argumen (agent tidak bisa membuka gambar dengan tool baca file). */
+  imageArgs?: boolean;
   /** Flag yang belum ada di versi lama agent: dicek lewat `--help` dan hanya dipakai bila didukung. */
   optionalFlags?: string[];
   /** Argumen sesi: `fresh` = sesi baru dengan id dari Prototyper, `resume` = lanjutkan sesi itu. */
@@ -115,6 +119,7 @@ const BASE_RULES = [
   'Hanya ubah file di folder kerja ini. Jangan ubah prototyper.json, folder .prototyper/, AGENTS.md, atau CLAUDE.md.',
   'Selalu baca isi file yang relevan sebelum mengeditnya.',
   'Jangan menutup komentar dengan `prototyper comments resolve`; laporkan hasil dengan `prototyper comments reply` dan biarkan pengguna yang menutupnya.',
+  "Teks balasan/pertanyaan yang lebih dari satu baris jangan dikirim sebagai argumen (di Windows terpotong di baris pertama); kirim lewat stdin: `prototyper comments reply <id> <commentId> --file - <<'EOF'` … `EOF`.",
 ];
 
 /**
@@ -163,10 +168,15 @@ export const PRESETS: Record<AgentId, Preset> = {
     output: 'text',
     // --ignore-user-config: model/MCP dari config.toml (mis. milik aplikasi Codex desktop) bisa tidak
     // didukung CLI dengan login ChatGPT; login tetap dipakai. Model bisa dipilih lewat PROTOTYPER_AGENT_CODEX_MODEL.
-    args: (prompt, { env }) => [
+    // Codex membaca file lewat shell sehingga tidak bisa melihat gambar: lampiran diberikan lewat --image.
+    // `--` sebelum prompt agar prompt tidak ikut terbaca sebagai nilai --image.
+    imageArgs: true,
+    args: (prompt, { env, images = [] }) => [
       'exec', '--ignore-user-config', '--sandbox', 'workspace-write', '--skip-git-repo-check',
       ...((sb) => (sb ? ['-c', `windows.sandbox="${sb}"`] : []))(codexWindowsSandbox(env)),
       ...(env.PROTOTYPER_AGENT_CODEX_MODEL ? ['-m', env.PROTOTYPER_AGENT_CODEX_MODEL] : []),
+      ...images.flatMap((f) => ['--image', f]),
+      ...(images.length ? ['--'] : []),
       `${prompt}\n\n${agentRules('codex')}`,
     ],
   },
@@ -224,6 +234,26 @@ export function parseCodexWindowsSandbox(toml: string): string | null {
   return null;
 }
 
+const MAX_RUN_IMAGES = 10;
+
+/** Gambar untuk agent ber-`imageArgs`: lampiran pesan + lampiran komentar yang akan dikerjakan (yang ada saja). */
+export async function runImages(dir: string, opts: Pick<AgentRunOptions, 'attachments' | 'commentIds'>): Promise<string[]> {
+  let fromComments: string[] = [];
+  try {
+    const waiting = await listComments(dir, { status: 'open', waitingFor: 'agent' });
+    const ids = opts.commentIds?.length ? new Set(opts.commentIds) : null;
+    fromComments = attachmentsOf(waiting.filter((c) => !ids || ids.has(c.id)));
+  } catch {
+    /* comments.json rusak: lewati */
+  }
+  const out: string[] = [];
+  for (const rel of new Set([...(opts.attachments ?? []), ...fromComments])) {
+    if (out.length >= MAX_RUN_IMAGES) break;
+    if (existsSync(path.join(dir, rel))) out.push(rel);
+  }
+  return out;
+}
+
 export function agentPrompt(p: ResolvedPrototype, opts: AgentRunOptions = {}): string {
   const id = p.id;
   const name = p.manifest?.name ?? id;
@@ -235,10 +265,14 @@ export function agentPrompt(p: ResolvedPrototype, opts: AgentRunOptions = {}): s
   }
   if (opts.commentIds?.length) lines.push(`Fokus hanya pada komentar: ${opts.commentIds.join(', ')}.`);
   if (opts.message?.trim()) lines.push(`Pesan dari pengguna: ${opts.message.trim()}`);
+  if (opts.attachments?.length) {
+    lines.push(`Gambar lampiran dari pengguna (path relatif terhadap folder ini; buka dengan tool baca file): ${opts.attachments.map((a) => `\`${a}\``).join(', ')}.`);
+  }
   lines.push(
     '',
     'Langkah:',
     `1. \`prototyper comments ${id} --waiting agent --json\` — komentar yang giliran agent. Perhatikan \`page\`, \`anchor\` (selector CSS / teks / potongan \`html\` elemen yang diklik pengguna), balasan, dan \`answer\` pada pertanyaan berpilihan.`,
+    '   Bila komentar/balasan punya `attachments` (gambar dari pengguna, path relatif terhadap folder ini), buka gambarnya dengan tool baca file sebelum mengerjakan.',
     `   Sebelum mengerjakan tiap komentar, jalankan \`prototyper comments context ${id} <commentId> --json\`: komentar selesai terkait (halaman/elemen sama) dan keputusan sebelumnya (\`.prototyper/DECISIONS.md\`). Jangan mengulang perubahan yang sudah dibatalkan atau diminta dikembalikan.`,
     `2. Kerjakan satu per satu dengan mengedit file di folder ini, lalu laporkan lewat \`prototyper comments reply ${id} <commentId> "<ringkasan perubahan>"\` dan biarkan komentar tetap open.`,
     '   Jangan menutup komentar (`prototyper comments resolve`): pengguna yang memeriksa hasil dan menentukan pekerjaan selesai.',
@@ -648,8 +682,9 @@ export class AgentRunner {
     const prev = preset.session && opts.resume !== false ? await this.resumeInfo(p, agentId) : null;
     const resumed = !!prev?.resumable;
     const sessionId = preset.session ? (resumed && prev?.session ? prev.session.sessionId : randomUUID()) : null;
+    const images = preset.imageArgs ? await runImages(p.path, opts) : [];
     const args = [
-      ...preset.args(agentPrompt(p, { ...opts, resumed }), { apikey: this.auth === 'apikey', env: this.env, supports: (f) => !flags.unsupported.has(f) }),
+      ...preset.args(agentPrompt(p, { ...opts, resumed }), { apikey: this.auth === 'apikey', env: this.env, supports: (f) => !flags.unsupported.has(f), images }),
       ...(preset.session && sessionId ? (resumed ? preset.session.resume(sessionId) : preset.session.fresh(sessionId)) : []),
     ];
     const info: AgentRunInfo = {

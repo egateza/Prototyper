@@ -78,6 +78,7 @@ describe('syncAgentFiles', () => {
   it('agent diminta membalas, bukan menutup komentar', () => {
     const s = prototyperSection(parseManifest({ id: 'vite-x', name: 'V', type: 'command', command: { run: 'npm run dev' } }));
     expect(s).toContain('prototyper comments reply vite-x <commentId> "<ringkasan perubahan>"');
+    expect(s).toContain("prototyper comments reply vite-x <commentId> --file - <<'EOF'");
     expect(s).toContain('**Jangan menutup komentar**');
     expect(s).not.toContain('resolve vite-x');
   });

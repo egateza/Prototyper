@@ -13,6 +13,8 @@ export interface HealthResponse {
   home: string;
   /** Folder induk default untuk prototype baru. */
   workspace: string;
+  /** Folder induk default desain sistem baru. */
+  dsWorkspace: string;
 }
 
 /** Mode LAN daemon; daemon lama hanya mengirim `lan` (true = `--lan` = semua). */
@@ -20,7 +22,7 @@ export function healthLanMode(h: Pick<HealthResponse, 'lan' | 'lanMode'>): LanMo
   return h.lanMode ?? (h.lan ? 'all' : 'off');
 }
 
-export const healthRoutes: FastifyPluginAsync<{ startedAt: number; lanMode: LanMode; home: string; workspace: string; version: () => string }> = async (
+export const healthRoutes: FastifyPluginAsync<{ startedAt: number; lanMode: LanMode; home: string; workspace: string; dsWorkspace: string; version: () => string }> = async (
   app,
   opts,
 ) => {
@@ -32,5 +34,6 @@ export const healthRoutes: FastifyPluginAsync<{ startedAt: number; lanMode: LanM
     lanMode: opts.lanMode,
     home: opts.home,
     workspace: opts.workspace,
+    dsWorkspace: opts.dsWorkspace,
   }));
 };

@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
+import { cleanAttachments } from '../../core/attachments.js';
 import { AGENT_IDS, isAgentId, type AgentInfo, type AgentRunInfo, type AgentRunner } from '../../core/agent.js';
 import type { ResumeState } from '../../core/agentsession.js';
 import { AppError } from '../../core/errors.js';
@@ -36,7 +37,7 @@ export const agentRoutes: FastifyPluginAsync<{ registry: Registry; agent: AgentR
     return { id: p.id, running: agent.isRunning(p.id), run: agent.info(p.id), resume: { agent: which, ...(await agent.resumeInfo(p, which)) } };
   });
 
-  app.post<Params & { Body: { agent?: unknown; commentIds?: unknown; message?: unknown; resume?: unknown } | null }>('/prototypes/:id/agent/run', async (req, reply) => {
+  app.post<Params & { Body: { agent?: unknown; commentIds?: unknown; message?: unknown; attachments?: unknown; resume?: unknown } | null }>('/prototypes/:id/agent/run', async (req, reply) => {
     const p = await registry.require(req.params.id);
     const b = req.body ?? {};
     if (b.agent !== undefined && !isAgentId(b.agent)) throw new AppError('BAD_REQUEST', `agent harus salah satu dari: ${AGENT_IDS.join(', ')}`);
@@ -50,12 +51,14 @@ export const agentRoutes: FastifyPluginAsync<{ registry: Registry; agent: AgentR
     if (b.message !== undefined && (typeof b.message !== 'string' || b.message.length > 2000)) {
       throw new AppError('BAD_REQUEST', 'message harus teks (maks. 2000 karakter)');
     }
+    const attachments = await cleanAttachments(p.path, b.attachments);
     if (b.resume !== undefined && typeof b.resume !== 'boolean') throw new AppError('BAD_REQUEST', 'resume harus true atau false');
     const run = await agent.run(p, {
       ...(isAgentId(b.agent) ? { agent: b.agent } : {}),
       ...(typeof b.resume === 'boolean' ? { resume: b.resume } : {}),
       ...(commentIds ? { commentIds } : {}),
       ...(typeof b.message === 'string' ? { message: b.message } : {}),
+      ...(attachments.length ? { attachments } : {}),
     });
     reply.code(202);
     return { id: p.id, running: true, run };

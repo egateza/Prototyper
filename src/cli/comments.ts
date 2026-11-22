@@ -1,3 +1,4 @@
+import { promises as fs } from 'node:fs';
 import type { Command } from 'commander';
 import {
   addComment,
@@ -35,6 +36,9 @@ function indent(text: string, pre: string): string {
   return text.split(/\r?\n/).map((l) => `${pre}${l}`).join('\n');
 }
 
+/** Baris lampiran gambar (path relatif terhadap folder prototype). */
+const attachmentLines = (list: readonly string[] | undefined, pre: string) => (list ?? []).map((a) => `${pre}[gambar] ${a}`);
+
 const WAITING_LABEL: Record<Role, string> = { user: 'menunggu pengguna', agent: 'menunggu agent' };
 
 export function formatComment(c: Comment): string {
@@ -44,7 +48,8 @@ export function formatComment(c: Comment): string {
     const a = c.anchor;
     lines.push(`    @ ${a.selector}${a.quote ? `  «${a.quote}»` : a.text ? `  (teks: ${a.text})` : ''}`);
   }
-  lines.push(indent(c.text, '    '));
+  if (c.text) lines.push(indent(c.text, '    '));
+  lines.push(...attachmentLines(c.attachments, '    '));
   for (const r of c.replies) {
     if (r.options) {
       lines.push(indent(`↳ ${r.author} bertanya (${r.id}${r.multi ? ', boleh lebih dari satu' : ''}): ${r.text}`, '    '));
@@ -57,6 +62,7 @@ export function formatComment(c: Comment): string {
       lines.push(indent(`↳ ${r.author} menjawab ${r.answerTo}: ${(r.choices ?? []).join(', ')}${r.text ? ` — ${r.text}` : ''}`, '    '));
     } else {
       lines.push(indent(`↳ ${r.author}: ${r.text}`, '    '));
+      lines.push(...attachmentLines(r.attachments, '      '));
     }
   }
   if (c.status === 'resolved') {
@@ -95,6 +101,31 @@ function cliSource(o: { author?: string; role?: string }): Source {
 
 const collect = (v: string, prev: string[]) => [...prev, v];
 
+async function readStdin(): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+/**
+ * Teks dari argumen atau dari `--file` (`-` = stdin). Argumen multi-baris terpotong di baris
+ * pertama bila CLI dipanggil lewat shim `.cmd` (cmd.exe memotong `%*` di newline), jadi teks
+ * panjang/multi-baris sebaiknya lewat file atau stdin.
+ */
+export async function resolveTextInput(text: string | undefined, file: string | undefined, what = 'teks'): Promise<string> {
+  if (file !== undefined) {
+    if (text !== undefined) throw new AppError('BAD_REQUEST', `Isi ${what} lewat argumen atau --file, bukan keduanya`);
+    const raw = file === '-' ? await readStdin() : await fs.readFile(file, 'utf8').catch((err: NodeJS.ErrnoException) => {
+      throw new AppError('BAD_REQUEST', `File ${file} tidak bisa dibaca: ${err.code ?? err.message}`);
+    });
+    return raw.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\s+$/, '');
+  }
+  if (text === undefined) throw new AppError('BAD_REQUEST', `Isi ${what} kosong: berikan sebagai argumen atau lewat --file <path> (\`-\` = stdin)`);
+  return text;
+}
+
+const FILE_HELP = 'baca teks dari file (`-` = stdin); pakai untuk teks multi-baris';
+
 /** Daftarkan `prototyper comments …`. Membaca/menulis langsung di folder prototype (tanpa daemon). */
 export function registerCommentCommands(program: Command, act: Act): void {
   const comments = program
@@ -109,6 +140,13 @@ export function registerCommentCommands(program: Command, act: Act): void {
         '  prototyper comments context kasir-grosir c3 --json         # riwayat & keputusan terkait c3',
         '  prototyper comments resolve kasir-grosir c3 --note "Tombol bayar diperbesar"',
         '  prototyper comments ask kasir-grosir c4 "Warna tombol?" --option Ungu --option Hijau',
+        '',
+        'Teks multi-baris: argumen terpotong di baris pertama bila dipanggil lewat prototyper.cmd (Windows).',
+        'Kirim lewat stdin atau file:',
+        "  prototyper comments reply kasir-grosir c3 --file - <<'EOF'",
+        '  Sudah diubah:',
+        '  - tombol bayar diperbesar',
+        '  EOF',
       ].join('\n'),
     );
 
@@ -155,8 +193,9 @@ export function registerCommentCommands(program: Command, act: Act): void {
     );
 
   comments
-    .command('add <id> <text>')
+    .command('add <id> [text]')
     .description('tambah komentar')
+    .option('-F, --file <path>', FILE_HELP)
     .option('--page <path>', 'halaman yang dikomentari', '/')
     .option('--selector <css>', 'elemen yang dikomentari (selector CSS)')
     .option('--quote <text>', 'teks yang dimaksud (dengan --selector)')
@@ -164,40 +203,46 @@ export function registerCommentCommands(program: Command, act: Act): void {
     .option('--role <role>', 'agent | user (default agent)')
     .action(
       act(async (ctx, [id, text], cmd) => {
-        const o = cmd.opts<{ page: string; selector?: string; quote?: string; author?: string; role?: string }>();
+        const o = cmd.opts<{ page: string; selector?: string; quote?: string; author?: string; role?: string; file?: string }>();
         const p = await ctx.registry.require(id ?? '');
         const anchor = o.selector ? { selector: o.selector, ...(o.quote ? { quote: o.quote } : {}) } : undefined;
-        const c = await addComment(p.path, { text, page: o.page, anchor }, cliSource(o));
+        const body = await resolveTextInput(text, o.file, 'komentar');
+        const c = await addComment(p.path, { text: body, page: o.page, anchor }, cliSource(o));
         if (ctx.json) return printJson(c);
         console.log(`✓ komentar ${c.id} ditambahkan pada ${c.page}`);
       }),
     );
 
   comments
-    .command('reply <id> <commentId> <text>')
+    .command('reply <id> <commentId> [text]')
     .description('balas komentar dengan teks bebas')
+    .option('-F, --file <path>', FILE_HELP)
     .option('--author <name>', 'nama penulis')
     .option('--role <role>', 'agent | user (default agent)')
     .action(
       act(async (ctx, [id, cid, text], cmd) => {
+        const o = cmd.opts<{ author?: string; role?: string; file?: string }>();
         const p = await ctx.registry.require(id ?? '');
-        const c = await replyComment(p.path, cid ?? '', { text }, cliSource(cmd.opts()));
+        const body = await resolveTextInput(text, o.file, 'balasan');
+        const c = await replyComment(p.path, cid ?? '', { text: body }, cliSource(o));
         if (ctx.json) return printJson(c);
         console.log(`✓ balasan ditambahkan ke ${c.id}`);
       }),
     );
 
   comments
-    .command('ask <id> <commentId> <question>')
+    .command('ask <id> <commentId> [question]')
     .description('ajukan pertanyaan berpilihan; di Web UI tampil sebagai radio button / checkbox')
+    .option('-F, --file <path>', FILE_HELP)
     .option('-o, --option <text>', 'opsi jawaban (ulangi 2-8 kali)', collect, [] as string[])
     .option('--multi', 'boleh memilih lebih dari satu opsi')
     .option('--author <name>', 'nama penulis')
     .action(
       act(async (ctx, [id, cid, question], cmd) => {
-        const o = cmd.opts<{ option: string[]; multi?: boolean; author?: string }>();
+        const o = cmd.opts<{ option: string[]; multi?: boolean; author?: string; file?: string }>();
         const p = await ctx.registry.require(id ?? '');
-        const c = await replyComment(p.path, cid ?? '', { text: question, options: o.option, multi: !!o.multi }, cliSource(o));
+        const body = await resolveTextInput(question, o.file, 'pertanyaan');
+        const c = await replyComment(p.path, cid ?? '', { text: body, options: o.option, multi: !!o.multi }, cliSource(o));
         if (ctx.json) return printJson(c);
         console.log(`✓ pertanyaan ${c.replies[c.replies.length - 1]?.id} ditambahkan ke ${c.id}; tunggu jawaban pengguna di Web UI`);
       }),
@@ -207,12 +252,14 @@ export function registerCommentCommands(program: Command, act: Act): void {
     .command('resolve <id> <commentId>')
     .description('tandai komentar selesai')
     .option('--note <text>', 'ringkasan apa yang diubah')
+    .option('--note-file <path>', 'baca ringkasan dari file (`-` = stdin); pakai untuk teks multi-baris')
     .option('--author <name>', 'nama penulis')
     .action(
       act(async (ctx, [id, cid], cmd) => {
-        const o = cmd.opts<{ note?: string; author?: string }>();
+        const o = cmd.opts<{ note?: string; noteFile?: string; author?: string }>();
         const p = await ctx.registry.require(id ?? '');
-        const c = await resolveComment(p.path, cid ?? '', { note: o.note }, cliSource(o));
+        const note = o.noteFile !== undefined || o.note !== undefined ? await resolveTextInput(o.note, o.noteFile, 'catatan') : undefined;
+        const c = await resolveComment(p.path, cid ?? '', { note }, cliSource(o));
         if (ctx.json) return printJson(c);
         console.log(`✓ ${c.id} ditandai selesai`);
       }),

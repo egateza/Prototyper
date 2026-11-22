@@ -22,6 +22,16 @@ describe('loadConfig', () => {
     expect(c.host).toBe('0.0.0.0');
   });
 
+  it('folder induk prototype dan desain sistem terpisah; bisa diatur lewat env', () => {
+    const home = path.resolve('/data/proto');
+    const def = loadConfig({}, { PROTOTYPER_HOME: home });
+    expect(def.workspace).toBe(path.join(home, 'prototypes'));
+    expect(def.dsWorkspace).toBe(path.join(home, 'design-systems'));
+    const env = loadConfig({}, { PROTOTYPER_HOME: home, PROTOTYPER_WORKSPACE: '/kerja/proto', PROTOTYPER_DS_WORKSPACE: '/kerja/ds' });
+    expect(env.workspace).toBe(path.resolve('/kerja/proto'));
+    expect(env.dsWorkspace).toBe(path.resolve('/kerja/ds'));
+  });
+
   it('mode LAN: semua (Web UI + prototype) atau prototype saja', () => {
     expect(loadConfig({}, { PROTOTYPER_LAN: '1' })).toMatchObject({ lanMode: 'all', host: '0.0.0.0', prototypeHost: '0.0.0.0' });
     expect(loadConfig({}, { PROTOTYPER_LAN: 'prototypes' })).toMatchObject({ lanMode: 'prototypes', host: '127.0.0.1', prototypeHost: '0.0.0.0' });

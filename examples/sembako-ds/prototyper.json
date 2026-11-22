@@ -1,0 +1,10 @@
+{
+  "$schema": "../../schemas/prototyper.schema.json",
+  "id": "sembako-ds",
+  "name": "Sembako DS",
+  "description": "Contoh desain sistem untuk aplikasi toko & kasir sembako",
+  "type": "static",
+  "static": { "root": ".", "index": "index.html" },
+  "designSystem": { "source": true },
+  "tags": ["contoh", "desain-sistem"]
+}

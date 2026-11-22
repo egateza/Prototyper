@@ -1,6 +1,7 @@
 import { readFileSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
+import { cleanAttachments, removeUnreferenced } from './attachments.js';
 import { AppError, errorMessage } from './errors.js';
 import { readJsonFile, writeJsonAtomic } from './fsutil.js';
 
@@ -50,6 +51,8 @@ const replySchema = z.preprocess(
     answerTo: z.string().optional(),
     /** Opsi yang dipilih (teks opsi). */
     choices: z.array(z.string()).optional(),
+    /** Gambar lampiran: path relatif terhadap folder prototype, mis. ".prototyper/attachments/ab12….png". */
+    attachments: z.array(z.string()).optional(),
   }),
 );
 
@@ -86,6 +89,8 @@ const commentSchema = z.preprocess(
     resolution: z.string().nullable().default(null),
     replies: z.array(replySchema).default([]),
     anchor: anchorSchema.optional(),
+    /** Gambar lampiran: path relatif terhadap folder prototype, mis. ".prototyper/attachments/ab12….png". */
+    attachments: z.array(z.string()).optional(),
   }),
 );
 
@@ -472,7 +477,7 @@ function lastAgentReport(c: StoredComment): string | null {
 /** Satu baris log untuk komentar `c`; `outcome` null = pakai catatan resolve / laporan agent terakhir. */
 export function decisionLine(c: StoredComment, now: string, outcome: string | null = null): string {
   const result = outcome ?? c.resolution ?? lastAgentReport(c);
-  const text = `${oneLine(c.text, 160)}${result ? ` → ${oneLine(result, 240)}` : ''}`;
+  const text = `${oneLine(c.text || (c.attachments?.length ? '(gambar)' : ''), 160)}${result ? ` → ${oneLine(result, 240)}` : ''}`;
   return `- ${[localDate(now), c.id, c.page, c.anchor ? oneLine(c.anchor.selector, 200) : '-', text].join(SEP)}`;
 }
 
@@ -535,13 +540,15 @@ function mutate(dir: string, fn: (data: CommentsFile, now: string) => StoredComm
 
 export async function addComment(
   dir: string,
-  input: { text: unknown; page?: unknown; author?: unknown; role?: unknown; anchor?: unknown },
+  input: { text: unknown; page?: unknown; author?: unknown; role?: unknown; anchor?: unknown; attachments?: unknown },
   def: Source = USER_SOURCE,
 ): Promise<Comment> {
-  const text = cleanText(input.text);
   const page = normalizePage(input.page);
   const src = source(input, def);
   const anchor = cleanAnchor(input.anchor);
+  const attachments = await cleanAttachments(dir, input.attachments);
+  // Dengan gambar, teks boleh kosong (mis. hanya menempel tangkapan layar).
+  const text = attachments.length ? optionalText(input.text) : cleanText(input.text);
   return mutate(dir, (data, now) => {
     const c: StoredComment = {
       id: `c${data.nextId++}`,
@@ -557,6 +564,7 @@ export async function addComment(
       resolution: null,
       replies: [],
       ...(anchor ? { anchor } : {}),
+      ...(attachments.length ? { attachments } : {}),
     };
     data.comments.push(c);
     return c;
@@ -573,11 +581,13 @@ export interface ReplyInput {
   /** Jawab pertanyaan berpilihan (id balasan pertanyaan). */
   answerTo?: unknown;
   choices?: unknown;
+  /** Gambar lampiran (balasan biasa saja): path dari upload lampiran. */
+  attachments?: unknown;
 }
 
 /**
  * Balas komentar. Tiga bentuk:
- * - balasan biasa: `text`;
+ * - balasan biasa: `text` dan/atau `attachments`;
  * - pertanyaan berpilihan: `text` + `options` (+ `multi`);
  * - jawaban: `answerTo` + `choices` (+ `text` opsional sebagai catatan).
  * Balasan teks tanpa `answerTo` saat ada pertanyaan tertunda = pertanyaan balik; pertanyaannya tetap terbuka.
@@ -587,6 +597,7 @@ export async function replyComment(dir: string, id: string, input: ReplyInput, d
   const isQuestion = input.options !== undefined;
   const isAnswer = input.answerTo !== undefined;
   if (isQuestion && isAnswer) throw new AppError('BAD_REQUEST', 'Balasan tidak bisa sekaligus pertanyaan dan jawaban');
+  if ((isQuestion || isAnswer) && input.attachments !== undefined) throw new AppError('BAD_REQUEST', 'Lampiran hanya untuk komentar dan balasan biasa');
 
   if (isQuestion) {
     const text = cleanText(input.text, 'pertanyaan');
@@ -620,10 +631,14 @@ export async function replyComment(dir: string, id: string, input: ReplyInput, d
     });
   }
 
-  const text = cleanText(input.text);
+  const attachments = await cleanAttachments(dir, input.attachments);
+  const text = attachments.length ? optionalText(input.text) : cleanText(input.text);
   return mutate(dir, (data, now) => {
     const c = find(data, id);
-    c.replies.push({ id: `${c.id}-r${c.replies.length + 1}`, author: src.author, role: src.role, text, createdAt: now });
+    c.replies.push({
+      id: `${c.id}-r${c.replies.length + 1}`, author: src.author, role: src.role, text, createdAt: now,
+      ...(attachments.length ? { attachments } : {}),
+    });
     c.updatedAt = now;
     return c;
   });
@@ -706,10 +721,24 @@ export async function noteUndo(
   });
 }
 
+/** Semua lampiran yang dirujuk komentar (beserta balasannya). */
+export function attachmentsOf(comments: readonly StoredComment[]): string[] {
+  return comments.flatMap((c) => [...(c.attachments ?? []), ...c.replies.flatMap((r) => r.attachments ?? [])]);
+}
+
 export async function deleteComment(dir: string, id: string): Promise<Comment> {
-  return mutate(dir, (data) => {
+  let remaining: StoredComment[] = [];
+  const removed = await mutate(dir, (data) => {
     const c = find(data, id);
     data.comments = data.comments.filter((x) => x !== c);
+    remaining = data.comments;
     return c;
   });
+  // Gambar komentar yang dihapus ikut dihapus, kecuali masih dipakai komentar lain (termasuk arsip).
+  const files = attachmentsOf([removed]);
+  if (files.length) {
+    const keep = new Set(attachmentsOf([...remaining, ...(await readArchive(dir).catch(() => []))]));
+    await removeUnreferenced(dir, files, keep).catch(() => {});
+  }
+  return removed;
 }

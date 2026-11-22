@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sembako DS — desain sistem</title>
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="components.css">
+  <link rel="stylesheet" href="catalog.css">
+</head>
+<body>
+  <main class="cat">
+    <header class="cat-head">
+      <div>
+        <h1>Sembako DS</h1>
+        <p class="text-muted">Contoh desain sistem untuk aplikasi toko &amp; kasir sembako: token di <code>tokens.css</code>, komponen di <code>components.css</code>. Halaman ini adalah katalognya.</p>
+      </div>
+      <button type="button" class="btn btn-sm" id="theme">Tema: sistem</button>
+    </header>
+
+    <section id="sec-tokens">
+      <h2>Token</h2>
+      <div id="tokens"></div>
+    </section>
+
+    <section id="sec-typography">
+      <h2>Tipografi</h2>
+      <h1>Judul 1</h1>
+      <h2>Judul 2</h2>
+      <h3>Judul 3</h3>
+      <h4>Judul 4</h4>
+      <p>Paragraf biasa dengan <a href="#">tautan</a> dan <code>kode</code>.</p>
+      <p class="text-muted">Teks sekunder (.text-muted).</p>
+    </section>
+
+    <section id="sec-buttons">
+      <h2>Tombol</h2>
+      <p class="text-muted">Tinggi minimum <code>--size-touch</code> agar nyaman di tablet kasir. <code>.btn-accent</code> hanya untuk satu aksi terpenting di layar.</p>
+      <div class="cat-row">
+        <button type="button" class="btn btn-accent">Bayar</button>
+        <button type="button" class="btn btn-primary">Simpan</button>
+        <button type="button" class="btn">Batal</button>
+        <button type="button" class="btn btn-ghost">Lainnya</button>
+        <button type="button" class="btn btn-danger">Hapus</button>
+        <button type="button" class="btn" disabled>Nonaktif</button>
+      </div>
+      <h3>Ukuran</h3>
+      <div class="cat-row">
+        <button type="button" class="btn btn-primary btn-sm">Kecil</button>
+        <button type="button" class="btn btn-primary">Normal</button>
+        <button type="button" class="btn btn-primary btn-lg">Besar</button>
+      </div>
+      <h3>Lebar penuh</h3>
+      <div style="max-width:22rem">
+        <button type="button" class="btn btn-accent btn-lg btn-block">Bayar Rp 109.000</button>
+      </div>
+    </section>
+
+    <section id="sec-forms">
+      <h2>Formulir</h2>
+      <div class="cat-grid" style="grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr))">
+        <div class="field">
+          <label for="f-name">Nama produk</label>
+          <input class="input" id="f-name" placeholder="Beras 5 kg">
+          <span class="hint">Nama yang tampil di struk.</span>
+        </div>
+        <div class="field">
+          <label for="f-price">Harga</label>
+          <input class="input" id="f-price" value="abc" aria-invalid="true">
+          <span class="error">Harga harus berupa angka.</span>
+        </div>
+        <div class="field">
+          <label for="f-cat">Kategori</label>
+          <select class="select" id="f-cat"><option>Sembako</option><option>Minuman</option></select>
+        </div>
+        <div class="field">
+          <label for="f-note">Catatan</label>
+          <textarea class="textarea" id="f-note" rows="2"></textarea>
+        </div>
+      </div>
+      <label class="check"><input type="checkbox" checked> Tampilkan di kasir</label>
+      <h3>Jumlah</h3>
+      <div class="qty"><button type="button" aria-label="Kurangi">−</button><output>2</output><button type="button" aria-label="Tambah">+</button></div>
+    </section>
+
+    <section id="sec-price">
+      <h2>Harga</h2>
+      <div class="cat-row">
+        <span class="price">Rp 68.000</span>
+        <span class="price price-lg">Rp 109.000</span>
+        <span><span class="price-old">Rp 40.000</span> <span class="price">Rp 36.500</span> <span class="badge badge-accent">Promo</span></span>
+      </div>
+    </section>
+
+    <section id="sec-cards">
+      <h2>Kartu &amp; angka ringkas</h2>
+      <div class="cat-grid" style="grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr))">
+        <div class="stat">
+          <div class="stat-label">Penjualan hari ini</div>
+          <div class="stat-value">Rp 4,25 jt</div>
+          <div class="stat-delta">▲ 12% dari kemarin</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Transaksi</div>
+          <div class="stat-value">38</div>
+          <div class="stat-delta down">▼ 3 dari kemarin</div>
+        </div>
+        <div class="card">
+          <p class="card-title">Stok menipis</p>
+          <p class="text-muted">5 produk di bawah batas minimum</p>
+          <span class="badge badge-warning">Perlu dicek</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="sec-products">
+      <h2>Baris produk</h2>
+      <div class="card" style="padding:0;max-width:32rem">
+        <div class="product">
+          <span class="product-thumb">🌾</span>
+          <div><div class="product-name">Beras Pandan Wangi 5 kg</div><div class="product-meta">Sembako · stok 24</div></div>
+          <span class="price">Rp 68.000</span>
+        </div>
+        <div class="product">
+          <span class="product-thumb">🫒</span>
+          <div><div class="product-name">Minyak Goreng 2 L</div><div class="product-meta">Sembako · stok 3 <span class="badge badge-warning">Menipis</span></div></div>
+          <span class="price">Rp 36.500</span>
+        </div>
+        <div class="product">
+          <span class="product-thumb">🥚</span>
+          <div><div class="product-name">Telur Ayam 1 kg</div><div class="product-meta">Segar · stok 0 <span class="badge badge-danger">Habis</span></div></div>
+          <span class="price">Rp 29.000</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="sec-tabs">
+      <h2>Tab</h2>
+      <div class="tabs" role="tablist" style="max-width:28rem">
+        <button type="button" class="tab" role="tab" aria-selected="true">Semua</button>
+        <button type="button" class="tab" role="tab" aria-selected="false">Sembako</button>
+        <button type="button" class="tab" role="tab" aria-selected="false">Minuman</button>
+      </div>
+    </section>
+
+    <section id="sec-feedback">
+      <h2>Badge &amp; alert</h2>
+      <div class="cat-row">
+        <span class="badge">Netral</span>
+        <span class="badge badge-primary">Baru</span>
+        <span class="badge badge-accent">Promo</span>
+        <span class="badge badge-success">Lunas</span>
+        <span class="badge badge-warning">Tertunda</span>
+        <span class="badge badge-danger">Batal</span>
+      </div>
+      <div style="display:grid;gap:var(--space-2);margin-top:var(--space-4)">
+        <div class="alert alert-info">Sinkronisasi stok berjalan di latar.</div>
+        <div class="alert alert-success">Transaksi tersimpan.</div>
+        <div class="alert alert-warning">Koneksi lambat, data mungkin tertunda.</div>
+        <div class="alert alert-danger">Pembayaran gagal diproses.</div>
+      </div>
+    </section>
+
+    <section id="sec-table">
+      <h2>Tabel</h2>
+      <table class="table">
+        <thead><tr><th>Produk</th><th>Kategori</th><th class="num">Harga</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>Beras 5 kg</td><td>Sembako</td><td class="num">68.000</td><td><span class="badge badge-success">Tersedia</span></td></tr>
+          <tr><td>Minyak 2 L</td><td>Sembako</td><td class="num">36.500</td><td><span class="badge badge-warning">Menipis</span></td></tr>
+          <tr><td>Teh botol</td><td>Minuman</td><td class="num">5.000</td><td><span class="badge badge-danger">Habis</span></td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+  <script src="catalog.js" type="module"></script>
+</body>
+</html>

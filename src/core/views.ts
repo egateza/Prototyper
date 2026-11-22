@@ -19,7 +19,10 @@ export interface PrototypeView {
   port: number | null;
   pid: number | null;
   url: string | null;
+  /** URL untuk perangkat lain di LAN; terisi bila proses yang berjalan bind 0.0.0.0. */
   lanUrls: string[];
+  /** Prototype ini dibuka ke LAN secara tersendiri (`prototyper lan <id> on` / toggle di Web UI). */
+  lanExposed: boolean;
   startedAt: string | null;
   exitCode: number | null;
   instructions: { path: string; exists: boolean };
@@ -29,8 +32,9 @@ export interface PrototypeView {
 }
 
 export interface ViewOptions {
-  lan: boolean;
+  /** Alamat IPv4 LAN mesin ini (untuk lanUrls). */
   lanAddrs: string[];
+  lanExposed: boolean;
 }
 
 export function toView(p: ResolvedPrototype, info: RunInfo, opts: ViewOptions): PrototypeView {
@@ -50,7 +54,8 @@ export function toView(p: ResolvedPrototype, info: RunInfo, opts: ViewOptions): 
     port: info.port,
     pid: info.pid,
     url: live ? `http://localhost:${info.port}` : null,
-    lanUrls: live && opts.lan ? opts.lanAddrs.map((a) => `http://${a}:${info.port}`) : [],
+    lanUrls: live && info.lan ? opts.lanAddrs.map((a) => `http://${a}:${info.port}`) : [],
+    lanExposed: opts.lanExposed,
     startedAt: info.startedAt,
     exitCode: info.exitCode,
     instructions: { path: instrPath, exists: existsSync(instrPath) },

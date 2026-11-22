@@ -54,6 +54,45 @@
           },
           "additionalProperties": false
         },
+        "designSystem": {
+          "description": "Desain sistem: token & komponen yang dipakai bersama beberapa prototype",
+          "type": "object",
+          "properties": {
+            "source": {
+              "description": "true = prototype ini adalah desain sistem yang dipakai prototype lain (dibuat dengan template design-system)",
+              "type": "boolean"
+            },
+            "files": {
+              "description": "Desain sistem: file yang disalin ke prototype pemakai, relatif ke folder ini (default [\"tokens.css\", \"components.css\"])",
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "use": {
+              "description": "Pemakai: id desain sistem yang dipakai. Pasang dengan: prototyper ds use <id> <desain-sistem>",
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{1,62}$"
+            },
+            "dir": {
+              "description": "Pemakai: folder salinan file desain sistem, relatif ke folder prototype (default \"design-system\")",
+              "type": "string",
+              "minLength": 1
+            },
+            "local": {
+              "description": "Desain sistem sendiri: file/folder desain sistem milik prototype ini (mis. [\"src/styles/tokens.css\"]), relatif ke folder prototype",
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "additionalProperties": false
+        },
         "type": {
           "type": "string",
           "const": "static"
@@ -154,6 +193,45 @@
               "type": "integer",
               "minimum": 0,
               "maximum": 3650
+            }
+          },
+          "additionalProperties": false
+        },
+        "designSystem": {
+          "description": "Desain sistem: token & komponen yang dipakai bersama beberapa prototype",
+          "type": "object",
+          "properties": {
+            "source": {
+              "description": "true = prototype ini adalah desain sistem yang dipakai prototype lain (dibuat dengan template design-system)",
+              "type": "boolean"
+            },
+            "files": {
+              "description": "Desain sistem: file yang disalin ke prototype pemakai, relatif ke folder ini (default [\"tokens.css\", \"components.css\"])",
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "use": {
+              "description": "Pemakai: id desain sistem yang dipakai. Pasang dengan: prototyper ds use <id> <desain-sistem>",
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{1,62}$"
+            },
+            "dir": {
+              "description": "Pemakai: folder salinan file desain sistem, relatif ke folder prototype (default \"design-system\")",
+              "type": "string",
+              "minLength": 1
+            },
+            "local": {
+              "description": "Desain sistem sendiri: file/folder desain sistem milik prototype ini (mis. [\"src/styles/tokens.css\"]), relatif ke folder prototype",
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
             }
           },
           "additionalProperties": false

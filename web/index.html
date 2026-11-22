@@ -25,8 +25,10 @@
         <button type="button" data-f="semua">Semua</button>
         <button type="button" data-f="aktif">Aktif</button>
         <button type="button" data-f="masalah">Masalah</button>
+        <button type="button" data-f="ds" title="Hanya desain sistem">Desain sistem</button>
       </div>
       <div id="offline" class="callout err offline" hidden>Daemon tidak terjangkau. Mencoba lagi…</div>
+      <button type="button" id="upd-bar" class="upd-bar" hidden></button>
       <nav class="ws-list" id="side-list" aria-label="Daftar prototype"></nav>
       <div class="ws-side-foot">
         <button type="button" class="btn primary" id="btn-new"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" d="M12 5v14M5 12h14"/></svg>Baru</button>
@@ -50,10 +52,13 @@
         <button type="button" class="icon-btn" data-close aria-label="Tutup">✕</button>
       </div>
       <div id="add-step1">
-        <label class="field">
-          <span>Path folder</span>
-          <input id="add-path" placeholder="D:\IdeaProjects\pos-sembako-ui" autocomplete="off" spellcheck="false">
-        </label>
+        <div class="field">
+          <label for="add-path">Path folder</label>
+          <div class="path-row">
+            <input id="add-path" placeholder="D:\IdeaProjects\pos-sembako-ui" autocomplete="off" spellcheck="false">
+            <button type="button" class="btn browse" id="add-browse" title="Pilih folder lewat dialog bawaan sistem (Explorer)"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 6.5A2.5 2.5 0 0 1 5.5 4h4.1l2 2h6.9A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-11Z"/></svg>Pilih…</button>
+          </div>
+        </div>
       </div>
       <div id="add-step2" hidden>
         <div class="detect-path"><code id="add-folder"></code></div>
@@ -107,8 +112,13 @@
           <button type="button" data-val="static" aria-pressed="true"><b>static</b><small>HTML/CSS/JS, tanpa build</small></button>
           <button type="button" data-val="vite-vanilla" aria-pressed="false"><b>vite-vanilla</b><small>Vite + JavaScript</small></button>
           <button type="button" data-val="vite-react" aria-pressed="false"><b>vite-react</b><small>Vite + React</small></button>
+          <button type="button" data-val="design-system" aria-pressed="false"><b>desain sistem</b><small>token + komponen + katalog</small></button>
         </div>
       </div>
+      <label class="field" id="new-ds-row" hidden>
+        <span>Desain sistem <small class="muted">(opsional — token &amp; komponen bersama)</small></span>
+        <select id="new-ds"><option value="">Tanpa desain sistem</option></select>
+      </label>
       <label class="field" id="new-html-row">
         <span>Impor HTML <small class="muted">(opsional — mis. artifact Claude yang diunduh)</small></span>
         <input type="file" id="new-html" accept=".html,.htm,text/html">
@@ -116,15 +126,70 @@
       <label class="check" id="new-install-row" hidden>
         <input type="checkbox" id="new-install" checked> Jalankan <code>npm install</code> setelah dibuat
       </label>
-      <label class="field">
-        <span>Folder <small class="muted">(opsional)</small></span>
-        <input id="new-dir" autocomplete="off" spellcheck="false">
-      </label>
+      <div class="field">
+        <label for="new-dir">Folder <small class="muted">(opsional)</small></label>
+        <div class="path-row">
+          <input id="new-dir" autocomplete="off" spellcheck="false">
+          <button type="button" class="btn browse" id="new-browse" title="Pilih folder induk; prototype dibuat di subfolder bernama id"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 6.5A2.5 2.5 0 0 1 5.5 4h4.1l2 2h6.9A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-11Z"/></svg>Pilih…</button>
+        </div>
+      </div>
       <p class="muted hint" id="new-hint"></p>
       <div id="new-err" class="callout err" hidden></div>
       <div class="dlg-foot">
         <button type="button" class="btn ghost" data-close>Batal</button>
         <button type="submit" class="btn primary" id="new-go">Buat</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Dialog pakai desain sistem -->
+  <dialog id="dlg-ds" class="small">
+    <form method="dialog" id="ds-form">
+      <div class="dlg-head">
+        <div>
+          <h2>Desain sistem</h2>
+          <p class="muted" id="ds-sub"></p>
+        </div>
+        <button type="button" class="icon-btn" data-close aria-label="Tutup">✕</button>
+      </div>
+      <div class="field">
+        <span>Sumber</span>
+        <div class="seg seg-wide" id="ds-mode">
+          <button type="button" data-val="shared"><b>Bersama</b><small>pakai desain sistem terdaftar</small></button>
+          <button type="button" data-val="local"><b>Milik sendiri</b><small>sudah ada di folder prototype ini</small></button>
+        </div>
+      </div>
+      <div id="ds-shared">
+        <p class="muted" id="ds-none" hidden>Belum ada desain sistem terdaftar. Buat dulu lewat <b>Baru → desain sistem</b>, atau pilih <b>Milik sendiri</b>.</p>
+        <label class="field" id="ds-pick-row">
+          <span>Desain sistem</span>
+          <select id="ds-pick"></select>
+        </label>
+        <div class="field" id="ds-dir-row">
+          <label for="ds-dir">Folder salinan <small class="muted">(opsional, di dalam folder prototype)</small></label>
+          <div class="path-row">
+            <input id="ds-dir" placeholder="design-system" autocomplete="off" spellcheck="false">
+            <button type="button" class="btn browse" id="ds-dir-browse" title="Pilih folder di dalam folder prototype"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 6.5A2.5 2.5 0 0 1 5.5 4h4.1l2 2h6.9A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-11Z"/></svg>Pilih…</button>
+          </div>
+        </div>
+        <p class="muted hint">File token &amp; komponen disalin ke folder ini, dimuat dari halaman/entry prototype, dan aturan pemakaiannya ditulis di AGENTS.md agar agent memakainya.</p>
+      </div>
+      <div id="ds-local" hidden>
+        <label class="field">
+          <span>Lokasi <small class="muted">(satu per baris, relatif ke folder prototype; file atau folder)</small></span>
+          <textarea id="ds-paths" rows="3" spellcheck="false" placeholder="src/styles/tokens.css&#10;src/components/ui"></textarea>
+        </label>
+        <div class="path-btns">
+          <button type="button" class="btn browse" id="ds-add-file" title="Tambah file dari folder prototype (boleh lebih dari satu)"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 6.5A2.5 2.5 0 0 1 5.5 4h4.1l2 2h6.9A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-11Z"/></svg>+ File…</button>
+          <button type="button" class="btn browse" id="ds-add-folder" title="Tambah folder dari folder prototype"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 6.5A2.5 2.5 0 0 1 5.5 4h4.1l2 2h6.9A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-11Z"/></svg>+ Folder…</button>
+        </div>
+        <div class="ds-cands" id="ds-cands"></div>
+        <p class="muted hint">Tidak ada file yang disalin atau diubah. Lokasinya dicatat di <code>prototyper.json</code> dan AGENTS.md, agar agent memakai token &amp; komponen di sana dan menambah yang baru di tempat yang sama.</p>
+      </div>
+      <div id="ds-err" class="callout err" hidden></div>
+      <div class="dlg-foot">
+        <button type="button" class="btn ghost" data-close>Batal</button>
+        <button type="submit" class="btn primary" id="ds-go">Simpan</button>
       </div>
     </form>
   </dialog>
@@ -161,6 +226,11 @@
     </form>
   </dialog>
 
+  <!-- Pembaruan Prototyper -->
+  <dialog id="dlg-update" class="small">
+    <form method="dialog" id="upd-form"></form>
+  </dialog>
+
   <!-- Palet perintah -->
   <dialog id="dlg-cmd" class="cmd">
     <div class="cmd-input">
@@ -171,7 +241,7 @@
     <ul id="cmd-list" role="listbox"></ul>
   </dialog>
 
-  <div id="toasts" aria-live="polite"></div>
+  <div id="toasts" aria-live="polite" popover="manual"></div>
   <script src="/app.js" type="module"></script>
 </body>
 </html>

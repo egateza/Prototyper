@@ -112,5 +112,12 @@ describe('POST /api/prototypes/new', () => {
   it('GET /api/health menyertakan workspace', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/health' });
     expect(res.json().workspace).toBe(config.workspace);
+    expect(res.json().dsWorkspace).toBe(config.dsWorkspace);
+  });
+
+  it('template design-system tanpa dir dibuat di folder desain sistem', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/prototypes/new', payload: { id: 'api-ds-pisah', template: 'design-system' } });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().path).toBe(path.join(config.dsWorkspace, 'api-ds-pisah'));
   });
 });

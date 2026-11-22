@@ -4,11 +4,21 @@ import type { FastifyPluginAsync } from 'fastify';
 import type { Config } from '../../core/config.js';
 import { syncAgentFiles, type AgentFileResult } from '../../core/agentfiles.js';
 import { detectManifest, type InitOptions } from '../../core/detect.js';
+import {
+  detachDesignSystem,
+  detectLocalCandidates,
+  listDesignSystems,
+  listLocalDesignSystems,
+  setLocalDesignSystem,
+  syncDesignSystem,
+  useDesignSystem,
+  type UseResult,
+} from '../../core/designsystem.js';
 import { AppError, errorMessage } from '../../core/errors.js';
 import { fileExists, isDirectory } from '../../core/fsutil.js';
 import { loadManifest, MANIFEST_FILE, parseManifest, writeManifest } from '../../core/manifest.js';
 import type { LogLine } from '../../core/logs.js';
-import { lanAddresses } from '../../core/net.js';
+import { lanAddresses, rankLanAddresses } from '../../core/net.js';
 import type { Registry, ResolvedPrototype } from '../../core/registry.js';
 import type { Runtime } from '../../core/runtime.js';
 import type { AgentRunner } from '../../core/agent.js';
@@ -43,6 +53,7 @@ export type NewPrototypeResponse = PrototypeView & {
   files: string[];
   install: InstallResult | null;
   agentFiles: AgentFileResult[];
+  designSystem: UseResult | null;
 };
 
 /** Respons pendaftaran: view + hasil pemasangan petunjuk agent. */
@@ -85,8 +96,10 @@ const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : unde
 
 export const prototypeRoutes: FastifyPluginAsync<{ ctx: RouteContext }> = async (app, { ctx }) => {
   const { config, registry, runtime } = ctx;
-  const view = (p: ResolvedPrototype): PrototypeView =>
-    toView(p, runtime.info(p.id), { lan: config.lanMode !== 'off', lanAddrs: config.lanMode !== 'off' ? lanAddresses() : [] });
+  const view = (p: ResolvedPrototype): PrototypeView => {
+    const info = runtime.info(p.id);
+    return toView(p, info, { lanAddrs: info.lan ? rankLanAddresses(lanAddresses()) : [], lanExposed: runtime.isLanExposed(p.id) });
+  };
 
   app.get('/prototypes', async () => (await registry.list()).map(view));
 
@@ -113,7 +126,7 @@ export const prototypeRoutes: FastifyPluginAsync<{ ctx: RouteContext }> = async 
   app.post<{
     Body: {
       id?: unknown; name?: unknown; description?: unknown; template?: unknown;
-      dir?: unknown; html?: unknown; install?: unknown;
+      dir?: unknown; html?: unknown; install?: unknown; designSystem?: unknown;
     } | null;
   }>('/prototypes/new', { bodyLimit: NEW_BODY_LIMIT }, async (req, reply): Promise<NewPrototypeResponse> => {
     const b = req.body ?? {};
@@ -126,14 +139,17 @@ export const prototypeRoutes: FastifyPluginAsync<{ ctx: RouteContext }> = async 
     const name = str(b.name);
     const description = str(b.description);
     const dir = str(b.dir);
+    const designSystem = str(b.designSystem);
     const r = await createPrototype(registry, {
       id,
       workspace: config.workspace,
+      dsWorkspace: config.dsWorkspace,
       ...(isTemplate(b.template) ? { template: b.template } : {}),
       ...(name ? { name } : {}),
       ...(description ? { description } : {}),
       ...(dir ? { dir } : {}),
       ...(typeof b.html === 'string' ? { html: b.html } : {}),
+      ...(designSystem ? { designSystem } : {}),
     });
     let install: InstallResult | null = null;
     const m = r.prototype.manifest;
@@ -142,7 +158,7 @@ export const prototypeRoutes: FastifyPluginAsync<{ ctx: RouteContext }> = async 
       install = { exitCode, ok: exitCode === 0 };
     }
     reply.code(201);
-    return { ...view(r.prototype), template: r.template, files: r.files, install, agentFiles: r.agentFiles };
+    return { ...view(r.prototype), template: r.template, files: r.files, install, agentFiles: r.agentFiles, designSystem: r.designSystem };
   });
 
   // Periksa folder: kembalikan manifest yang ada, atau hasil deteksi untuk diedit sebelum disimpan.
@@ -246,6 +262,44 @@ export const prototypeRoutes: FastifyPluginAsync<{ ctx: RouteContext }> = async 
     return { results };
   });
 
+  // ---------- Desain sistem (lihat src/core/designsystem.ts) ----------
+  app.get('/design-systems', async () => ({
+    designSystems: await listDesignSystems(registry),
+    locals: await listLocalDesignSystems(registry),
+  }));
+
+  // Pasang desain sistem ke prototype: { "id": "<desain-sistem>", "dir"?: "design-system", "link"?: true },
+  // atau catat desain sistem milik prototype sendiri: { "local": ["src/styles/tokens.css", ...] }.
+  app.put<IdParams & { Body: { id?: unknown; dir?: unknown; link?: unknown; local?: unknown } | null }>('/prototypes/:id/design-system', async (req) => {
+    const b = req.body ?? {};
+    if (b.local !== undefined) {
+      if (!Array.isArray(b.local) || !b.local.every((x) => typeof x === 'string')) {
+        throw new AppError('BAD_REQUEST', '"local" harus berupa daftar path, mis. ["src/styles/tokens.css"]');
+      }
+      const r = await setLocalDesignSystem(registry, req.params.id, b.local as string[], { home: config.home });
+      return { ...r, prototype: view(await registry.require(r.id)) };
+    }
+    const dsId = str(b.id);
+    if (!dsId) throw new AppError('BAD_REQUEST', 'Body harus berisi { "id": "<id-desain-sistem>" } atau { "local": ["<path>"] }');
+    const dir = str(b.dir);
+    const r = await useDesignSystem(registry, req.params.id, dsId, { home: config.home, link: b.link !== false, ...(dir ? { dir } : {}) });
+    return { ...r, prototype: view(await registry.require(r.id)) };
+  });
+
+  app.delete<IdParams>('/prototypes/:id/design-system', async (req) => {
+    const r = await detachDesignSystem(registry, req.params.id, { home: config.home });
+    return { ...r, prototype: view(await registry.require(r.id)) };
+  });
+
+  // Tebakan lokasi desain sistem sendiri di folder prototype (untuk diisi otomatis).
+  app.get<IdParams>('/prototypes/:id/design-system/candidates', async (req) => {
+    const p = await registry.require(req.params.id);
+    return { id: p.id, candidates: await detectLocalCandidates(p.path) };
+  });
+
+  // Salin ulang: id pemakai = prototype itu; id desain sistem = semua pemakainya.
+  app.post<IdParams>('/prototypes/:id/design-system/sync', async (req) => ({ results: await syncDesignSystem(registry, req.params.id) }));
+
   app.post<IdParams>('/prototypes/:id/reload',async (req) => view(await registry.require(req.params.id)));
 
   app.post<IdParams>('/prototypes/:id/start', async (req) => {
@@ -263,6 +317,16 @@ export const prototypeRoutes: FastifyPluginAsync<{ ctx: RouteContext }> = async 
   app.post<IdParams>('/prototypes/:id/restart', async (req) => {
     const p = await registry.require(req.params.id);
     await runtime.restart(p);
+    return view(p);
+  });
+
+  // Buka/tutup akses LAN satu prototype (bind 0.0.0.0); yang sedang berjalan di-restart bila perlu.
+  // Seperti request non-GET lain, hanya bisa dari mesin ini.
+  app.put<IdParams & { Body: { exposed?: unknown } | null }>('/prototypes/:id/lan', async (req) => {
+    const p = await registry.require(req.params.id);
+    const exposed = req.body?.exposed;
+    if (typeof exposed !== 'boolean') throw new AppError('BAD_REQUEST', 'Body harus berisi { "exposed": true | false }');
+    await runtime.setLanExposed(p, exposed);
     return view(p);
   });
 

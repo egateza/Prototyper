@@ -10,15 +10,18 @@ prototyper info <id> --json            # path, url, status, instructions.path
 # baca file instructions.path (AGENTS.md prototype) bila exists = true, lalu edit file di `path`
 prototyper start <id> --json           # atau restart; cetak url
 prototyper logs <id> -n 100 --json     # debug
+prototyper lan <id> on|off             # buka/tutup akses LAN prototype ini saja (Web UI tetap lokal)
 prototyper comments <id> --waiting agent --json   # komentar yang giliran agent
 prototyper comments context <id> <commentId> --json   # riwayat: komentar selesai terkait + keputusan (DECISIONS.md)
 prototyper comments reply <id> <commentId> "apa yang diubah"   # lapor hasil; komentar tetap open
 prototyper comments ask <id> <commentId> "pertanyaan" --option "A" --option "B" [--multi]
+prototyper comments reply <id> <commentId> --file - <<'EOF'   # teks multi-baris: lewat stdin (argumen terpotong di prototyper.cmd)
 ```
 
 - Jangan menyalin kode prototype ke repo ini; prototype tinggal di foldernya sendiri.
 - Folder prototype biasanya sudah punya bagian `<!-- prototyper:start -->` di `AGENTS.md` (dan `CLAUDE.md` → `@AGENTS.md`) yang ditulis Prototyper saat didaftarkan; ikuti itu. Bila belum ada: `prototyper agents sync <id>`.
 - "Kerjakan komentar di prototype X": ambil komentar dengan `--waiting agent`, kerjakan satu per satu (perhatikan `page`, balasan, dan `answer` pada pertanyaan berpilihan), lalu laporkan hasilnya dengan `comments reply` dan biarkan komentar tetap open. **Jangan `resolve`**: pengguna yang memeriksa hasil dan menutup komentar (kecuali pengguna eksplisit meminta agent menutupnya). Bila ada beberapa kemungkinan, pakai `comments ask` dengan `--option` (tampil sebagai radio/checkbox di Web UI) dan biarkan tetap open; pertanyaan balik dari pengguna dijawab dengan `comments reply`. Komentar `waitingFor: "user"` jangan dikerjakan dulu. Sebelum mengerjakan tiap komentar, jalankan `comments context` agar tidak mengulang revisi yang sudah ditolak. Komentar disimpan di `<folder>/.prototyper/comments.json`, log keputusan di `DECISIONS.md`, komentar selesai lama di `comments-archive/` (semua boleh dibaca langsung).
+- Desain sistem (token + komponen yang dipakai bersama): `prototyper new <id> -t design-system`, pasang dengan `prototyper ds use <prototype> <desain-sistem>` (atau `new … --design-system <id>`), sebarkan perubahan dengan `prototyper ds sync <desain-sistem>`; lihat `prototyper ds list --json`. File di folder `design-system/` prototype pemakai adalah salinan: ubah di desain sistemnya, bukan di situ. Prototype yang punya token/komponen sendiri: `prototyper ds local <id> <path…>` (tanpa path = tebakan lokasi).
 - Prototype baru: `prototyper new <id> --template static|vite-vanilla|vite-react --json` → dapat `path`; isi file di sana (impor HTML: `--from <file.html>`). Folder yang sudah ada: `prototyper add <folder>` (manifest dideteksi bila belum ada), lalu periksa `prototyper.json`.
 - Mode static mengirim `Cache-Control: no-store` dan live-reload (halaman terbuka dimuat ulang sendiri setelah file berubah; `static.liveReload: false` untuk mematikan). Mode command biasanya punya HMR; bila tidak, `restart`.
 - Tanpa `npm link`, pakai `npm run cli -- <perintah>` dari repo ini.
@@ -44,13 +47,13 @@ Struktur:
 
 ```
 src/boot/    sea.ts (main biner tunggal: pilih aplikasi di app store lalu muat; mengubahnya = naikkan RUNTIME)
-src/core/    appfiles (APP_DIR/APP_MODE: source|dist|bundle|sea, cliCommand), apphost (RUNTIME, app store, bootApp), apppack (tar.gz paket aplikasi), semver, config, manifest (zod), detect (init), scaffold (new + template), agentfiles (AGENTS.md/CLAUDE.md), comments (+ DECISIONS.md, arsip, context), embed (sisip skrip pratinjau), agent (menjalankan claude -p), agentsession (lanjut sesi), registry, state, ports, logs, runtime, views, startup (Run key Windows), update (GitHub Releases), open (buka browser)
-src/server/  app.ts (buildApp), routes/health.ts, routes/prototypes.ts, routes/comments.ts, routes/agent.ts
-src/cli/     index.ts (perintah), comments.ts (prototyper comments …), client.ts (HTTP + auto-start daemon), launcher.ts (dobel-klik exe), output.ts
+src/core/    appfiles (APP_DIR/APP_MODE: source|dist|bundle|sea, cliCommand), apphost (RUNTIME, app store, bootApp), apppack (tar.gz paket aplikasi), semver, config, manifest (zod), detect (init), scaffold (new + template), dstemplate (isi template design-system), designsystem (ds use/sync/detach: salin token & komponen ke pemakai), agentfiles (AGENTS.md/CLAUDE.md), comments (+ DECISIONS.md, arsip, context), embed (sisip skrip pratinjau), agent (menjalankan claude -p), agentsession (lanjut sesi), registry, state, ports, logs, runtime, views, startup (Run key Windows), update (GitHub Releases), selfupdate (cek berkala + `prototyper update` tanpa tray), open (buka browser), picker (dialog pilih file/folder OS untuk tombol Pilih… di Web UI)
+src/server/  app.ts (buildApp), routes/health.ts, routes/prototypes.ts, routes/comments.ts, routes/agent.ts, routes/update.ts (`/api/update`, pasang via `prototyper update` terlepas), routes/pick.ts (`/api/pick`)
+src/cli/     index.ts (perintah), comments.ts (prototyper comments …), designsystem.ts (prototyper ds …), client.ts (HTTP + auto-start daemon), update.ts (prototyper update), launcher.ts (dobel-klik exe), output.ts
 src/tray/    tray Windows: index.ts (proses, lock, install), controller.ts (logika, diuji dgn host tiruan), popup.ts (tata letak popup klik kiri, varian B Ringkas), menu.ts (menu klik kanan), host.ts (skrip PowerShell: NotifyIcon + popup)
 web/         UI tanpa build step (HTML + JS modul); web/embed.js = skrip yang disisipkan ke prototype static (komentar elemen); web/whatsnew.json = halaman "Yang baru" (tambah entri tiap naik versi)
 scripts/     bundle.ts (esbuild → prototyper.cjs), release.ts (exe/msi/app/portable/npm), msi.ts (WiX .wxs), gen-icon.ts + winres.ts (icon/resource exe), gen-schema.ts, vitest.mjs
-examples/    hello-static, hello-command (dipakai tes)
+examples/    hello-static, hello-command, sembako-ds (contoh desain sistem; dipakai tes)
 test/        vitest; route diuji dengan app.inject(); tes runtime memakai port 47100-47149
 ```
 

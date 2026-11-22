@@ -22,6 +22,8 @@ import { APP_MODE } from '../core/appfiles.js';
 import { DaemonClient } from './client.js';
 import { isExplorerLaunch, runLauncher, windowsParentImage } from './launcher.js';
 import { registerCommentCommands } from './comments.js';
+import { describeLink, registerDesignSystemCommands } from './designsystem.js';
+import { registerUpdateCommand } from './update.js';
 import { launchTray, quitDeps, quitPrototyper, runTray } from '../tray/index.js';
 import { formatLogLine, printInfo, printJson, printTable, reportError } from './output.js';
 
@@ -77,7 +79,7 @@ const lanLabel = (h: HealthResponse) => {
   const mode = healthLanMode(h);
   return mode === 'all' ? ', LAN' : mode === 'prototypes' ? ', LAN prototype saja' : '';
 };
-const localView = (p: Awaited<ReturnType<Registry['require']>>) => toView(p, STOPPED_INFO, { lan: false, lanAddrs: [] });
+const localView = (p: Awaited<ReturnType<Registry['require']>>) => toView(p, STOPPED_INFO, { lanAddrs: [], lanExposed: false });
 
 async function listViews(ctx: Ctx): Promise<PrototypeView[]> {
   if (await ctx.client.health()) return ctx.client.request<PrototypeView[]>('GET', '/api/prototypes');
@@ -155,10 +157,28 @@ program
 
 program
   .command('serve')
-  .description('jalankan daemon (HTTP API + Web UI) di foreground')
+  .description('jalankan daemon (HTTP API + Web UI) di foreground; --detach untuk di background')
+  .option('-d, --detach', 'jalankan daemon di background lalu kembali ke terminal (terminal boleh ditutup)')
   .action(
-    act(async (ctx) => {
-      await startServer(ctx.config);
+    act(async (ctx, _args, cmd) => {
+      if (!cmd.opts<{ detach?: boolean }>().detach) {
+        await startServer(ctx.config);
+        return;
+      }
+      const alreadyRunning = (await ctx.client.health()) !== null;
+      const health = await ctx.client.ensure();
+      const url = `http://localhost:${ctx.config.port}`;
+      if (ctx.json) return printJson({ ok: true, alreadyRunning, url, log: ctx.client.logFile, daemon: health });
+      if (alreadyRunning) {
+        console.log(`Daemon sudah berjalan di ${url} (v${health.version}${lanLabel(health)}).`);
+        if (ctx.config.lanMode !== healthLanMode(health)) {
+          console.log('Catatan: mode LAN tidak diubah; jalankan "prototyper shutdown" lalu nyalakan ulang dengan opsi yang diinginkan.');
+        }
+      } else {
+        console.log(`✓ Daemon berjalan di background: ${url} (v${health.version}${lanLabel(health)})`);
+        console.log(`  Log: ${ctx.client.logFile}`);
+      }
+      console.log('  Hentikan dengan: prototyper shutdown');
     }),
   );
 
@@ -341,10 +361,11 @@ program
   .command('new <id>')
   .description('buat prototype baru dari template, lalu daftarkan')
   .option('-t, --template <name>', `template: ${TEMPLATES.join(' | ')}`, 'static')
-  .option('-d, --dir <folder>', 'folder tujuan (default: <PROTOTYPER_WORKSPACE>/<id>)')
+  .option('-d, --dir <folder>', 'folder tujuan (default: <PROTOTYPER_WORKSPACE>/<id>; desain sistem: <PROTOTYPER_DS_WORKSPACE>/<id>)')
   .option('--name <name>', 'nama tampilan (default: id)')
   .option('--description <text>', 'deskripsi singkat')
   .option('--from <file.html>', 'impor file HTML (mis. artifact Claude) sebagai index.html; template static')
+  .option('--design-system <id>', 'langsung pakai desain sistem ini (lihat: prototyper ds list)')
   .option('--no-install', 'jangan menjalankan npm install untuk template Vite')
   .option('--start', 'langsung jalankan setelah dibuat')
   .addHelpText(
@@ -357,12 +378,15 @@ program
       'Contoh:',
       '  prototyper new kasir-grosir -t vite-react --start',
       '  prototyper new laporan-stok --from Downloads\\artifact.html',
+      '  prototyper new brand-ds -t design-system',
+      '  prototyper new laporan-stok --design-system brand-ds',
     ].join('\n'),
   )
   .action(
     act(async (ctx, [id], cmd) => {
       const o = cmd.opts<{
         template: string; dir?: string; name?: string; description?: string; from?: string; install: boolean; start?: boolean;
+        designSystem?: string;
       }>();
       if (!isTemplate(o.template)) throw new AppError('BAD_REQUEST', `--template harus salah satu dari: ${TEMPLATES.join(', ')}`);
       let html: string | undefined;
@@ -376,15 +400,19 @@ program
         id: id ?? '',
         template: o.template,
         workspace: ctx.config.workspace,
+        dsWorkspace: ctx.config.dsWorkspace,
         ...(o.dir ? { dir: o.dir } : {}),
         ...(o.name ? { name: o.name } : {}),
         ...(o.description ? { description: o.description } : {}),
         ...(html !== undefined ? { html: html.replace(/^﻿/, '') } : {}),
+        ...(o.designSystem ? { designSystem: o.designSystem } : {}),
       });
       const p = r.prototype;
       if (!ctx.json) {
         console.log(`✓ "${p.id}" dibuat dari template ${r.template}: ${p.path}`);
         for (const f of r.files) console.log(`  + ${f}`);
+        if (r.designSystem) console.log(`  Desain sistem "${r.designSystem.designSystem}" dipakai. ${describeLink(r.designSystem.link)}`);
+        if (r.template === 'design-system') console.log(`  Pasang ke prototype lain: prototyper ds use <id> ${p.id}`);
       }
 
       let install: { exitCode: number | null; ok: boolean } | null = null;
@@ -399,7 +427,7 @@ program
         await ctx.client.ensure();
         v = await ctx.client.request<PrototypeView>('POST', `/api/prototypes/${enc(p.id)}/start`);
       }
-      if (ctx.json) return printJson({ ...v, template: r.template, files: r.files, install, agentFiles: r.agentFiles });
+      if (ctx.json) return printJson({ ...v, template: r.template, files: r.files, install, agentFiles: r.agentFiles, designSystem: r.designSystem });
       if (install && !install.ok) {
         process.exitCode = 1;
         console.log(`Perbaiki lalu ulangi: prototyper install ${p.id}`);
@@ -417,6 +445,27 @@ for (const action of ['start', 'stop', 'restart'] as const) {
     .description(desc[action])
     .action(act((ctx, [id]) => runAction(ctx, id ?? '', action)));
 }
+
+program
+  .command('lan <id> [state]')
+  .description('buka/tutup akses LAN satu prototype (on|off; tanpa state = tampilkan status)')
+  .action(
+    act(async (ctx, [id, state]) => {
+      const pid = id ?? '';
+      if (state !== undefined && state !== 'on' && state !== 'off') {
+        throw new AppError('BAD_REQUEST', 'state harus "on" atau "off"');
+      }
+      await ctx.client.ensure();
+      const v =
+        state === undefined
+          ? await ctx.client.request<PrototypeView>('GET', `/api/prototypes/${enc(pid)}`)
+          : await ctx.client.request<PrototypeView>('PUT', `/api/prototypes/${enc(pid)}/lan`, { exposed: state === 'on' });
+      if (ctx.json) return printJson(v);
+      console.log(`${v.id}: akses LAN ${v.lanExposed ? 'dibuka' : 'ditutup'}`);
+      if (v.lanUrls.length) for (const u of v.lanUrls) console.log(`  LAN: ${u}`);
+      else if (v.lanExposed) console.log(`  Berlaku saat dijalankan: prototyper start ${v.id}`);
+    }),
+  );
 
 program
   .command('logs <id>')
@@ -547,6 +596,8 @@ agentsCmd
   );
 
 registerCommentCommands(program, act);
+registerDesignSystemCommands(program, act);
+registerUpdateCommand(program, act);
 
 const userArgs = process.argv.slice(2);
 if (isExplorerLaunch({ platform: process.platform, mode: APP_MODE, args: userArgs, parentImage: windowsParentImage })) {
