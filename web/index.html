@@ -235,6 +235,60 @@
     </form>
   </dialog>
 
+  <!-- Dialog ekspor halaman (PDF/PNG/JPG) -->
+  <dialog id="dlg-export" class="small">
+    <form method="dialog" id="ex-form">
+      <div class="dlg-head">
+        <div>
+          <h2>Ekspor halaman</h2>
+          <p class="muted" id="ex-sub"></p>
+        </div>
+        <button type="button" class="icon-btn" data-close aria-label="Tutup">✕</button>
+      </div>
+      <div class="field">
+        <span>Format</span>
+        <div class="seg seg-wide" id="ex-format">
+          <button type="button" data-val="png"><b>PNG</b><small>tajam, untuk desain</small></button>
+          <button type="button" data-val="jpeg"><b>JPG</b><small>kecil, untuk chat</small></button>
+          <button type="button" data-val="pdf"><b>PDF</b><small>teks bisa dipilih</small></button>
+        </div>
+      </div>
+      <div class="field" id="ex-area-row">
+        <span>Area</span>
+        <div class="seg" id="ex-area">
+          <button type="button" data-val="full">Seluruh halaman</button>
+          <button type="button" data-val="view">Layar saja</button>
+        </div>
+      </div>
+      <div class="field" id="ex-scale-row">
+        <span>Resolusi</span>
+        <div class="seg" id="ex-scale">
+          <button type="button" data-val="1">1×</button>
+          <button type="button" data-val="2">2× (retina)</button>
+          <button type="button" data-val="3">3×</button>
+        </div>
+      </div>
+      <div class="field" id="ex-paper-row" hidden>
+        <span>Kertas</span>
+        <div class="seg" id="ex-paper">
+          <button type="button" data-val="screen">Seperti layar</button>
+          <button type="button" data-val="a4">A4 (cetak)</button>
+        </div>
+      </div>
+      <label class="field">
+        <span>Halaman</span>
+        <input id="ex-page" spellcheck="false" autocomplete="off" placeholder="/" title="Path halaman yang diekspor, mis. /kasir atau /#/bayar">
+      </label>
+      <p class="muted hint" id="ex-hint"></p>
+      <div id="ex-err" class="callout err" hidden></div>
+      <div class="dlg-foot">
+        <button type="button" class="btn ghost" data-close>Batal</button>
+        <button type="button" class="btn" id="ex-copy" hidden>Salin gambar</button>
+        <button type="submit" class="btn primary" id="ex-go">Unduh</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- Dialog agent lokal -->
   <dialog id="dlg-agents">
     <form method="dialog">

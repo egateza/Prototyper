@@ -3,7 +3,8 @@
 //   halaman → UI : prototyper:ready {page}, prototyper:page {page}, prototyper:pick {anchor, page},
 //                  prototyper:mode-off, prototyper:pin-click {id}
 //   UI → halaman : prototyper:hello, prototyper:mode {on}, prototyper:pins {pins}, prototyper:focus {selector},
-//                  prototyper:clear
+//                  prototyper:clear, prototyper:snapshot {req}
+//   halaman → UI : prototyper:snapshot {req, scheme, html, body, storage, session} (keadaan untuk ekspor)
 //
 // Live-reload (atribut data-livereload pada tag skrip) aktif juga di luar pratinjau: EventSource ke
 // /__prototyper/livereload; event "reload" memuat ulang halaman (posisi scroll dipulihkan), event
@@ -225,9 +226,48 @@
       case 'prototyper:mode': setMode(!!d.on); break;
       case 'prototyper:pins': pins = Array.isArray(d.pins) ? d.pins : []; renderPins(); break;
       case 'prototyper:focus': focus(String(d.selector || '')); break;
+      case 'prototyper:snapshot': post('prototyper:snapshot', { req: d.req, ...snapshot() }); break;
       case 'prototyper:clear': picked = null; place(pickedBox, null); window.getSelection()?.removeAllRanges(); break;
     }
   });
+
+  // ---------- Snapshot untuk ekspor ----------
+  // Ekspor memuat ulang halaman di browser headless; yang dikirim di sini membuatnya tampil sama:
+  // skema warna yang dilihat iframe, atribut tema di <html>/<body>, serta local/sessionStorage yang kecil.
+  function snapshot() {
+    const attrs = (el) => {
+      const out = {};
+      for (const a of el ? el.attributes : []) {
+        if (/^(class|style|data-[\w.:-]+)$/i.test(a.name) && a.value.length <= 2000) out[a.name] = a.value;
+      }
+      // kelas milik overlay embed sendiri tidak ikut
+      if (out.class) out.class = out.class.split(/\s+/).filter((c) => c && !c.startsWith(P)).join(' ');
+      return out;
+    };
+    let size = 0;
+    const copy = (store) => {
+      const out = {};
+      try {
+        for (let i = 0; i < store.length; i++) {
+          const k = store.key(i);
+          const v = store.getItem(k) ?? '';
+          if (k.length + v.length > 1000 || size + k.length + v.length > 6000) continue; // data besar dilewati
+          out[k] = v;
+          size += k.length + v.length;
+        }
+      } catch { /* storage diblokir */ }
+      return out;
+    };
+    const session = copy(window.sessionStorage); // status login dsb. diutamakan
+    const storage = copy(window.localStorage);
+    return {
+      scheme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
+      html: attrs(document.documentElement),
+      body: attrs(document.body),
+      storage,
+      session,
+    };
+  }
 
   // ---------- Navigasi (SPA) ----------
   let lastPage = pagePath();

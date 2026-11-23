@@ -22,6 +22,7 @@ import { lanAddresses, rankLanAddresses } from '../../core/net.js';
 import type { Registry, ResolvedPrototype } from '../../core/registry.js';
 import type { Runtime } from '../../core/runtime.js';
 import type { AgentRunner } from '../../core/agent.js';
+import { EXPORT_MIME, exportFileName, parseExportQuery, type Capturer, type ExportQuery } from '../../core/capture.js';
 import { createPrototype, isTemplate, TEMPLATES } from '../../core/scaffold.js';
 import { toView, type PrototypeView } from '../../core/views.js';
 
@@ -30,6 +31,7 @@ export interface RouteContext {
   registry: Registry;
   runtime: Runtime;
   agent: AgentRunner;
+  capture: Capturer;
 }
 
 type IdParams = { Params: { id: string } };
@@ -334,6 +336,25 @@ export const prototypeRoutes: FastifyPluginAsync<{ ctx: RouteContext }> = async 
     const p = await registry.require(req.params.id);
     const { exitCode } = await runtime.install(p);
     return { id: p.id, exitCode, ok: exitCode === 0 };
+  });
+
+  // Ekspor satu halaman prototype yang sedang berjalan ke PNG/JPG/PDF (dirender Chromium headless).
+  // GET: hanya membaca, jadi juga tersedia untuk HP terpasang.
+  app.get<IdParams & { Querystring: ExportQuery }>('/prototypes/:id/export', async (req, reply) => {
+    const p = await registry.require(req.params.id);
+    const info = runtime.info(p.id);
+    if (info.status !== 'running' || info.port === null) {
+      throw new AppError('CONFLICT', `Prototype "${p.id}" belum berjalan. Jalankan dulu (Start / prototyper start ${p.id}).`);
+    }
+    const r = parseExportQuery(`http://localhost:${info.port}`, req.query ?? {});
+    const out = await ctx.capture(r);
+    const name = exportFileName(p.id, r.page, r.width, r.format);
+    return reply
+      .type(EXPORT_MIME[r.format])
+      .header('Cache-Control', 'no-store')
+      .header('Content-Disposition', `attachment; filename="${name}"`)
+      .header('X-Prototyper-Truncated', out.truncated ? '1' : '0')
+      .send(out.data);
   });
 
   app.get<IdParams & TailQuery>('/prototypes/:id/logs', async (req) => {

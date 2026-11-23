@@ -467,6 +467,60 @@ program
     }),
   );
 
+/** Ukuran jendela untuk `export --device` (sama dengan pilihan perangkat di Web UI). */
+const EXPORT_DEVICES: Record<string, { w: number; h: number; mobile: boolean }> = {
+  desktop: { w: 1280, h: 800, mobile: false },
+  tablet: { w: 820, h: 1180, mobile: true },
+  mobile: { w: 390, h: 844, mobile: true },
+};
+
+program
+  .command('export <id>')
+  .description('ekspor halaman prototype ke PNG/JPG/PDF (Edge/Chrome headless); prototype dijalankan bila belum')
+  .option('-f, --format <format>', 'png | jpg | pdf', 'png')
+  .option('-p, --page <path>', 'path halaman, mis. /kasir atau /#/bayar', '/')
+  .option('-o, --out <file>', 'file tujuan (default: nama otomatis di folder kerja)')
+  .option('-d, --device <device>', 'desktop | tablet | mobile', 'desktop')
+  .option('--width <px>', 'lebar jendela (menimpa --device)', parseIntOption(240, 3840))
+  .option('--height <px>', 'tinggi jendela (menimpa --device)', parseIntOption(240, 4000))
+  .option('--landscape', 'putar ukuran perangkat (tablet/mobile)')
+  .option('--viewport', 'hanya area jendela, bukan seluruh halaman')
+  .option('--scale <n>', 'kerapatan piksel gambar 1-3 (default 2)', parseIntOption(1, 3))
+  .option('--paper <paper>', 'PDF: screen (satu halaman seperti layar) | a4', 'screen')
+  .option('--wait <ms>', 'jeda setelah halaman dimuat', parseIntOption(0, 10_000), 500)
+  .action(
+    act(async (ctx, [id], cmd) => {
+      const o = cmd.opts<{ format: string; page: string; out?: string; device: string; width?: number; height?: number; landscape?: boolean; viewport?: boolean; scale?: number; paper: string; wait: number }>();
+      const pid = id ?? '';
+      const dev = EXPORT_DEVICES[o.device];
+      if (!dev) throw new AppError('BAD_REQUEST', '--device harus desktop, tablet, atau mobile');
+      const [dw, dh] = o.landscape && dev.mobile ? [dev.h, dev.w] : [dev.w, dev.h];
+      await ctx.client.ensure();
+      const v = await ctx.client.request<PrototypeView>('GET', `/api/prototypes/${enc(pid)}`);
+      if (v.status !== 'running') await ctx.client.request<PrototypeView>('POST', `/api/prototypes/${enc(pid)}/start`);
+      const q = new URLSearchParams({
+        format: o.format,
+        path: o.page,
+        width: String(o.width ?? dw),
+        height: String(o.height ?? dh),
+        full: o.viewport ? '0' : '1',
+        mobile: dev.mobile ? '1' : '0',
+        paper: o.paper,
+        wait: String(o.wait),
+        ...(o.scale ? { scale: String(o.scale) } : {}),
+      });
+      const { data, headers } = await ctx.client.download(`/api/prototypes/${enc(pid)}/export?${q}`);
+      const name = /filename="([^"]+)"/.exec(headers.get('content-disposition') ?? '')?.[1] ?? `${pid}.${o.format}`;
+      const out = path.resolve(o.out ?? name);
+      await fs.mkdir(path.dirname(out), { recursive: true });
+      await fs.writeFile(out, data);
+      const truncated = headers.get('x-prototyper-truncated') === '1';
+      if (ctx.json) return printJson({ id: pid, path: out, bytes: data.length, format: headers.get('content-type'), truncated });
+      console.log(`✓ ${out} (${Math.round(data.length / 1024)} KB)`);
+      if (truncated) console.log('  Halaman terlalu panjang; bagian bawah dipotong.');
+    }),
+  );
+
 program
   .command('logs <id>')
   .description('tampilkan log prototype')

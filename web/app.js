@@ -38,6 +38,7 @@ const ICON = {
   pick: svg('M4 4l7 17 2.5-7.5L21 11 4 4Z', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"'),
   panel: svg('M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1ZM15 5v14', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"'),
   globe: svg('M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18ZM3.5 9h17M3.5 15h17M12 3c-2.5 2.6-3.5 5.6-3.5 9s1 6.4 3.5 9M12 3c2.5 2.6 3.5 5.6 3.5 9s-1 6.4-3.5 9', 'fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"'),
+  download: svg('M12 3v12M7 10l5 5 5-5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2', 'fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"'),
   clip: svg('M20.5 11.5l-8.4 8.4a5 5 0 0 1-7.1-7.1l8.4-8.4a3.3 3.3 0 0 1 4.7 4.7l-8.4 8.4a1.7 1.7 0 0 1-2.4-2.4l7.7-7.7', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'),
 };
 
@@ -313,6 +314,7 @@ function renderMain() {
     ${ui.preview ? `<span class="dev-seg" role="group" aria-label="Ukuran jendela">${Object.entries(DEVICES).map(([k, d]) =>
       deviceBtn(k, d)).join('')}</span>` : ''}
     ${u && ui.preview && EDIT && p.status === 'running' ? `<button type="button" class="pick-btn${embed.mode ? ' on' : ''}" data-act="cm-pick" title="Komentari elemen: klik elemen atau blok teks di pratinjau (Esc untuk batal)" aria-pressed="${embed.mode}">${ICON.pick}<span>${embed.mode ? 'Pilih elemen…' : 'Komentari'}</span></button>` : ''}
+    ${u && p.status === 'running' ? `<button type="button" class="icon-btn" data-act="export" title="Ekspor halaman ini ke PNG, JPG, atau PDF">${ICON.download}</button>` : ''}
     ${u && ui.preview ? `<button type="button" class="icon-btn" data-act="reload-preview" title="Muat ulang pratinjau">${ICON.restart}</button>` : ''}
     <button type="button" class="icon-btn" data-act="toggle-preview" title="${ui.preview ? 'Sembunyikan pratinjau' : 'Tampilkan pratinjau'}">${ui.preview ? ICON.eyeOff : ICON.eye}</button>
     ${u ? `<a class="icon-btn" href="${esc(u)}" target="_blank" rel="noopener" title="Buka di tab baru">${ICON.ext}</a>` : ''}`);
@@ -794,6 +796,7 @@ document.addEventListener('click', (e) => {
     case 'toggle-preview': return togglePreview();
     case 'reload-preview': previewNonce++; return render();
     case 'device': return setDevice(t.dataset.dev);
+    case 'export': return openExport(byId(ui.selected));
     case 'edit-manifest': return p && openManifestEditor(p);
     case 'sync-instr': return p && syncInstructions(p);
     case 'ds-sync': return p && dsSync(p);
@@ -2277,6 +2280,11 @@ window.addEventListener('message', (e) => {
   const f = $('#d-view iframe');
   if (!f || e.source !== f.contentWindow || e.origin !== previewOrigin()) return;
   switch (d.type) {
+    case 'prototyper:snapshot': {
+      const w = snapWaits.get(d.req);
+      if (w) { snapWaits.delete(d.req); w(d); }
+      return;
+    }
     case 'prototyper:ready':
       embed.origin = e.origin;
       embed.page = typeof d.page === 'string' ? d.page : '/';
@@ -2479,6 +2487,151 @@ $('#ds-form').addEventListener('submit', async (e) => {
     go.disabled = false;
   }
 });
+// ---------- Ekspor halaman (PNG / JPG / PDF) ----------
+// Dirender ulang oleh daemon dengan Edge/Chrome headless (GET /api/prototypes/:id/export) pada
+// ukuran jendela pratinjau saat ini, jadi hasilnya sama dengan yang tampil tetapi bisa seluruh halaman.
+const ex = {
+  id: null,
+  format: readPref('prototyper:ex-format', 'png'),
+  // Area diingat terpisah: desktop = seluruh halaman; tablet/mobile = bingkai perangkat saja (portrait/landscape)
+  areas: { desktop: readPref('prototyper:ex-area-desktop', 'full'), device: readPref('prototyper:ex-area-device', 'view') },
+  scale: readPref('prototyper:ex-scale', '2'),
+  paper: readPref('prototyper:ex-paper', 'screen'),
+  busy: false,
+};
+const exAreaKey = () => (deviceSize() ? 'device' : 'desktop');
+const exArea = () => ex.areas[exAreaKey()];
+const canCopyImage = () => window.isSecureContext && 'ClipboardItem' in window && !!navigator.clipboard?.write;
+/** Ukuran jendela yang dipakai pratinjau sekarang (px CSS, sebelum diperkecil). */
+function exportSize() {
+  const sz = deviceSize();
+  if (sz) return { ...sz, mobile: true, label: `${DEVICES[ui.device].label} ${ui.landscape ? 'landscape' : 'portrait'}` };
+  const f = $('#d-view iframe');
+  const w = f?.offsetWidth || DESKTOP_W, h = f?.offsetHeight || 800;
+  return { w: Math.max(DESKTOP_MIN, w), h: Math.max(480, h), mobile: false, label: 'Desktop' };
+}
+function openExport(p) {
+  if (!p || p.status !== 'running') return toast('Jalankan prototype dulu untuk mengekspor.', true);
+  ex.id = p.id;
+  $('#ex-page').value = embed.page ?? cm.pages[p.id] ?? '/';
+  $('#ex-err').hidden = true;
+  applyExport();
+  $('#dlg-export').showModal();
+}
+function applyExport() {
+  const pdf = ex.format === 'pdf';
+  const p = byId(ex.id);
+  const seg = (sel, v) => { for (const b of $$(`${sel} button`)) b.setAttribute('aria-pressed', String(b.dataset.val === v)); };
+  const sz = exportSize();
+  const area = exArea();
+  const a4 = pdf && ex.paper === 'a4';
+  const k = pdf ? 1 : Number(ex.scale);
+  const result = a4 ? 'kertas A4'
+    : area === 'full' ? `${sz.w * k} px × setinggi halaman`
+    : `${sz.w * k}×${sz.h * k} px`;
+  $('#ex-sub').textContent = `${p?.name ?? ''} · ${sz.label} ${sz.w}×${sz.h} → hasil ${result}. Ubah ukuran/orientasi lewat tombol perangkat di pratinjau.`;
+  seg('#ex-format', ex.format); seg('#ex-area', area); seg('#ex-scale', ex.scale); seg('#ex-paper', ex.paper);
+  $('#ex-scale-row').hidden = pdf;
+  $('#ex-paper-row').hidden = !pdf;
+  $('#ex-area-row').hidden = a4;
+  $('#ex-copy').hidden = ex.format !== 'png' || !canCopyImage();
+  $('#ex-hint').textContent = [
+    pdf && ex.paper === 'a4' ? 'A4 memakai gaya cetak halaman (@media print) dan bisa terbagi beberapa lembar.' : '',
+    p?.type === 'command' && embed.page === null ? 'Untuk prototype command, isi path halaman yang ingin diekspor.' : '',
+    'Tema, gaya, dan status login ikut seperti di pratinjau; isian form atau dialog yang sedang terbuka tidak ikut.',
+  ].filter(Boolean).join(' ');
+  for (const b of ['#ex-go', '#ex-copy']) $(b).disabled = ex.busy;
+  $('#ex-go').textContent = ex.busy ? 'Mengekspor…' : 'Unduh';
+}
+$('#ex-area').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-val]');
+  if (!b) return;
+  const key = exAreaKey();
+  ex.areas[key] = b.dataset.val;
+  writePref(`prototyper:ex-area-${key}`, b.dataset.val);
+  applyExport();
+});
+for (const [sel, key] of [['#ex-format', 'format'], ['#ex-scale', 'scale'], ['#ex-paper', 'paper']]) {
+  $(sel).addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-val]');
+    if (!b) return;
+    ex[key] = b.dataset.val;
+    writePref(`prototyper:ex-${key}`, ex[key]);
+    applyExport();
+  });
+}
+const snapWaits = new Map();
+let snapSeq = 0;
+/** Keadaan pratinjau (skema warna, atribut tema, local/sessionStorage kecil) dari embed.js; null bila tak ada embed. */
+function previewSnapshot() {
+  if (!embed.origin) return Promise.resolve(null);
+  const req = ++snapSeq;
+  return new Promise((resolve) => {
+    const t = setTimeout(() => { snapWaits.delete(req); resolve(null); }, 1000);
+    snapWaits.set(req, (d) => { clearTimeout(t); resolve(d); });
+    sendEmbed('prototyper:snapshot', { req });
+  });
+}
+/** Skema warna yang diterima iframe pratinjau: mengikuti tema Web UI (color-scheme), atau sistem bila otomatis. */
+const uiScheme = () => (ui.theme === 'light' || ui.theme === 'dark' ? ui.theme : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+async function fetchExport() {
+  const sz = exportSize();
+  const snap = await previewSnapshot();
+  const state = snap ? { html: snap.html, body: snap.body, storage: snap.storage, session: snap.session } : null;
+  const q = new URLSearchParams({
+    format: ex.format,
+    path: $('#ex-page').value.trim() || '/',
+    width: String(sz.w),
+    height: String(sz.h),
+    mobile: sz.mobile ? '1' : '0',
+    full: exArea() === 'full' ? '1' : '0',
+    scale: ex.scale,
+    paper: ex.paper,
+    scheme: snap?.scheme === 'dark' || snap?.scheme === 'light' ? snap.scheme : uiScheme(),
+  });
+  if (state) q.set('state', JSON.stringify(state));
+  const res = await fetch(`/api/prototypes/${enc(ex.id)}/export?${q}`);
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.error?.message ?? `HTTP ${res.status}`);
+  }
+  const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? `${ex.id}.${ex.format}`;
+  return { blob: await res.blob(), name, truncated: res.headers.get('x-prototyper-truncated') === '1' };
+}
+function saveBlob(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
+}
+async function runExport(copy) {
+  if (ex.busy) return;
+  ex.busy = true; $('#ex-err').hidden = true; applyExport();
+  try {
+    const r = await fetchExport();
+    if (copy) {
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': r.blob })]);
+      toast('Gambar disalin; tempel dengan Ctrl+V');
+    } else {
+      saveBlob(r.blob, r.name);
+      toast(`Diunduh: ${r.name}`);
+    }
+    if (r.truncated) toast('Halaman terlalu panjang; bagian bawah dipotong.', true);
+    $('#dlg-export').close();
+  } catch (err) {
+    $('#ex-err').textContent = err.message;
+    $('#ex-err').hidden = false;
+  } finally {
+    ex.busy = false; applyExport();
+  }
+}
+$('#ex-form').addEventListener('submit', (e) => { e.preventDefault(); runExport(false); });
+$('#ex-copy').addEventListener('click', () => runExport(true));
+$$('#dlg-export [data-close]').forEach((b) => b.addEventListener('click', () => $('#dlg-export').close()));
+
 $$('#dlg-ds [data-close]').forEach((b) => b.addEventListener('click', () => $('#dlg-ds').close()));
 
 // ---------- Pilih file/folder lewat dialog OS ----------
@@ -2687,6 +2840,8 @@ function commands() {
     if (k !== ui.device) out.push({ ic: '▭', label: `Pratinjau: ${d.label}${d.w ? ` (${d.w}×${d.h})` : ''}`, grp: 'Tampilan', run: () => setDevice(k) });
   }
   if (deviceSize()) out.push({ ic: '⟳', label: `Pratinjau: putar ke ${ui.landscape ? 'portrait' : 'landscape'}`, grp: 'Tampilan', run: () => setLandscape(!ui.landscape) });
+  const sel = byId(ui.selected);
+  if (sel?.status === 'running' && openUrl(sel)) out.push({ ic: '⤓', label: `Ekspor halaman ${sel.name} (PNG / JPG / PDF)`, grp: sel.id, run: () => openExport(sel) });
   out.push({ ic: '▢', label: ui.preview ? 'Sembunyikan pratinjau' : 'Tampilkan pratinjau', grp: 'Tampilan', run: togglePreview });
   return out;
 }

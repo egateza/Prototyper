@@ -110,6 +110,21 @@ export class DaemonClient {
     return data as T;
   }
 
+  /** GET berkas biner (mis. ekspor); error API dilempar sebagai AppError. */
+  async download(urlPath: string): Promise<{ data: Buffer; headers: Headers }> {
+    let res: Response;
+    try {
+      res = await fetch(this.base + urlPath);
+    } catch (err) {
+      throw new AppError('DAEMON_UNAVAILABLE', `Tidak bisa menghubungi daemon di ${this.base}: ${errorMessage(err)}`);
+    }
+    if (!res.ok) {
+      const e = ((await res.json().catch(() => null)) as ErrorBody | null)?.error;
+      throw new AppError((e?.code ?? 'INTERNAL') as ErrorCode, e?.message ?? `HTTP ${res.status}`, e?.details);
+    }
+    return { data: Buffer.from(await res.arrayBuffer()), headers: res.headers };
+  }
+
   /** Ikuti log via SSE; resolve saat koneksi ditutup. */
   async followLogs(id: string, tail: number, onLine: (l: LogLine) => void): Promise<void> {
     let res: Response;

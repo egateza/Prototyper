@@ -3,6 +3,7 @@ import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import { APP_DIR, APP_HOST, APP_MODE } from '../core/appfiles.js';
 import { resolveWebSwap, type HostInfo } from '../core/apphost.js';
+import { createCapturer, type Capturer } from '../core/capture.js';
 import { AgentRunner, type AgentCommand, type AgentId } from '../core/agent.js';
 import type { Config } from '../core/config.js';
 import type { Runner } from '../core/picker.js';
@@ -42,6 +43,8 @@ export interface BuildAppOptions {
   picker?: { run?: Runner; platform?: NodeJS.Platform };
   /** Untuk tes: alamat untuk URL pairing (default: IP LAN komputer ini + PROTOTYPER_ALLOWED_HOSTS). */
   lanAddresses?: () => string[];
+  /** Untuk tes: ganti perender ekspor PDF/PNG (default Chromium headless). */
+  capture?: Capturer;
 }
 
 /** Asal Web UI yang sedang dilayani. Berganti tanpa restart lewat `POST /api/app/reload-web`. */
@@ -61,11 +64,13 @@ export interface AppContext {
   web: WebSource;
   /** Perangkat lain (HP) yang dipasangkan untuk mode LAN. */
   devices: DeviceStore;
+  /** Perender ekspor halaman (PDF/PNG/JPG). */
+  capture: Capturer;
 }
 
 export const WEB_DIR = path.join(APP_DIR, 'web');
 
-export async function buildApp({ config, logger = false, onShutdown, agentCommands, web, appHost = APP_HOST, update, picker, lanAddresses: addrs }: BuildAppOptions): Promise<{
+export async function buildApp({ config, logger = false, onShutdown, agentCommands, web, appHost = APP_HOST, update, picker, lanAddresses: addrs, capture }: BuildAppOptions): Promise<{
   app: FastifyInstance;
   ctx: AppContext;
 }> {
@@ -77,7 +82,7 @@ export async function buildApp({ config, logger = false, onShutdown, agentComman
   const agent = new AgentRunner(config, agentCommands);
   const devices = new DeviceStore(config.home);
   await devices.load();
-  const ctx: AppContext = { config, registry, runtime, agent, state, staleProcesses, web: web ?? { dir: WEB_DIR, version: VERSION }, devices };
+  const ctx: AppContext = { config, registry, runtime, agent, state, staleProcesses, web: web ?? { dir: WEB_DIR, version: VERSION }, devices, capture: capture ?? createCapturer() };
 
   const app = Fastify({ logger, forceCloseConnections: true });
   const startedAt = Date.now();

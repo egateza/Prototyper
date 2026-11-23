@@ -11,6 +11,7 @@ prototyper info <id> --json            # path, url, status, instructions.path
 prototyper start <id> --json           # atau restart; cetak url
 prototyper logs <id> -n 100 --json     # debug
 prototyper lan <id> on|off             # buka/tutup akses LAN prototype ini saja (Web UI tetap lokal)
+prototyper export <id> -p /kasir -d mobile -o shot.png   # tangkapan halaman (png|jpg|pdf; Edge/Chrome headless) untuk memeriksa hasil
 prototyper comments <id> --waiting agent --json   # komentar yang giliran agent
 prototyper comments context <id> <commentId> --json   # riwayat: komentar selesai terkait + keputusan (DECISIONS.md)
 prototyper comments reply <id> <commentId> "apa yang diubah"   # lapor hasil; komentar tetap open
@@ -47,7 +48,7 @@ Struktur:
 
 ```
 src/boot/    sea.ts (main biner tunggal: pilih aplikasi di app store lalu muat; mengubahnya = naikkan RUNTIME)
-src/core/    appfiles (APP_DIR/APP_MODE: source|dist|bundle|sea, cliCommand), apphost (RUNTIME, app store, bootApp), apppack (tar.gz paket aplikasi), semver, config, manifest (zod), detect (init), scaffold (new + template), dstemplate (isi template design-system), designsystem (ds use/sync/detach: salin token & komponen ke pemakai), agentfiles (AGENTS.md/CLAUDE.md), comments (+ DECISIONS.md, arsip, context), embed (sisip skrip pratinjau), agent (menjalankan claude -p), agentsession (lanjut sesi), registry, state, ports, logs, runtime, views, startup (Run key Windows), update (GitHub Releases), selfupdate (cek berkala + `prototyper update` tanpa tray), open (buka browser), picker (dialog pilih file/folder OS untuk tombol Pilih… di Web UI), devices (pairing HP: kode, token, devices.json)
+src/core/    appfiles (APP_DIR/APP_MODE: source|dist|bundle|sea, cliCommand), apphost (RUNTIME, app store, bootApp), apppack (tar.gz paket aplikasi), semver, config, manifest (zod), detect (init), scaffold (new + template), dstemplate (isi template design-system), designsystem (ds use/sync/detach: salin token & komponen ke pemakai), agentfiles (AGENTS.md/CLAUDE.md), comments (+ DECISIONS.md, arsip, context), embed (sisip skrip pratinjau), capture (ekspor PNG/JPG/PDF lewat Chromium headless + CDP), agent (menjalankan claude -p), agentsession (lanjut sesi), registry, state, ports, logs, runtime, views, startup (Run key Windows), update (GitHub Releases), selfupdate (cek berkala + `prototyper update` tanpa tray), open (buka browser), picker (dialog pilih file/folder OS untuk tombol Pilih… di Web UI), devices (pairing HP: kode, token, devices.json)
 src/server/  app.ts (buildApp), routes/health.ts, routes/prototypes.ts, routes/comments.ts, routes/agent.ts, routes/update.ts (`/api/update`, pasang via `prototyper update` terlepas), routes/pick.ts (`/api/pick`), routes/devices.ts (pairing `/api/devices`, `/pair`), access.ts (hak akses per request)
 src/cli/     index.ts (perintah), comments.ts (prototyper comments …), designsystem.ts (prototyper ds …), client.ts (HTTP + auto-start daemon), update.ts (prototyper update), launcher.ts (dobel-klik exe), output.ts
 src/tray/    tray Windows: index.ts (proses, lock, install), controller.ts (logika, diuji dgn host tiruan), popup.ts (tata letak popup klik kiri, varian B Ringkas), menu.ts (menu klik kanan), host.ts (skrip PowerShell: NotifyIcon + popup)
