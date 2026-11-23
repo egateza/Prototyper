@@ -1,7 +1,7 @@
 # Roadmap Prototyper
 
 > Catatan rencana kerja setelah v0.1. Untuk arsitektur yang sudah berjalan lihat [`DESIGN.md`](DESIGN.md).
-> Terakhir diperbarui: 15 November 2026.
+> Terakhir diperbarui: 23 November 2026 (versi 0.4.1 + ekspor halaman yang belum dirilis).
 
 ## Sudah selesai
 
@@ -13,84 +13,77 @@
 - [x] **#3 Komentar, tahap 1**: komentar per halaman di `.prototyper/comments.json`, API, CLI `prototyper comments`, panel di Web UI, badge di sidebar (DESIGN.md §10b)
 - [x] **#3 Pertanyaan berpilihan**: `comments ask --option … [--multi]` tampil sebagai radio/checkbox; pertanyaan balik; label giliran Menunggu Anda/agent; `--waiting agent`
 - [x] **#3 Komentar, tahap 2 — klik/blok elemen (static)**: tombol Komentari di pratinjau, anchor (selector + teks + quote), halaman otomatis, pin bernomor, fokus ke elemen; `static.inject: false` untuk mematikan (DESIGN.md §10c)
+- [x] **#3 Komentar, tahap 3 — konteks komentar** (0.3.10, DESIGN.md §10d): `DECISIONS.md`, `comments context`, snapshot `anchor.html`, arsip otomatis
+- [x] **Lampiran gambar** di komentar, balasan, dan pesan ke agent (0.4.0)
 - [x] **Petunjuk agent otomatis**: blok bertanda di `AGENTS.md` + `CLAUDE.md` (`@AGENTS.md`) saat didaftarkan; `prototyper agents sync`; opt-out `agent.syncInstructions: false` (DESIGN.md §10e)
 - [x] **#4 Agent dari Web UI**: Kerjakan dengan Claude (`claude -p`, izin terbatas, shim `prototyper`, log live, Stop, batas waktu), tombol per komentar, pratinjau static di-refresh setelah selesai (DESIGN.md §10f)
 - [x] **#4 Multi-agent**: deteksi agent lokal (`prototyper agents list`, dialog Agent lokal, `PROTOTYPER_AGENT_BIN_<ID>`), pilihan agent saat Kerjakan; Codex teruji (codex-cli 0.169); preset Gemini/Copilot eksperimental
-- [x] **Live-reload static**: `fs.watch` → SSE → `embed.js` memuat ulang halaman (CSS diganti tanpa muat ulang); `static.liveReload: false` untuk mematikan (DESIGN.md §7)
-- [x] **Checkpoint run agent + Batalkan**: snapshot sebelum/sesudah run di repo git bayangan, tombol Batalkan (N file), deteksi bentrok (DESIGN.md §10f)
+- [x] **#4 Lanjut sesi Claude** (`--resume`, 0.3.11)
+- [x] **Checkpoint run agent + Batalkan**: snapshot sebelum/sesudah run di repo git bayangan, tombol Batalkan (N file), deteksi bentrok (0.3.9, DESIGN.md §10f)
+- [x] **Live-reload static**: `fs.watch` → SSE → `embed.js` memuat ulang halaman (CSS diganti tanpa muat ulang); `static.liveReload: false` untuk mematikan (0.3.8, DESIGN.md §7)
+- [x] **#5 Distribusi**: biner tunggal Node SEA (`src/boot/sea.ts`), portable, paket npm (`npm run release`, docs/RELEASE.md); installer MSI (0.3.0)
+- [x] **Tray Windows** (0.2.0, DESIGN.md §10g): popup + menu, pembaruan dari tray, Run key; daftar ringkas 5 per halaman + label Prototype/Desain sistem (0.4.1)
+- [x] **Pembaruan**: paket aplikasi kecil tanpa ganti exe (0.3.0), pembaruan Web UI tanpa restart (0.3.3), `prototyper update` dari CLI, halaman **Yang baru**
+- [x] **Desain sistem** (0.4.0, DESIGN.md §10h): template `design-system`, `ds use/sync/detach/local`, sebarkan ke semua pemakai
+- [x] **LAN per prototype** (`prototyper lan <id> on|off`) dan mode LAN dari tray (0.3.11–0.4.0)
+- [x] **Edit dari HP** (0.4.0): pairing perangkat dengan QR (`src/core/devices.ts`), hak akses per request (`src/server/access.ts`), tampilan mobile
+- [x] **Dialog pilih file/folder OS** untuk tombol **Pilih…** (0.4.0)
+- [x] **Ekspor halaman** ke PNG/JPG/PDF lewat Chromium headless (`prototyper export`), belum dirilis
 - [x] Tes jalan di Windows lewat `scripts/vitest.mjs` (normalisasi huruf drive)
+- [x] Commit baseline
 
 ## Perlu diverifikasi (oleh Ega, di Windows)
 
-- [x] `npm install`, `npm run typecheck`, dan `npm test` (87 tes, 12 file) lolos di Windows (Node 24.16)
+- [x] `npm install`, `npm run typecheck`, dan `npm test` lolos di Windows (Node 24.16)
 - [x] `prototyper shutdown` dengan prototype Vite yang berjalan tidak meninggalkan `node.exe`, dan portnya dilepas
 - [x] Run Claude Code sungguhan dari Web UI (manual)
-- [ ] Stop/restart satu prototype command dari Web UI tidak meninggalkan `node.exe` (dicek manual di Task Manager)
-- [ ] Stop run agent dari Web UI tidak meninggalkan proses `claude`/`node.exe`
-- [ ] Akses dari HP lewat `--lan` (izin Windows Firewall untuk port 4000 dan 4100–4199)
 - [x] Preset Codex diuji dengan codex-cli 0.169 (login ChatGPT) → `tested`
+- [x] Stop/restart satu prototype command dari Web UI tidak meninggalkan `node.exe` (diuji 23 Nov 2026 dengan exe terpasang + Vite: rantai `cmd → npm → cmd → vite` mati semua, port lepas)
+- [x] Stop run agent dari Web UI tidak meninggalkan proses `claude`/`node.exe` (diuji 23 Nov 2026 dengan Claude Code: `claude.exe` + `conhost.exe` mati, status `stopped`)
+- [x] Akses dari HP lewat LAN dan pairing (izin Windows Firewall untuk port 4000 dan 4100–4199). Diuji 23 Nov 2026 dari Android; jaringan laptop berprofil Public, aturan `prototyper.exe` dibuat Windows hanya untuk Public. Dari HP juga diuji: komentar, Kerjakan + Batalkan agent, start/stop prototype, dan operasi khusus komputer ditolak
 - [ ] Preset Gemini CLI / Copilot CLI dengan agent aslinya → tandai `tested` di `PRESETS`
-- [ ] Commit baseline pertama (semua file masih untracked)
 
 ## Rencana
 
 Urutan yang disarankan:
 
-1. **Commit baseline** + verifikasi yang tersisa di atas.
-2. ~~**#3 tahap 3 — konteks komentar**~~ ✓ (0.3.10).
-3. **Lanjutan #4** (agent): ~~`--resume` sesi Claude~~ ✓ (0.3.11), uji preset lain.
-4. ~~**Live-reload static**~~ ✓ (0.3.8).
-5. **MCP server**.
-6. **#5 `.exe`** terakhir, supaya semua fitur ikut terbungkus.
+1. Verifikasi yang tersisa di atas.
+2. Rilis ekspor halaman (naikkan versi + entri `web/whatsnew.json`).
+3. **MCP server**.
+4. Lanjutan #3 dan #4 (daftar di bawah), sesuai kebutuhan.
 
-### #1 Membuat prototype baru ✓
+### #1 Membuat prototype baru
 
-Selesai. Catatan lanjutan:
+Dasar selesai. Belum:
 
 - Template TypeScript (`vite-react-ts`) bila dibutuhkan.
 - Impor beberapa file (HTML + aset, atau `.zip`) sekaligus. Saat ini hanya satu file HTML.
 
-### #2 Kelengkapan Web UI ✓
-
-Selesai.
-
 ### #3 Komentar pada prototype
 
-Tahap 1 (komentar per halaman + pertanyaan berpilihan) dan tahap 2 untuk mode static selesai.
+Tahap 1–3 selesai untuk mode static. Belum:
 
-**Sisa tahap 2:**
-
-- Mode **command**: butuh reverse proxy di depan dev server (risiko bentrok dengan HMR/WebSocket), atau tag skrip manual ke `http://localhost:4000/...`. Ditunda.
-- Selector bisa usang bila struktur halaman berubah; pertimbangkan beberapa kandidat selector / posisi relatif, plus snapshot `outerHTML` (tahap 3).
-
-**Tahap 3 — konteks komentar** ✓ (0.3.10, rincian di DESIGN.md §10d): `DECISIONS.md`, `comments context`, snapshot `anchor.html`, arsip otomatis, petunjuk agent diperbarui. Sisa:
-
-- Jejak git (trailer `Prototyper-Comment: c12`), `comments search`, `decisions compact`, tool MCP `get_comment_context`.
+- Komentar elemen di mode **command**: butuh reverse proxy di depan dev server (risiko bentrok dengan HMR/WebSocket), atau tag skrip manual ke `http://localhost:4000/...`. Ditunda.
+- Selector bisa usang bila struktur halaman berubah: pertimbangkan beberapa kandidat selector atau posisi relatif.
+- Jejak git (trailer `Prototyper-Comment: c12`).
+- `prototyper comments search` dan `prototyper decisions compact`.
 - Tampilkan komentar arsip di Web UI (filter "Semua" saat ini hanya komentar di `comments.json`).
 
-### #4 Agent dari Web UI — lanjutan
+### #4 Agent dari Web UI
 
 Dasar selesai (Claude dan Codex teruji, Gemini/Copilot eksperimental). Belum:
 
-- ~~Melanjutkan sesi Claude sebelumnya (`--resume`)~~ ✓ (0.3.11). Lanjutan: resume untuk Codex (`codex exec resume`) bila sudah diuji.
-- Uji preset Gemini/Copilot dengan versi aslinya; parsing output JSON Codex (`--json`) agar log lebih rapi.
+- Lanjut sesi untuk Codex (`codex exec resume`) bila sudah diuji. Saat ini hanya Claude.
+- Parsing output JSON Codex (`--json`) agar log lebih rapi.
 - Agent kustom lewat perintah bebas (bukan hanya preset).
 - `prototyper comments wait` untuk sesi agent interaktif di terminal (menunggu sampai ada komentar `--waiting agent`).
-- Sengaja **tidak**: menjalankan agent otomatis saat ada komentar baru atau saat pengguna menjawab — tetap atas permintaan.
+- Sengaja **tidak**: menjalankan agent otomatis saat ada komentar baru atau saat pengguna menjawab. Agent tetap berjalan atas permintaan.
 
-### #5 Distribusi sebagai `.exe` (Node SEA)
+### MCP server
 
-Status: diusulkan.
-
-- Node 24: belum ada `node --build-sea` (baru di Node 25.5) → pakai blob `--experimental-sea-config` + `postject` ke salinan `node.exe`; dibungkus dalam `npm run build:exe`.
-- SEA Node 24 hanya menjalankan satu skrip CommonJS → bundle dengan esbuild.
-- Penyesuaian kode: `web/` (termasuk `embed.js`) dan `package.json` dibaca lewat `node:sea` `getAsset()`, bukan `import.meta.url`; auto-start daemon memanggil `prototyper.exe serve`; shim agent (`<HOME>/bin/prototyper.cmd`) menunjuk ke exe; klik dua kali → serve + buka Web UI di browser.
-- Konsekuensi: ukuran ±80–120 MB, peringatan SmartScreen (tidak ditandatangani), fitur SEA masih Stability 1.1.
-- Build harus di Windows (butuh `node.exe` Windows).
-- Alternatif yang ditimbang: Bun/Deno compile (risiko kompatibilitas Fastify & kill tree), shortcut `.cmd` + `npm link` (tetap butuh Node).
+- Di atas HTTP API yang sama (prototype + komentar + run agent), untuk agent tanpa akses shell (mis. Claude Desktop); termasuk tool `get_comment_context`.
 
 ### Nanti
 
-- MCP server di atas HTTP API yang sama (prototype + komentar + run agent), untuk agent tanpa akses shell (mis. Claude Desktop); termasuk tool `get_comment_context`
-- `comments search` dan `prototyper decisions compact`
-- Auto-restart prototype yang crash
+- Auto-restart prototype yang crash.
+- Penandatanganan kode exe/MSI (saat ini memunculkan peringatan SmartScreen).

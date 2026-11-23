@@ -1,0 +1,19 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      // Dipakai compound "daemon + tray": tunggu daemon yang sedang di-debug siap,
+      // supaya tray tidak menyalakan daemon kedua di latar.
+      "label": "tunggu daemon",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-Command",
+        "$t = (Get-Date).AddSeconds(60); while ((Get-Date) -lt $t) { try { Invoke-RestMethod http://127.0.0.1:4000/api/health -TimeoutSec 2 | Out-Null; 'daemon siap'; exit 0 } catch { Start-Sleep -Milliseconds 500 } }; 'daemon tidak siap dalam 60 detik'; exit 1"
+      ],
+      "presentation": { "reveal": "silent", "panel": "dedicated", "close": true },
+      "problemMatcher": []
+    }
+  ]
+}

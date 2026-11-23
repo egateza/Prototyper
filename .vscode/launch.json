@@ -29,6 +29,16 @@
       "skipFiles": ["<node_internals>/**", "**/node_modules/**"]
     },
     {
+      "name": "Prototyper: daemon LAN (dev, auto-reload)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "--lan"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"]
+    },
+    {
       "name": "Prototyper: daemon LAN (source)",
       "type": "node",
       "request": "launch",
@@ -38,6 +48,33 @@
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
       "skipFiles": ["<node_internals>/**", "**/node_modules/**"]
+    },
+    {
+      // Tray Windows dari source. --foreground: tetap di terminal agar bisa di-debug.
+      // Tutup dulu tray yang sudah berjalan (klik kanan ikon → Keluar), kalau tidak gagal "Tray Prototyper sudah berjalan".
+      "name": "Prototyper: tray (source)",
+      "type": "node",
+      "request": "launch",
+      "runtimeArgs": ["--import", "tsx"],
+      "program": "${workspaceFolder}/src/cli/index.ts",
+      "args": ["tray", "--foreground"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"]
+    },
+    {
+      // Bagian dari compound "daemon + tray": menunggu daemon siap dulu (lihat tasks.json).
+      "name": "Prototyper: tray (pakai daemon yang di-debug)",
+      "type": "node",
+      "request": "launch",
+      "preLaunchTask": "tunggu daemon",
+      "runtimeArgs": ["--import", "tsx"],
+      "program": "${workspaceFolder}/src/cli/index.ts",
+      "args": ["tray", "--foreground"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"],
+      "presentation": { "hidden": true }
     },
     {
       "name": "Prototyper: CLI (ketik perintah)",
@@ -61,6 +98,22 @@
       "console": "integratedTerminal",
       "outFiles": ["${workspaceFolder}/dist/**/*.js"],
       "skipFiles": ["<node_internals>/**", "**/node_modules/**"]
+    }
+  ],
+  "compounds": [
+    {
+      // Daemon LAN + tray sekaligus; breakpoint di src/server, src/core, dan src/tray semua kena.
+      // Shift+F5 menghentikan keduanya. Tutup dulu tray/daemon yang sudah berjalan.
+      "name": "Prototyper: daemon + tray (source)",
+      "configurations": ["Prototyper: daemon LAN (source)", "Prototyper: tray (pakai daemon yang di-debug)"],
+      "stopAll": true
+    },
+    {
+      // Sama, tapi daemon auto-reload (tsx watch) saat src/ berubah. Tray tidak ikut reload;
+      // jangan pakai Jeda/Lanjutkan atau ganti Mode LAN dari tray: itu menyalakan daemon latar di luar debugger.
+      "name": "Prototyper: daemon (dev, auto-reload) + tray",
+      "configurations": ["Prototyper: daemon LAN (dev, auto-reload)", "Prototyper: tray (pakai daemon yang di-debug)"],
+      "stopAll": true
     }
   ],
   "inputs": [
