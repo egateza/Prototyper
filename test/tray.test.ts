@@ -11,7 +11,7 @@ import { TrayController, WHATSNEW_HASH, type DaemonApi, type TrayDeps } from '..
 import { asciiJson, parseHostLine, TrayHost, type HostEvent, type IconState, type TrayHostLike } from '../src/tray/host.js';
 import { parseAppsTheme, readAppsTheme, runningTrayPid, trayArgs, trayFiles } from '../src/tray/index.js';
 import { iconState, lanCopyText, lanNote, lanUrl, statusNotices, type TrayState, type UpdateState } from '../src/tray/menu.js';
-import { glyphRuns, MENU_THEME, MENU_W, menuLayout, POPUP_W, MAX_ROWS, popupLayout, type Popup, type PopupItem } from '../src/tray/popup.js';
+import { glyphRuns, MENU_THEME, MENU_W, menuLayout, POPUP_W, LIST_PAGE, popupLayout, type Popup, type PopupItem } from '../src/tray/popup.js';
 import { testConfig, tmpDir } from './helpers.js';
 
 function view(id: string, status: PrototypeView['status'] = 'stopped', port: number | null = null): PrototypeView {
@@ -44,7 +44,7 @@ const upd = (o: Partial<UpdateState> = {}): UpdateState => ({
 });
 
 const state = (o: Partial<TrayState> = {}): TrayState => ({
-  url: 'http://localhost:4000', daemonUp: true, daemonBusy: null, prototypes: [], startup: false, notifications: true, lanMode: 'off', lanScope: 'all', lanAddrs: [], theme: 'dark', update: upd(), ...o,
+  url: 'http://localhost:4000', daemonUp: true, daemonBusy: null, prototypes: [], listLimit: 5, listBusy: null, startup: false, notifications: true, lanMode: 'off', lanScope: 'all', lanAddrs: [], theme: 'dark', update: upd(), ...o,
 });
 
 type Hit = Extract<PopupItem, { k: 'hit' }>;
@@ -63,7 +63,7 @@ describe('menu tray', () => {
   it('popup ringkas: ringkasan, baris prototype dengan toggle, opsi, bar Buka Prototyper di bawah', () => {
     const p = popupLayout(state({ prototypes: [view('kasir', 'running', 4101), view('landing')] }));
     expect(p.w).toBe(POPUP_W);
-    expect(texts(p)).toEqual(expect.arrayContaining(['Prototyper  v0.1.0', 'Aktif · 1 dari 2 berjalan', 'KASIR  Berjalan · :4101', 'LANDING  Berhenti', 'Jalankan saat startup']));
+    expect(texts(p)).toEqual(expect.arrayContaining(['Prototyper  v0.1.0', 'Aktif · 1 dari 2 berjalan', 'KASIR', 'Prototype  ·  Berjalan · :4101', 'LANDING', 'Prototype  ·  Berhenti', 'Jalankan saat startup']));
     expect(hitIds(p)).toEqual(['pause', 'p:open:kasir', 'p:stop:kasir', 'p:start:landing', 'startup', 'lan', 'update', 'startAll', 'stopAll', 'open']);
     expect(p.items.filter((i) => i.k === 'toggle').map((i) => (i as { on: boolean }).on)).toEqual([true, false, false, false]);
     // bar Buka Prototyper menempel di bawah; tombol di popup tidak menutup popup
@@ -86,6 +86,38 @@ describe('menu tray', () => {
     }
   });
 
+  it('popup: daftar panjang tampil 5 dulu, "Tampilkan lagi" menambah 5, lalu bisa diciutkan', () => {
+    const protos = Array.from({ length: 12 }, (_, i) => view(`p${i}`));
+    const names = (p: Popup) => texts(p).filter((t) => /^P\d+$/.test(t));
+    const first = popupLayout(state({ prototypes: protos }));
+    expect(names(first)).toEqual(['P0', 'P1', 'P2', 'P3', 'P4']);
+    expect(texts(first)).toContain('Tampilkan 5 lagi  (7 tersembunyi)');
+    expect(hitIds(first)).toContain('more');
+    const second = popupLayout(state({ prototypes: protos, listLimit: LIST_PAGE * 2 }));
+    expect(names(second)).toHaveLength(10);
+    expect(texts(second)).toContain('Tampilkan 2 lagi');
+    expect(second.h).toBeGreaterThan(first.h);
+    const all = popupLayout(state({ prototypes: protos, listLimit: LIST_PAGE * 3 }));
+    expect(names(all)).toHaveLength(12);
+    expect(hitIds(all)).toContain('less');
+    expect(hitIds(all)).not.toContain('more');
+    // 5 atau kurang: tanpa tombol
+    const loading = popupLayout(state({ prototypes: protos, listBusy: 'more' }));
+    expect(texts(loading)).toContain('Memuat…');
+    expect(loading.items.some((i) => i.k === 'spinner')).toBe(true);
+    expect(hitIds(loading)).not.toContain('more');
+    expect(loading.h).toBe(first.h);
+    const few = popupLayout(state({ prototypes: protos.slice(0, 5) }));
+    expect(hitIds(few).filter((id) => id === 'more' || id === 'less')).toEqual([]);
+  });
+
+  it('popup: label jenis membedakan prototype dan desain sistem', () => {
+    const ds = { ...view('ds'), manifest: { designSystem: { source: true } } } as unknown as PrototypeView;
+    const p = popupLayout(state({ prototypes: [view('kasir'), ds] }));
+    expect(texts(p)).toContain('Prototype  ·  Berhenti');
+    expect(texts(p)).toContain('Desain sistem  ·  Berhenti');
+  });
+
   it('popup: daemon dijeda/sibuk menonaktifkan aksi massal; daftar panjang diringkas', () => {
     const paused = popupLayout(state({ daemonUp: false, prototypes: [view('kasir')] }));
     expect(hitIds(paused)).not.toContain('startAll');
@@ -93,8 +125,6 @@ describe('menu tray', () => {
     expect(texts(paused)).toContain('▶');
     const busy = popupLayout(state({ daemonBusy: 'stopping' }));
     expect(hitIds(busy)).not.toContain('pause');
-    const many = popupLayout(state({ prototypes: Array.from({ length: MAX_ROWS + 3 }, (_, i) => view(`p${i}`)) }));
-    expect(texts(many)).toContain(`+3 lainnya · buka Prototyper untuk semua`);
     expect(texts(popupLayout(state()))).toContain('Belum ada prototype — tambahkan lewat Web UI');
   });
 
@@ -387,6 +417,7 @@ function setup(o: Partial<TrayDeps> = {}) {
     startup: { get: async () => startup, set: async (v) => void (startup = v) },
     openUrl: (u) => void opened.push(u),
     settingsFile: path.join(home, 'tray.json'),
+    listDelayMs: 5,
     install: async (file, restore, check) => void installs.push([file, restore, check.kind]),
     exit: (code) => void exits.push(code),
     pollMs: 60_000,
@@ -425,6 +456,23 @@ describe('TrayController', () => {
     expect(t.opened).toEqual(['http://localhost:4100']);
     await t.c.click('stopAll');
     expect(t.api.calls).toContain('stop:kasir');
+  });
+
+  it('"Tampilkan lagi" menambah baris popup tanpa menutupnya; "lebih sedikit" kembali ke 5', async () => {
+    const t = setup();
+    t.api.views = Array.from({ length: 7 }, (_, i) => view(`p${i}`));
+    await t.c.start();
+    expect(t.c.state.listLimit).toBe(LIST_PAGE);
+    const pending = t.c.click('more');
+    // spinner dulu: tombol jadi "Memuat…" tanpa area klik, klik kedua diabaikan
+    expect(t.c.state.listBusy).toBe('more');
+    expect(JSON.stringify(t.host.popup)).toContain('Memuat…');
+    await t.c.click('more');
+    await pending;
+    expect(t.c.state.listBusy).toBeNull();
+    expect(t.c.state.listLimit).toBe(LIST_PAGE * 2);
+    await t.c.click('less');
+    expect(t.c.state.listLimit).toBe(LIST_PAGE);
   });
 
   it('jalankan semua melaporkan yang gagal', async () => {

@@ -8,6 +8,7 @@
   --shadow-lg: 0 24px 64px -16px rgb(20 18 40 / .28);
   --log-bg: #15141b; --log-fg: #d8d7e3;
   --accent: #6d5efc;
+  --info: #0284c7;
   --r-sm: 8px; --r: 12px; --r-lg: 18px; --r-pill: 999px;
   --row: 12px;
   --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -21,10 +22,11 @@
     --ok: #3ccf75; --warn: #f0a83a; --err: #ff6b6f; --idle: #6f6e7d;
     --shadow-sm: none; --shadow: 0 1px 0 rgb(255 255 255 / .03) inset, 0 8px 24px -8px rgb(0 0 0 / .5);
     --shadow-lg: 0 24px 64px -12px rgb(0 0 0 / .7);
-    --log-bg: #0a0a0e; color-scheme: dark;
+    --log-bg: #0a0a0e; --info: #38bdf8; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
+  --info: #38bdf8;
   --bg: #0d0d12; --surface: #15151c; --surface-2: #1c1c25; --surface-3: #252530;
   --fg: #eeedf4; --fg-2: #c9c8d4; --muted: #9998a8; --border: #26262f; --border-strong: #34343f;
   --ok: #3ccf75; --warn: #f0a83a; --err: #ff6b6f; --idle: #6f6e7d;
@@ -101,6 +103,14 @@ kbd { border: 1px solid var(--border-strong); border-bottom-width: 2px; border-r
 .mono-av.off { filter: grayscale(.85) opacity(.65); }
 /* Desain sistem: sudut lebih tajam + cincin aksen agar beda dari prototype */
 .mono-av.ds { border-radius: 4px; box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--accent); }
+/* Label jenis (sama dengan popup tray): prototype biru, desain sistem ungu aksen */
+.kind-tag { --k: var(--info); display: inline-block; font: 600 10px/16px var(--font); padding: 0 6px; border-radius: var(--r-pill);
+  margin-right: 6px; vertical-align: 1px; white-space: nowrap; color: var(--k); background: color-mix(in oklab, var(--k) 14%, transparent); }
+.kind-tag.ds { --k: var(--accent); }
+.ws-item .t .kind-tag, .h-card-top .t .kind-tag { font-family: var(--font); font-size: 10px; color: var(--k); }
+/* subjudul satu baris: width 0 + min-width 100% agar teks panjang tidak ikut melebarkan kolom sidebar/kartu */
+.ws-item .t > span, .h-card-top .t > span { display: block; width: 0; min-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+h2 .kind-tag { font-size: 11px; line-height: 18px; vertical-align: 3px; margin: 0 0 0 4px; }
 .ws-item .ds-mark { color: var(--accent); font-size: 11px; margin-left: 4px; font-family: inherit; }
 .ws-item .ds-mark.stale { color: var(--warn); }
 

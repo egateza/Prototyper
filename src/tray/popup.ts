@@ -1,5 +1,6 @@
 import { isLive, lanCopyText, lanNote, type TrayState, type UpdateState } from './menu.js';
 import type { RunStatus } from '../core/runtime.js';
+import type { PrototypeView } from '../core/views.js';
 
 /**
  * Popup klik kiri tray: varian "B Ringkas" dari prototype prototyper-runtime (gelap, padat, lebar 284px).
@@ -36,6 +37,8 @@ export interface Popup {
   r: number;
   border: string;
   items: PopupItem[];
+  /** Tinggi bagian atas yang tetap di tempat saat host menganimasikan perubahan tinggi (header popup). */
+  head?: number;
 }
 
 /** Warna varian B (style.css prototype). */
@@ -57,8 +60,15 @@ export const C = {
 };
 
 export const POPUP_W = 284;
-/** Baris prototype maksimum; sisanya diringkas "+N lainnya". */
-export const MAX_ROWS = 8;
+/** Baris prototype yang tampil awalnya; "Tampilkan lagi" menambah sebanyak ini. */
+export const LIST_PAGE = 5;
+/** Tinggi satu baris prototype (nama + label jenis/status). */
+export const ROW_H = 38;
+
+/** Label jenis di bawah nama: desain sistem (dibuat dengan template design-system) atau prototype biasa. */
+export function kindLabel(p: PrototypeView): { text: string; color: string } {
+  return p.manifest?.designSystem?.source ? { text: 'Desain sistem', color: '#c4b5fd' } : { text: 'Prototype', color: '#7dd3fc' };
+}
 
 const STATUS_TEXT: Record<RunStatus, string> = {
   stopped: 'Berhenti',
@@ -164,33 +174,49 @@ export function popupLayout(s: TrayState): Popup {
   const rowX = 6;
   const rowW = W - 12;
   const toggleX = rowX + rowW - 8 - 28;
-  const shown = s.prototypes.slice(0, MAX_ROWS);
+  const limit = Math.max(LIST_PAGE, s.listLimit);
+  const shown = s.prototypes.slice(0, limit);
   for (const p of shown) {
     const live = isLive(p);
-    items.push({ k: 'hit', x: rowX, y, w: rowW, h: 28, r: 6, hover: C.hover });
-    items.push({ k: 'circle', x: 14, y: y + 10, d: 8, fill: STATUS_DOT[p.status], ...(p.status === 'running' ? { ring: C.okRing, ringW: 3 } : {}) });
+    const mid = y + ROW_H / 2;
+    items.push({ k: 'hit', x: rowX, y, w: rowW, h: ROW_H, r: 6, hover: C.hover });
+    items.push({ k: 'circle', x: 14, y: mid - 4, d: 8, fill: STATUS_DOT[p.status], ...(p.status === 'running' ? { ring: C.okRing, ringW: 3 } : {}) });
     let textEnd = toggleX - 8;
     if (p.status === 'running' && p.url) {
       const ox = toggleX - 8 - 24;
-      items.push({ k: 'rect', x: ox, y: y + 2, w: 24, h: 24, r: 6, stroke: C.line });
-      items.push({ k: 'hit', x: ox, y: y + 2, w: 24, h: 24, r: 6, id: `p:open:${p.id}`, hover: C.btnHover });
-      items.push({ k: 'text', x: ox, y: y + 2, w: 24, h: 24, align: 'center', runs: [{ text: '↗', size: 12, color: C.text, symbol: true }] });
+      items.push({ k: 'rect', x: ox, y: mid - 12, w: 24, h: 24, r: 6, stroke: C.line });
+      items.push({ k: 'hit', x: ox, y: mid - 12, w: 24, h: 24, r: 6, id: `p:open:${p.id}`, hover: C.btnHover });
+      items.push({ k: 'text', x: ox, y: mid - 12, w: 24, h: 24, align: 'center', runs: [{ text: '↗', size: 12, color: C.text, symbol: true }] });
       textEnd = ox - 8;
     }
     const status = p.valid ? `${STATUS_TEXT[p.status]}${p.status === 'running' && p.port ? ` · :${p.port}` : ''}` : 'manifest tidak valid';
+    const kind = kindLabel(p);
+    items.push({ k: 'text', x: 30, y: y + 3, w: textEnd - 30, h: 18, runs: [{ text: p.name, size: 13, color: C.text }] });
     items.push({
-      k: 'text', x: 30, y, w: textEnd - 30, h: 28,
-      runs: [{ text: p.name, size: 13, color: C.text }, { text: `  ${status}`, size: 11, color: C.muted }],
+      k: 'text', x: 30, y: y + 20, w: textEnd - 30, h: 15,
+      runs: [{ text: kind.text, size: 10, color: kind.color, bold: true }, { text: `  ·  ${status}`, size: 10, color: C.muted }],
     });
     if (p.valid) {
-      items.push({ k: 'toggle', x: toggleX, y: y + 6, w: 28, h: 16, on: live });
-      items.push({ k: 'hit', x: toggleX - 4, y: y + 2, w: 36, h: 24, r: 8, id: `p:${live ? 'stop' : 'start'}:${p.id}` });
+      items.push({ k: 'toggle', x: toggleX, y: mid - 8, w: 28, h: 16, on: live });
+      items.push({ k: 'hit', x: toggleX - 4, y: mid - 12, w: 36, h: 24, r: 8, id: `p:${live ? 'stop' : 'start'}:${p.id}` });
+    }
+    y += ROW_H;
+  }
+  // "Tampilkan lagi" bila masih ada yang tersembunyi; "Tampilkan lebih sedikit" setelah diperluas
+  const hidden = s.prototypes.length - shown.length;
+  if (hidden > 0 || shown.length > LIST_PAGE) {
+    const more = `Tampilkan ${Math.min(hidden, LIST_PAGE)} lagi${hidden > LIST_PAGE ? `  (${hidden} tersembunyi)` : ''}`;
+    if (s.listBusy) {
+      // spinner + "Memuat…" di tengah; tanpa area klik agar tidak diklik dua kali
+      const cx = rowX + rowW / 2;
+      items.push({ k: 'spinner', x: cx - 38, y: y + 8, d: 12, color: '#c4b5fd' });
+      items.push({ k: 'text', x: cx - 20, y: y + 2, w: 80, h: 24, runs: [{ text: 'Memuat…', size: 11, color: C.muted, bold: true }] });
+    } else {
+      const label = hidden > 0 ? more : 'Tampilkan lebih sedikit';
+      items.push({ k: 'hit', x: rowX, y: y + 2, w: rowW, h: 24, r: 6, id: hidden > 0 ? 'more' : 'less', hover: C.hover });
+      items.push({ k: 'text', x: rowX, y: y + 2, w: rowW, h: 24, align: 'center', runs: [{ text: label, size: 11, color: '#c4b5fd', bold: true }] });
     }
     y += 28;
-  }
-  if (s.prototypes.length > MAX_ROWS) {
-    items.push({ k: 'text', x: 14, y, w: rowW - 16, h: 22, runs: [{ text: `+${s.prototypes.length - MAX_ROWS} lainnya · buka Prototyper untuk semua`, size: 11, color: C.muted }] });
-    y += 22;
   }
   if (!s.prototypes.length) {
     const msg = s.daemonUp ? 'Belum ada prototype — tambahkan lewat Web UI' : 'Daemon dijeda — lanjutkan untuk melihat prototype';
@@ -280,7 +306,7 @@ export function popupLayout(s: TrayState): Popup {
   y += 38;
 
   bg.h = y;
-  return { w: W, h: y, bg: C.bg, r: 12, border: '#3a3c46', items };
+  return { w: W, h: y, bg: C.bg, r: 12, border: '#3a3c46', head: 50, items };
 }
 
 /** Warna menu klik kanan prototype (`.ctx-menu`), terang & gelap. */

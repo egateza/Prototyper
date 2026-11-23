@@ -155,6 +155,7 @@ public static class PrototyperNative {
   [DllImport("dwmapi.dll")] public static extern int DwmSetWindowAttribute(IntPtr h, int attr, ref int val, int size);
   [DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr h, int index);
   [DllImport("user32.dll")] public static extern int SetWindowLong(IntPtr h, int index, int value);
+  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int w, int cy, uint flags);
   [DllImport("shell32.dll", CharSet = CharSet.Unicode)] public static extern int SetCurrentProcessExplicitAppUserModelID(string id);
 }
 '@
@@ -415,8 +416,16 @@ function New-Surface([string]$name, [bool]$autoClose) {
   $f.Text = 'Prototyper'   # nama jendela (tidak terlihat: jendela tanpa bingkai)
   $f.Icon = $script:appIcon
   [System.Windows.Forms.Control].GetProperty('DoubleBuffered', [System.Reflection.BindingFlags]'Instance,NonPublic').SetValue($f, $true, $null)
-  $script:surfaces[$name] = @{ name = $name; form = $f; model = $null; hovered = @(); spinner = $false; rounded = $false; anchor = [System.Drawing.Point]::Empty; hiding = $false; autoHiddenAt = -100000 }
-  $f.add_Paint({ param($s, $e) try { Draw-Surface $e.Graphics $script:surfaces[[string]$s.Tag] } catch { Err $_ } })
+  $script:surfaces[$name] = @{ name = $name; form = $f; model = $null; hovered = @(); spinner = $false; frame = $null; frameHead = 0; frameBottom = $false; rounded = $false; anchor = [System.Drawing.Point]::Empty; hiding = $false; autoHiddenAt = -100000 }
+  $f.add_Paint({
+    param($s, $e)
+    try {
+      $sf = $script:surfaces[[string]$s.Tag]
+      # selama Resize-Surface: tempel frame yang sudah digambar (cepat), bukan menggambar ulang
+      if ($null -ne $sf.frame) { Paint-Frame $e.Graphics $sf; return }
+      Draw-Surface $e.Graphics $sf
+    } catch { Err $_ }
+  })
   $f.add_MouseMove({ param($s, $e) try { Hover-At $script:surfaces[[string]$s.Tag] $e.Location } catch { Err $_ } })
   $f.add_MouseLeave({ param($s, $e) try { $script:surfaces[[string]$s.Tag].hovered = @(); $s.Invalidate() } catch { Err $_ } })
   $f.add_MouseClick({
@@ -440,9 +449,8 @@ function New-Surface([string]$name, [bool]$autoClose) {
   }
 }
 
-function Place-Surface($sf) {
+function Surface-Bounds($sf) {
   $s = $script:scale
-  $f = $sf.form
   $w = [int]($sf.model.w * $s); $h = [int]($sf.model.h * $s)
   $cur = $sf.anchor
   $wa = [System.Windows.Forms.Screen]::FromPoint($cur).WorkingArea
@@ -461,8 +469,72 @@ function Place-Surface($sf) {
     elseif ($cur.Y -lt $wa.Top) { $y = $wa.Top + $m }
     else { $y = [Math]::Max($wa.Top + $m, [Math]::Min($cur.Y - $h, $wa.Bottom - $h - $m)) }
   }
-  $f.SetBounds($x, $y, $w, $h)
-  if (-not $sf.rounded) { $f.Region = New-Object System.Drawing.Region((RoundPath 0 0 $w $h ([double]$sf.model.r * $s))) }
+  return New-Object System.Drawing.Rectangle($x, $y, $w, $h)
+}
+
+function Apply-Bounds($sf, $b) {
+  $f = $sf.form
+  if ($script:native -and $f.IsHandleCreated) {
+    # SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS: isi lama tidak disalin ke posisi baru (tampak berkedip)
+    [void][PrototyperNative]::SetWindowPos($f.Handle, [IntPtr]::Zero, $b.X, $b.Y, $b.Width, $b.Height, 0x114)
+  } else { $f.SetBounds($b.X, $b.Y, $b.Width, $b.Height) }
+  if (-not $sf.rounded) { $f.Region = New-Object System.Drawing.Region((RoundPath 0 0 $b.Width $b.Height ([double]$sf.model.r * $script:scale))) }
+}
+
+function Place-Surface($sf) { Apply-Bounds $sf (Surface-Bounds $sf) }
+
+# Model baru saat jendela terbuka dan ukurannya berubah (mis. "Tampilkan lagi"): gambar frame baru di bitmap
+# lebih dulu (menggambar lewat PowerShell lambat), lalu animasikan tinggi jendela sebentar dengan menempel
+# bitmap itu: header tetap di atas, sisanya menempel ke tepi yang diam (bawah bila taskbar di bawah).
+function Resize-Surface($sf) {
+  $f = $sf.form
+  $old = $f.Bounds
+  $b = Surface-Bounds $sf
+  $s = $script:scale
+  $cur = [System.Windows.Forms.Cursor]::Position
+  $sf.hovered = @(Hits-At $sf (($cur.X - $b.X) / $s) (($cur.Y - $b.Y) / $s))
+  # 24bpp seperti Save-Snapshot: ClearType tidak tergambar dengan benar di bitmap ber-alpha
+  $bmp = New-Object System.Drawing.Bitmap($b.Width, $b.Height, [System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
+  $g = [System.Drawing.Graphics]::FromImage($bmp)
+  try { $g.Clear((Col ([string]$sf.model.bg))); Draw-Surface $g $sf } finally { $g.Dispose() }
+  if ($null -ne $sf.frame) { $sf.frame.Dispose() }
+  $sf.frame = $bmp
+  $sf.frameHead = [int]([double]$sf.model.head * $s)
+  $sf.frameBottom = ($old.Bottom -eq $b.Bottom -and $old.Y -ne $b.Y)
+  try {
+    if ($old.Width -eq $b.Width -and $old.Height -gt 0 -and $old.X -eq $b.X) {
+      $steps = 8
+      for ($i = 1; $i -lt $steps; $i++) {
+        $t = $i / $steps
+        $e = 1 - [Math]::Pow(1 - $t, 3)  # ease-out
+        $h = [int]($old.Height + ($b.Height - $old.Height) * $e)
+        $y = $b.Y
+        if ($sf.frameBottom) { $y = $b.Bottom - $h }
+        Apply-Bounds $sf (New-Object System.Drawing.Rectangle($b.X, $y, $b.Width, $h))
+        $f.Refresh()
+        Start-Sleep -Milliseconds 14
+      }
+    }
+    Apply-Bounds $sf $b
+    $f.Refresh()
+  } finally {
+    $sf.frame.Dispose(); $sf.frame = $null
+  }
+}
+
+# Tempel frame dari Resize-Surface ke jendela setinggi apa pun selama animasi.
+function Paint-Frame($g, $sf) {
+  $bmp = $sf.frame
+  $W = $bmp.Width
+  $H = $sf.form.ClientSize.Height
+  $head = [Math]::Min($sf.frameHead, $H)
+  if (-not $sf.frameBottom -or $H -ge $bmp.Height -or $head -le 0) { $g.DrawImageUnscaled($bmp, 0, 0); return }
+  $px = [System.Drawing.GraphicsUnit]::Pixel
+  $g.DrawImage($bmp, (New-Object System.Drawing.Rectangle(0, 0, $W, $head)), (New-Object System.Drawing.Rectangle(0, 0, $W, $head)), $px)
+  $rest = $H - $head
+  if ($rest -gt 0) {
+    $g.DrawImage($bmp, (New-Object System.Drawing.Rectangle(0, $head, $W, $rest)), (New-Object System.Drawing.Rectangle(0, ($bmp.Height - $rest), $W, $rest)), $px)
+  }
 }
 
 # Flyout tray, bukan aplikasi: WS_EX_TOOLWINDOW membuat jendela tidak muncul di Alt+Tab / recent apps / taskbar.
@@ -507,7 +579,10 @@ function Set-Model([string]$name, $msg) {
   $sf = $script:surfaces[$name]
   $sf.model = $msg
   $sf.form.BackColor = Col ([string]$msg.bg)
-  if ($sf.form.Visible) { Place-Surface $sf; $sf.form.Invalidate() }
+  if (-not $sf.form.Visible) { return }
+  $s = $script:scale
+  if ($sf.form.Width -ne [int]($msg.w * $s) -or $sf.form.Height -ne [int]($msg.h * $s)) { Resize-Surface $sf }
+  else { $sf.form.Invalidate() }
 }
 
 New-Surface 'popup' $true

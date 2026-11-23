@@ -29,6 +29,10 @@ export interface TrayState {
   /** Daemon sedang dinyalakan/dihentikan dari tray. */
   daemonBusy: 'starting' | 'stopping' | null;
   prototypes: PrototypeView[];
+  /** Jumlah baris prototype yang tampil di popup; bertambah lewat "Tampilkan lagi". */
+  listLimit: number;
+  /** Sedang memuat baris lagi / meringkas daftar: tombolnya menampilkan spinner sebentar. */
+  listBusy: 'more' | 'less' | null;
   /** null: status startup tidak diketahui / tidak didukung. */
   startup: boolean | null;
   notifications: boolean;

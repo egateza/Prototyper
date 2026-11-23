@@ -7,7 +7,7 @@ import type { PrototypeView } from '../core/views.js';
 import type { HostEvent, TrayHostLike } from './host.js';
 import type { LanMode } from '../core/config.js';
 import { iconState, isLive, lanCopyText, lanUrl, statusNotices, summary, type LanScope, type TrayState } from './menu.js';
-import { menuLayout, popupLayout } from './popup.js';
+import { LIST_PAGE, menuLayout, popupLayout } from './popup.js';
 
 /** Akses ke daemon (lewat HTTP di aplikasi asli, tiruan di tes). */
 export interface DaemonApi {
@@ -49,6 +49,8 @@ export interface TrayDeps {
   openUrl: (url: string) => void;
   /** File pengaturan tray (notifikasi). */
   settingsFile: string;
+  /** Lama spinner "Memuat…" sebelum daftar popup diperluas/diringkas (default 300 ms). */
+  listDelayMs?: number;
   /** Pasang `file` (jenisnya dari `check.kind`) lalu jalankan ulang tray yang menyalakan lagi `restore`. */
   install: (file: string, restore: string[], check: UpdateCheck) => Promise<void>;
   /**
@@ -109,6 +111,8 @@ export class TrayController {
       daemonUp: false,
       daemonBusy: null,
       prototypes: [],
+      listLimit: LIST_PAGE,
+      listBusy: null,
       startup: null,
       notifications: true,
       lanMode: d.lanMode ?? 'off',
@@ -204,6 +208,9 @@ export class TrayController {
     switch (id) {
       case 'open':
         return this.openUi();
+      case 'more':
+      case 'less':
+        return this.changeList(id);
       case 'startAll':
         return this.startAll();
       case 'stopAll':
@@ -228,6 +235,18 @@ export class TrayController {
       case 'quit':
         return this.quit();
     }
+  }
+
+  /** "Tampilkan lagi" / "lebih sedikit": spinner sebentar dulu, baru daftar diubah (host menganimasikan tingginya). */
+  private async changeList(dir: 'more' | 'less'): Promise<void> {
+    const s = this.state;
+    if (s.listBusy) return;
+    s.listBusy = dir;
+    this.render();
+    await new Promise((r) => setTimeout(r, this.d.listDelayMs ?? 300));
+    s.listLimit = dir === 'more' ? s.listLimit + LIST_PAGE : LIST_PAGE;
+    s.listBusy = null;
+    this.render();
   }
 
   /** `hash`: halaman tertentu di Web UI, mis. `WHATSNEW_HASH`. */

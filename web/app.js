@@ -150,6 +150,8 @@ const isActive = (p) => p.valid && ACTIVE.includes(p.status);
 const isProblem = (p) => ['crashed', 'failed', 'invalid'].includes(st(p));
 /** Prototype ini adalah desain sistem (designSystem.source). */
 const isDs = (p) => p.manifest?.designSystem?.source === true;
+/** Label jenis: desain sistem atau prototype biasa (sama dengan popup tray). */
+const kindTag = (p) => (isDs(p) ? '<span class="kind-tag ds">Desain sistem</span>' : '<span class="kind-tag">Prototype</span>');
 /** URL yang dibuka dari browser ini: host sama dengan UI (penting di mode LAN). */
 const openUrl = (p) => (p.url && p.port ? `${location.protocol}//${location.hostname}:${p.port}/` : null);
 function hue(id) { let h = 0; for (const c of id) h = (h * 31 + c.charCodeAt(0)) % 360; return h; }
@@ -242,7 +244,7 @@ function renderSide() {
     : vis.length === 0 ? '<div class="empty"><b>Tidak ada yang cocok</b>Coba kata kunci lain atau ganti filter.</div>' : '';
   const html = groups.map(([g, xs]) => `<div class="ws-group">${g} · ${xs.length}</div>${xs.map((x) => `
     <button type="button" class="ws-item" data-act="select" data-id="${esc(x.id)}" aria-current="${x.id === ui.selected}">
-      ${avatar(x, 'sm')}<span class="t"><b>${esc(x.name)}</b><span>${x.url ? `:${x.port}` : esc(x.id)}${sideDsHtml(x)}</span></span>${x.comments?.open ? `<span class="cm-badge${x.comments.waitingUser ? ' wait' : ''}" title="${x.comments.open} komentar open${x.comments.waitingUser ? `, ${x.comments.waitingUser} menunggu jawaban Anda` : ''}">${x.comments.open}</span>` : ''}${statusHtml(x)}
+      ${avatar(x, 'sm')}<span class="t"><b>${esc(x.name)}</b><span>${kindTag(x)}${x.url ? `:${x.port}` : esc(x.id)}${sideDsHtml(x)}</span></span>${x.comments?.open ? `<span class="cm-badge${x.comments.waitingUser ? ' wait' : ''}" title="${x.comments.open} komentar open${x.comments.waitingUser ? `, ${x.comments.waitingUser} menunggu jawaban Anda` : ''}">${x.comments.open}</span>` : ''}${statusHtml(x)}
     </button>`).join('')}`).join('') + empty;
   const home = loaded && list.length ? `<button type="button" class="ws-item ws-home" data-act="select" data-id="" aria-current="${!ui.selected}">
       <span class="home-ic">${ICON.home}</span><span class="t"><b>Beranda</b><span>ringkasan semua prototype</span></span>${totalWaitingUser() ? `<span class="cm-badge wait" title="Komentar menunggu jawaban Anda">${totalWaitingUser()}</span>` : ''}
@@ -300,7 +302,7 @@ function renderMain() {
   if (!p) return;
 
   patch('#d-head', `${avatar(p)}
-    <div class="grow"><h2>${esc(p.name)} ${p.type ? `<span class="type-tag">${p.type}</span>` : ''}${p.manifest?.designSystem?.source ? ' <span class="type-tag ds">desain sistem</span>' : ''}</h2>
+    <div class="grow"><h2>${esc(p.name)} ${kindTag(p)} ${p.type ? `<span class="type-tag">${p.type}</span>` : ''}</h2>
       <p class="meta">${statusHtml(p)}${uptime(p) ? `<span>· ${uptime(p)}</span>` : ''}</p>
       ${p.description ? `<p class="desc" title="${esc(p.description)}">${esc(p.description)}</p>` : ''}</div>
     <div class="actions">${actionsHtml(p)}</div>`);
@@ -1247,7 +1249,7 @@ function dsCardHtml(p) {
   const sync = stale.length && LOCAL
     ? `<button type="button" class="btn sm" data-act="ds-sync" data-id="${esc(p.id)}" title="Salin ulang token & komponen ke ${stale.length} prototype" ${ui.busy.has(`ds:${p.id}`) ? 'disabled' : ''}>${ICON.restart}Sebarkan (${stale.length})</button>` : '';
   return `<article class="h-card ds ${isActive(p) ? 'on' : ''}" data-act="select" data-id="${esc(p.id)}" tabindex="0">
-      <div class="h-card-top">${avatar(p)}<div class="t"><b>${esc(p.name)}</b><span>${esc(p.id)} · desain sistem</span></div>${statusHtml(p)}</div>
+      <div class="h-card-top">${avatar(p)}<div class="t"><b>${esc(p.name)}</b><span>${kindTag(p)}${esc(p.id)}</span></div>${statusHtml(p)}</div>
       ${p.description ? `<p class="h-desc">${esc(p.description)}</p>` : ''}
       <div class="h-meta">
         ${u ? `<a href="${esc(u)}" target="_blank" rel="noopener" class="h-url">${esc(u.replace(/^https?:\/\//, '').replace(/\/$/, ''))} ${ICON.ext}</a>` : `<span class="muted">${info ? (users.length ? `dipakai ${users.length} prototype` : 'belum dipakai prototype lain') : ''}</span>`}
@@ -1321,7 +1323,7 @@ function renderHome() {
       ? btn('stop', p, { label: 'Stop', icon: ICON.stop })
       : btn('start', p, { label: ui.busy.has(p.id) ? 'Memproses…' : 'Start', icon: ICON.play, cls: 'primary', disabled: !p.valid });
     return `<article class="h-card ${isActive(p) ? 'on' : ''}" data-act="select" data-id="${esc(p.id)}" tabindex="0">
-      <div class="h-card-top">${avatar(p)}<div class="t"><b>${esc(p.name)}</b><span>${esc(p.id)}${p.type ? ` · ${p.type}` : ''}</span></div>${statusHtml(p)}</div>
+      <div class="h-card-top">${avatar(p)}<div class="t"><b>${esc(p.name)}</b><span>${kindTag(p)}${esc(p.id)}${p.type ? ` · ${p.type}` : ''}</span></div>${statusHtml(p)}</div>
       ${p.description ? `<p class="h-desc">${esc(p.description)}</p>` : ''}
       <div class="h-meta">
         ${u ? `<a href="${esc(u)}" target="_blank" rel="noopener" class="h-url">${esc(u.replace(/^https?:\/\//, '').replace(/\/$/, ''))} ${ICON.ext}</a>` : `<span class="muted">${p.valid ? 'tidak berjalan' : 'tidak valid'}</span>`}

@@ -1,4 +1,10 @@
-## Yang baru di 0.4.0
+## Yang baru di 0.4.1
+
+- **Daftar tray yang ringkas.** Popup tray (klik kiri) menampilkan 5 prototype dulu. **Tampilkan lagi** menambah 5 baris, **Tampilkan lebih sedikit** kembali ke 5. Saat diklik, tombolnya menampilkan loading singkat lalu tinggi popup berubah dengan animasi halus, tidak lagi melompat.
+- **Label Prototype / Desain sistem.** Setiap baris di tray menampilkan jenisnya di bawah nama (biru untuk prototype, ungu untuk desain sistem) bersama statusnya. Label yang sama ada di Web UI: item sidebar, kartu Beranda, dan judul halaman prototype.
+- Tombol palet perintah di footer sidebar kini berupa ikon (Ctrl K di tooltip), sehingga footer tidak lagi meluber keluar sidebar.
+
+## 0.4.0
 
 - **Edit dari HP lewat jaringan.** Nyalakan Mode LAN **Web UI + prototype** (tray, atau `prototyper serve --lan`), lalu di Web UI komputer klik ikon **HP** di bawah sidebar (atau palet perintah → *Hubungkan HP*). Pindai QR dengan kamera HP, atau buka alamatnya dan ketik kode 6 digit. Kode berlaku 5 menit, hanya sekali pakai, dan dibatalkan setelah 5 kali salah.
 - HP yang terpasang bisa berkomentar (termasuk lampiran gambar), menjawab pertanyaan agent, menjalankan/menghentikan/membatalkan agent, serta start/stop/restart prototype. Hapus/daftarkan prototype, manifest, install, desain sistem, update, dan mematikan Prototyper tetap hanya dari komputer. Daftar HP terpasang ada di dialog yang sama, lengkap dengan tombol **Cabut**.

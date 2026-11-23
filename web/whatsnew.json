@@ -2,6 +2,17 @@
   "releasesUrl": "https://github.com/egateza/Prototyper/releases",
   "releases": [
     {
+      "version": "0.4.1",
+      "date": "2026-11-23",
+      "title": "Daftar tray yang ringkas & label desain sistem",
+      "items": [
+        "Popup tray menampilkan **5 prototype** dulu. Klik **Tampilkan lagi** untuk 5 berikutnya (dengan loading singkat dan animasi tinggi yang halus), dan **Tampilkan lebih sedikit** untuk kembali ringkas.",
+        "Setiap baris di tray kini punya label **Prototype** atau **Desain sistem** di bawah namanya, lengkap dengan statusnya.",
+        "Label yang sama tampil di Web UI: item sidebar, kartu Beranda, dan judul halaman prototype.",
+        "Tombol palet perintah di bawah sidebar kini berupa ikon (Ctrl K) agar footer tidak meluber."
+      ]
+    },
+    {
       "version": "0.4.0",
       "date": "2026-11-23",
       "title": "Edit dari HP, desain sistem & lampiran gambar",
