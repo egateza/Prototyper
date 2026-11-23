@@ -167,6 +167,21 @@ describe('API pairing perangkat (mode LAN)', () => {
     expect((await phone('GET', '/api/devices')).statusCode).toBe(403);
   });
 
+  it('komentar dari HP diberi nama perangkat (tidak bisa dipalsukan), ikut berubah bila perangkat diganti nama', async () => {
+    const c = await phone('POST', '/api/prototypes/hp/comments', { text: 'Label HP', author: 'agent', role: 'agent' });
+    expect(c.json()).toMatchObject({ author: 'Android · Chrome', role: 'user', deviceId });
+    const cid = c.json().id;
+    await phone('POST', `/api/prototypes/hp/comments/${cid}/replies`, { text: 'tambahan' });
+    await app.inject({ method: 'POST', url: `/api/prototypes/hp/comments/${cid}/replies`, payload: { text: 'dari PC' } });
+    await app.inject({ method: 'POST', url: `/api/prototypes/hp/comments/${cid}/replies`, payload: { text: 'oke', role: 'agent', author: 'agent' } });
+
+    expect((await app.inject({ method: 'PATCH', url: `/api/devices/${deviceId}`, payload: { name: 'HP Ega' } })).statusCode).toBe(200);
+    const all = (await app.inject({ method: 'GET', url: '/api/prototypes/hp/comments' })).json().comments;
+    const got = all.find((x: { id: string }) => x.id === cid);
+    expect(got.author).toBe('HP Ega');
+    expect(got.replies.map((r: { author: string }) => r.author)).toEqual(['HP Ega', 'Pengguna (PC ini)', 'agent']);
+  });
+
   it('Origin harus sama dengan host (CSRF), dan Host tak dikenal ditolak (DNS rebinding)', async () => {
     expect((await phone('POST', '/api/prototypes/hp/comments', { text: 'x' }, { origin: 'http://192.168.1.10:4101' })).statusCode).toBe(403);
     const noOrigin = await app.inject({ method: 'POST', url: '/api/prototypes/hp/comments', remoteAddress: PHONE, headers: { host: HOST, cookie }, payload: { text: 'x' } });

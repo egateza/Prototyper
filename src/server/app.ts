@@ -117,7 +117,7 @@ export async function buildApp({ config, logger = false, onShutdown, agentComman
 
   await app.register(healthRoutes, { prefix: '/api', startedAt, lanMode: config.lanMode, home: config.home, workspace: config.workspace, dsWorkspace: config.dsWorkspace, version: () => ctx.web.version });
   await app.register(prototypeRoutes, { prefix: '/api', ctx });
-  await app.register(commentRoutes, { prefix: '/api', registry, agent });
+  await app.register(commentRoutes, { prefix: '/api', registry, agent, devices });
   await app.register(agentRoutes, { prefix: '/api', registry, agent });
   await app.register(devicesRoutes, {
     devices,

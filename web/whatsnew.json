@@ -2,6 +2,16 @@
   "releasesUrl": "https://github.com/egateza/Prototyper/releases",
   "releases": [
     {
+      "version": "0.4.2",
+      "date": "2026-11-23",
+      "title": "Nama perangkat di komentar & panel komentar mobile",
+      "items": [
+        "**Penulis komentar kini terlihat asalnya.** Komentar dan balasan dari komputer ini ditandai **Pengguna (PC ini)**, sedangkan dari HP yang dipasangkan memakai nama perangkatnya, mis. *Android · Chrome*.",
+        "Nama perangkat bisa diganti lewat tombol **Ganti nama** di dialog **Hubungkan HP**. Komentar lama dari perangkat itu ikut tampil dengan nama barunya.",
+        "Panel komentar di layar HP tidak lagi meluber ke kanan: bar agent, kartu komentar, dan filter Open/Selesai/Semua kini pas selebar layar."
+      ]
+    },
+    {
       "version": "0.4.1",
       "date": "2026-11-23",
       "title": "Ekspor halaman, edit komentar & tray yang ringkas",

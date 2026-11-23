@@ -218,7 +218,8 @@ describe('API komentar', () => {
   it('alur lengkap + jumlah komentar di view', async () => {
     const add = await app.inject({ method: 'POST', url: base, payload: { text: 'Perbesar font', page: '/kasir' } });
     expect(add.statusCode).toBe(201);
-    expect(add.json()).toMatchObject({ id: 'c1', page: '/kasir', author: 'pengguna' });
+    expect(add.json()).toMatchObject({ id: 'c1', page: '/kasir', author: 'Pengguna (PC ini)' });
+    expect(add.json()).not.toHaveProperty('deviceId');
 
     expect((await app.inject({ method: 'POST', url: `${base}/c1/replies`, payload: { text: 'oke', author: 'agent' } })).statusCode).toBe(201);
 

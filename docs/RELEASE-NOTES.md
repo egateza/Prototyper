@@ -1,4 +1,13 @@
-## Yang baru di 0.4.1
+## Yang baru di 0.4.2
+
+- **Asal penulis komentar.** Komentar, balasan, dan penyelesaian dari Web UI di komputer ini ditulis sebagai **Pengguna (PC ini)**. Dari HP yang dipasangkan, penulisnya adalah nama perangkat itu (default dari User-Agent, mis. *Android · Chrome*), dan `deviceId` ikut disimpan di `comments.json` sehingga nama yang tampil mengikuti nama perangkat terbaru. Browser HP tidak bisa membaca nama host atau ID perangkat, jadi nama diambil dari pairing.
+- **Ganti nama perangkat** dari dialog **Hubungkan HP** (sebelumnya hanya lewat API `PATCH /api/devices/:id`).
+- **Keamanan:** dari HP yang dipasangkan, `author` dan `role` di body request diabaikan, jadi HP tidak bisa menulis atas nama agent atau orang lain. CLI dan agent di komputer ini tetap bisa mengisi `--author`/`role`. Komentar lama tetap bertuliskan "pengguna".
+- **Panel komentar mobile** tidak lagi meluber ke kanan: kolom panel dikunci selebar layar, baris judul (jumlah komentar + filter) boleh turun baris.
+
+Pembaruan ke 0.4.2 mengubah kode server, jadi Prototyper dimulai ulang sekali.
+
+## 0.4.1
 
 - **Ekspor halaman ke PNG, JPG, dan PDF.** Tombol ekspor di bilah pratinjau (dan palet perintah): PNG/JPG dengan resolusi 1–3×, seluruh halaman atau layar saja, bisa disalin ke clipboard; PDF satu halaman seperti layar atau A4 cetak. Halaman dirender ulang oleh Edge/Chrome/Chromium headless (tanpa dependensi baru; `PROTOTYPER_BROWSER` untuk memaksa path browser) dan mengikuti pratinjau: ukuran & orientasi perangkat, tema terang/gelap, serta class/style/storage halaman agar tema dan status login ikut. Untuk agent: `prototyper export <id> -p /kasir -d mobile -o shot.png` (dan `GET /api/prototypes/:id/export`).
 - **Edit & hapus komentar yang belum dikerjakan agent.** Komentar bisa diedit/dihapus selama masih open, ditulis pengguna, dan belum ada balasan agent; balasan biasa dari pengguna selama agent belum menanggapinya. Selama run agent mengerjakan komentar itu, edit/hapus dikunci. Teks yang diubah diberi tanda *(diedit)*. Juga dari HP yang sudah dipasangkan. API: `PATCH /api/prototypes/:id/comments/:cid`, `PATCH`/`DELETE …/comments/:cid/replies/:rid`.

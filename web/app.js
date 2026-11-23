@@ -3001,7 +3001,7 @@ $('#pair-form').addEventListener('submit', async (e) => {
   }
 });
 
-const ph = { pairing: null, err: null, sel: 0, devices: [], paired: null, timer: null };
+const ph = { pairing: null, err: null, sel: 0, devices: [], paired: null, timer: null, renaming: null };
 async function openPhoneDialog() {
   if (!LOCAL) return toast(RO_TITLE, true);
   ph.pairing = null; ph.err = null; ph.sel = 0; ph.paired = null;
@@ -3077,16 +3077,29 @@ function renderPhone() {
   }
   patchEl($('#phone-body'), body);
   patchEl($('#phone-devices'), ph.devices.length
-    ? ph.devices.map((d) => `<div class="phone-dev"><span><b>${esc(d.name)}</b><small class="muted">terpasang ${fmtTime(d.createdAt)} · terakhir aktif ${fmtTime(d.lastSeenAt)}</small></span>
+    ? ph.devices.map((d) => ph.renaming === d.id
+      ? `<form class="phone-dev" data-ph-rename-form="${esc(d.id)}"><input name="name" maxlength="60" value="${esc(d.name)}" aria-label="Nama perangkat" required>
+          <button type="submit" class="btn sm primary">Simpan</button><button type="button" class="btn sm ghost" data-ph="cancel-rename">Batal</button></form>`
+      : `<div class="phone-dev"><span><b>${esc(d.name)}</b><small class="muted">terpasang ${fmtTime(d.createdAt)} · terakhir aktif ${fmtTime(d.lastSeenAt)}</small></span>
+        <button type="button" class="btn sm ghost" data-ph-rename="${esc(d.id)}" title="Nama ini tampil sebagai penulis komentar dari perangkat tersebut">Ganti nama</button>
         <button type="button" class="btn sm ghost danger" data-ph-revoke="${esc(d.id)}">Cabut</button></div>`).join('')
     : '<p class="muted">Belum ada.</p>');
 }
 function patchEl(el, html) { if (el.dataset.html !== html) { el.dataset.html = html; el.innerHTML = html; } }
 $('#dlg-phone').addEventListener('click', async (e) => {
-  const t = e.target.closest('[data-ph],[data-ph-addr],[data-ph-revoke],[data-close]');
+  const t = e.target.closest('[data-ph],[data-ph-addr],[data-ph-revoke],[data-ph-rename],[data-close]');
   if (!t) return;
   if (t.matches('[data-close]')) return $('#dlg-phone').close();
   if (t.dataset.ph === 'new') return newPairing();
+  if (t.dataset.ph === 'cancel-rename') { ph.renaming = null; return renderPhone(); }
+  if (t.dataset.phRename) {
+    ph.renaming = t.dataset.phRename;
+    renderPhone();
+    const input = $('#phone-devices input[name="name"]');
+    input?.focus();
+    input?.select();
+    return;
+  }
   if (t.dataset.phAddr) { ph.sel = Number(t.dataset.phAddr); return renderPhone(); }
   if (t.dataset.phRevoke) {
     const d = ph.devices.find((x) => x.id === t.dataset.phRevoke);
@@ -3094,6 +3107,27 @@ $('#dlg-phone').addEventListener('click', async (e) => {
     if (!yes) return;
     try { await api('DELETE', `/api/devices/${enc(t.dataset.phRevoke)}`); toast('Akses perangkat dicabut'); } catch (err) { toast(err.message, true); }
     await loadDevices();
+    renderPhone();
+  }
+});
+$('#dlg-phone').addEventListener('submit', async (e) => {
+  const f = e.target.closest('[data-ph-rename-form]');
+  if (!f) return;
+  e.preventDefault();
+  const name = f.elements.name.value.trim();
+  if (!name) return;
+  try {
+    await api('PATCH', `/api/devices/${enc(f.dataset.phRenameForm)}`, { name });
+    toast('Nama perangkat diganti');
+    ph.renaming = null;
+    await loadDevices();
+  } catch (err) { toast(err.message, true); }
+  renderPhone();
+});
+$('#dlg-phone').addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && ph.renaming && e.target.closest('[data-ph-rename-form]')) {
+    e.preventDefault();
+    ph.renaming = null;
     renderPhone();
   }
 });

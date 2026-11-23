@@ -55,6 +55,8 @@ const replySchema = z.preprocess(
     attachments: z.array(z.string()).optional(),
     /** Waktu teks balasan terakhir diedit pengguna. */
     editedAt: z.string().optional(),
+    /** id perangkat terpasang (HP) yang menulis; nama di `author` mengikuti nama perangkat saat ini. */
+    deviceId: z.string().optional(),
   }),
 );
 
@@ -95,6 +97,8 @@ const commentSchema = z.preprocess(
     attachments: z.array(z.string()).optional(),
     /** Waktu teks komentar terakhir diedit pengguna. */
     editedAt: z.string().optional(),
+    /** id perangkat terpasang (HP) yang menulis; nama di `author` mengikuti nama perangkat saat ini. */
+    deviceId: z.string().optional(),
     /** Nomor balasan terbesar yang pernah dipakai (diisi saat balasan dihapus, agar id tidak dipakai ulang). */
     replySeq: z.number().int().min(0).optional(),
   }),
@@ -149,9 +153,15 @@ export interface CommentCounts {
 export interface Source {
   author: string;
   role: Role;
+  /** Perangkat terpasang (HP) asal tulisan; nama `author` diperbarui bila perangkat diganti namanya. */
+  deviceId?: string;
+  /** true = `author`/`role` dari body diabaikan (perangkat terpasang tidak boleh mengaku sebagai orang/agent lain). */
+  fixed?: boolean;
 }
 
 export const USER_SOURCE: Source = { author: 'pengguna', role: 'user' };
+/** Penulis dari Web UI di komputer tempat Prototyper berjalan. */
+export const LOCAL_USER_SOURCE: Source = { author: 'Pengguna (PC ini)', role: 'user' };
 export const AGENT_SOURCE: Source = { author: 'agent', role: 'agent' };
 
 export function commentsPath(dir: string): string {
@@ -171,11 +181,26 @@ function optionalText(v: unknown, field = 'text'): string {
 }
 
 function source(input: { author?: unknown; role?: unknown }, def: Source): Source {
+  if (def.fixed) return { author: def.author, role: def.role, ...(def.deviceId ? { deviceId: def.deviceId } : {}) };
   const author = typeof input.author === 'string' && input.author.trim() ? input.author.trim().slice(0, 80) : def.author;
   if (input.role !== undefined && input.role !== 'user' && input.role !== 'agent') {
     throw new AppError('BAD_REQUEST', 'role harus "user" atau "agent"');
   }
-  return { author, role: (input.role as Role | undefined) ?? def.role };
+  return { author, role: (input.role as Role | undefined) ?? def.role, ...(def.deviceId ? { deviceId: def.deviceId } : {}) };
+}
+
+const deviceOf = (src: Source) => (src.deviceId ? { deviceId: src.deviceId } : {});
+
+/** Ganti `author` tulisan dari perangkat terpasang dengan nama perangkat saat ini (mis. setelah diganti nama). */
+export function withDeviceNames<T extends { author: string; deviceId?: string; replies: { author: string; deviceId?: string }[] }>(
+  comments: T[],
+  nameOf: (deviceId: string) => string | undefined,
+): T[] {
+  const fix = <E extends { author: string; deviceId?: string }>(e: E): E => {
+    const n = e.deviceId ? nameOf(e.deviceId) : undefined;
+    return n && n !== e.author ? { ...e, author: n } : e;
+  };
+  return comments.map((c) => ({ ...fix(c), replies: c.replies.map(fix) }));
 }
 
 function cleanOptions(v: unknown): string[] {
@@ -618,6 +643,7 @@ export async function addComment(
       replies: [],
       ...(anchor ? { anchor } : {}),
       ...(attachments.length ? { attachments } : {}),
+      ...deviceOf(src),
     };
     data.comments.push(c);
     return c;
@@ -658,7 +684,7 @@ export async function replyComment(dir: string, id: string, input: ReplyInput, d
     const multi = input.multi === true;
     return mutate(dir, (data, now) => {
       const c = find(data, id);
-      c.replies.push({ id: nextReplyId(c), author: src.author, role: src.role, text, createdAt: now, options, ...(multi ? { multi } : {}) });
+      c.replies.push({ id: nextReplyId(c), author: src.author, role: src.role, text, createdAt: now, options, ...(multi ? { multi } : {}), ...deviceOf(src) });
       c.updatedAt = now;
       return c;
     });
@@ -678,7 +704,7 @@ export async function replyComment(dir: string, id: string, input: ReplyInput, d
       if (bad.length) throw new AppError('BAD_REQUEST', `Opsi tidak dikenal: ${bad.join(', ')}`);
       const choices = q.options.filter((o) => picked.includes(o)); // urutan mengikuti opsi
       if (!q.multi && choices.length !== 1) throw new AppError('BAD_REQUEST', 'Pertanyaan ini hanya boleh satu pilihan');
-      c.replies.push({ id: nextReplyId(c), author: src.author, role: src.role, text, createdAt: now, answerTo, choices });
+      c.replies.push({ id: nextReplyId(c), author: src.author, role: src.role, text, createdAt: now, answerTo, choices, ...deviceOf(src) });
       c.updatedAt = now;
       return c;
     });
@@ -691,6 +717,7 @@ export async function replyComment(dir: string, id: string, input: ReplyInput, d
     c.replies.push({
       id: nextReplyId(c), author: src.author, role: src.role, text, createdAt: now,
       ...(attachments.length ? { attachments } : {}),
+      ...deviceOf(src),
     });
     c.updatedAt = now;
     return c;
