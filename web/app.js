@@ -19,6 +19,7 @@ const ICON = {
   install: svg('M12 4v11M7 10l5 5 5-5M5 20h14'),
   trash: svg('M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3', 'fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"'),
   copy: svg('M9 9h10v11H9zM5 15V4h10', 'fill="none" stroke="currentColor" stroke-width="2"'),
+  pencil: svg('M4 20h4L19 9a2.1 2.1 0 0 0-4-4L4 16v4ZM13.5 6.5l4 4', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'),
   ext: svg('M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5'),
   eye: svg('M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z', 'fill="none" stroke="currentColor" stroke-width="2"'),
   eyeOff: svg('M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.1 3.9M6.6 6.6C3.7 8.4 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"'),
@@ -829,6 +830,9 @@ document.addEventListener('click', (e) => {
     case 'cm-resolve': return commentAction('resolve', t.dataset.cid);
     case 'cm-reopen': return commentAction('reopen', t.dataset.cid);
     case 'cm-delete': return commentAction('delete', t.dataset.cid);
+    case 'cm-edit': return startEdit(t.dataset.rid ?? t.dataset.cid);
+    case 'cm-delete-reply': return deleteReply(t.dataset.cid, t.dataset.rid);
+    case 'cm-edit-cancel': return startEdit(null);
   }
 });
 $('#q').addEventListener('input', (e) => { ui.query = e.target.value; render(); });
@@ -1350,7 +1354,7 @@ function renderHome() {
 // ---------- Komentar ----------
 // Dimuat terpisah dari polling daftar; daftar komentar di-render ulang hanya bila isinya berubah,
 // sedangkan form tulis berada di luar daftar sehingga teks yang sedang diketik tidak hilang.
-const cm = { id: null, data: null, filter: readPref('prototyper:cm-filter', 'open'), replyTo: null, tick: 0, lastHtml: '', pages: {}, files: [] };
+const cm = { id: null, data: null, filter: readPref('prototyper:cm-filter', 'open'), replyTo: null, editing: null, tick: 0, lastHtml: '', pages: {}, files: [] };
 
 async function loadComments() {
   const id = cm.id;
@@ -1410,7 +1414,25 @@ function replyHtml(c, r) {
   if (r.answerTo) {
     return `<div class="cm-reply cm-answer ${r.role === 'agent' ? 'agent' : 'user'}" data-rid="${esc(r.id)}"><b>${esc(r.author)}</b><span>memilih</span>${(r.choices ?? []).map((x) => `<span class="cm-chip">${esc(x)}</span>`).join('')}<span class="cm-meta">${fmtTime(r.createdAt)}</span>${r.text ? `<p class="cm-text">${esc(r.text)}</p>` : ''}</div>`;
   }
-  return `<div class="cm-reply ${r.role === 'agent' ? 'agent' : 'user'}" data-rid="${esc(r.id)}"><b>${r.role === 'agent' ? '<span class="cm-role-ic" aria-hidden="true">✦</span>' : ''}${esc(r.author)}</b><span class="cm-meta">${fmtTime(r.createdAt)}</span>${textHtml(r.text)}${attachmentsHtml(r.attachments)}</div>`;
+  // Balasan pengguna yang belum ditanggapi agent boleh diedit/dihapus (server juga memeriksanya).
+  const changeable = EDIT && r.editable && !isWorking(c);
+  const editing = changeable && cm.editing === r.id;
+  const tools = changeable && !editing ? `<span class="cm-reply-tools">
+      <button type="button" class="icon-btn cm-edit-btn" data-act="cm-edit" data-cid="${esc(c.id)}" data-rid="${esc(r.id)}" title="Edit balasan">${ICON.pencil}</button>
+      <button type="button" class="icon-btn" data-act="cm-delete-reply" data-cid="${esc(c.id)}" data-rid="${esc(r.id)}" title="Hapus balasan">${ICON.trash}</button>
+    </span>` : '';
+  const body = editing ? editFormHtml(c.id, r.id, r.text) : `${textHtml(r.text)}${editedHtml(r)}`;
+  return `<div class="cm-reply ${r.role === 'agent' ? 'agent' : 'user'}" data-rid="${esc(r.id)}"><b>${r.role === 'agent' ? '<span class="cm-role-ic" aria-hidden="true">✦</span>' : ''}${esc(r.author)}</b><span class="cm-meta">${fmtTime(r.createdAt)}</span>${tools}${body}${attachmentsHtml(r.attachments)}</div>`;
+}
+
+const editedHtml = (m) => (m.editedAt ? `<span class="cm-edited" title="Diedit ${esc(fmtTime(m.editedAt))}">(diedit)</span>` : '');
+function editFormHtml(cid, rid, text) {
+  return `<form class="cm-edit" data-cid="${esc(cid)}"${rid ? ` data-rid="${esc(rid)}"` : ''}>
+      <textarea rows="3" aria-label="Teks ${rid ? `balasan ${esc(rid)}` : `komentar ${esc(cid)}`}">${esc(text)}</textarea>
+      <div class="cm-q-row"><span class="muted cm-q-hint">Ctrl+Enter simpan · Esc batal</span><span class="spacer"></span>
+        <button type="button" class="btn sm ghost" data-act="cm-edit-cancel">Batal</button>
+        <button type="submit" class="btn primary sm">Simpan</button></div>
+    </form>`;
 }
 
 // ---------- Ciutkan / bentangkan percakapan komentar ----------
@@ -1484,18 +1506,23 @@ function commentHtml(c) {
       ${collapsedSummary(c)}
     </article>`;
   }
-  const actions = EDIT ? `<div class="cm-actions">
+  // Edit/hapus hanya untuk komentar yang belum dikerjakan agent (server juga memeriksanya).
+  const changeable = c.editable && !working;
+  const editing = changeable && cm.editing === c.id;
+  const actions = EDIT && !editing ? `<div class="cm-actions">
       ${c.waitingFor === 'agent' && pickedAgent() ? `<button type="button" class="btn sm ghost agent-one" data-act="agent-run-one" data-cid="${esc(c.id)}" title="Minta ${esc(pickedAgent().name)} mengerjakan komentar ini saja" ${ag.state?.running ? 'disabled' : ''}>${ICON.spark}Kerjakan</button>` : ''}
       <button type="button" class="btn sm ghost" data-act="cm-reply" data-cid="${esc(c.id)}">Balas</button>
       ${c.status === 'open'
         ? `<button type="button" class="btn sm ghost" data-act="cm-resolve" data-cid="${esc(c.id)}">✓ Selesai</button>`
         : `<button type="button" class="btn sm ghost" data-act="cm-reopen" data-cid="${esc(c.id)}">Buka lagi</button>`}
       <span class="spacer"></span>
-      <button type="button" class="icon-btn" data-act="cm-delete" data-cid="${esc(c.id)}" title="Hapus komentar">${ICON.trash}</button>
+      ${changeable ? `<button type="button" class="icon-btn cm-edit-btn" data-act="cm-edit" data-cid="${esc(c.id)}" title="Edit komentar">${ICON.pencil}</button>
+      <button type="button" class="icon-btn" data-act="cm-delete" data-cid="${esc(c.id)}" title="Hapus komentar">${ICON.trash}</button>` : ''}
     </div>` : '';
+  const body = editing ? editFormHtml(c.id, null, c.text) : `${textHtml(c.text)}${editedHtml(c)}`;
   return `<article class="${cls}" data-cid="${esc(c.id)}">${head}
     ${c.anchor ? `<button type="button" class="cm-anchor-chip" data-act="cm-focus" data-cid="${esc(c.id)}" title="${esc(c.anchor.selector)}">${ICON.pick}<span>${esc(anchorLabel(c.anchor))}</span></button>` : ''}
-    ${textHtml(c.text)}
+    ${body}
     ${attachmentsHtml(c.attachments)}
     ${c.replies.map((r) => replyHtml(c, r)).join('')}
     ${c.status === 'resolved' ? `<div class="cm-res">✓ Selesai${c.resolvedBy ? ` oleh ${esc(c.resolvedBy)}` : ''}${c.resolvedAt ? ` · ${fmtTime(c.resolvedAt)}` : ''}${c.resolution ? `<p class="cm-text">${esc(c.resolution)}</p>` : ''}</div>` : ''}
@@ -1515,9 +1542,17 @@ function saveQForms() {
       sel: [ta.selectionStart, ta.selectionEnd],
     };
   }
+  const ed = $('#cm-list form.cm-edit textarea');
+  if (ed) st['edit:' + (ed.form.dataset.rid ?? ed.form.dataset.cid)] = { text: ed.value, focus: document.activeElement === ed, sel: [ed.selectionStart, ed.selectionEnd] };
   return st;
 }
 function restoreQForms(st) {
+  const ed = $('#cm-list form.cm-edit textarea');
+  const es = ed && st['edit:' + (ed.form.dataset.rid ?? ed.form.dataset.cid)];
+  if (ed && es) {
+    ed.value = es.text;
+    if (es.focus) { ed.focus(); ed.setSelectionRange(es.sel[0], es.sel[1]); }
+  }
   for (const f of $$('#cm-list form.cm-q')) {
     const s = st[f.dataset.qid];
     if (s) {
@@ -1668,6 +1703,8 @@ async function commentAction(kind, cid) {
       if (!yes) return;
       await api('DELETE', base);
       if (cm.replyTo === cid) startReply(null);
+      if (cm.editing === cid) cm.editing = null;
+      toast(`${cid} dihapus`);
     } else {
       await api('POST', `${base}/${kind}`);
       toast(kind === 'resolve' ? `${cid} ditandai selesai` : `${cid} dibuka lagi`);
@@ -1678,6 +1715,63 @@ async function commentAction(kind, cid) {
   await loadComments();
   refresh(true);
 }
+
+// ---------- Edit/hapus komentar & balasan (hanya yang belum dikerjakan agent) ----------
+/** key = id komentar, atau id balasan (mis. "c3-r2"); null = tutup form edit. */
+function startEdit(key) {
+  cm.editing = key;
+  cm.lastHtml = ''; renderComments();
+  const ta = key && $('#cm-list form.cm-edit textarea');
+  if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+}
+async function deleteReply(cid, rid) {
+  const id = cm.id;
+  if (!id || !cid || !rid) return;
+  const yes = await confirmDialog({ title: `Hapus balasan ${rid}?`, body: `Balasan ini dihapus dari komentar ${cid}.`, ok: 'Hapus' });
+  if (!yes) return;
+  try {
+    await api('DELETE', `/api/prototypes/${enc(id)}/comments/${enc(cid)}/replies/${enc(rid)}`);
+    if (cm.editing === rid) cm.editing = null;
+    toast(`Balasan ${rid} dihapus`);
+  } catch (err) {
+    toast(err.message, true);
+  }
+  await loadComments();
+  refresh(true);
+}
+document.addEventListener('submit', async (e) => {
+  const f = e.target;
+  if (!f.classList?.contains('cm-edit')) return;
+  e.preventDefault();
+  const id = cm.id;
+  const { cid, rid } = f.dataset;
+  const c = cm.data?.comments?.find((x) => x.id === cid);
+  const m = rid ? c?.replies.find((x) => x.id === rid) : c;
+  const text = f.querySelector('textarea').value.trim();
+  if (!id || !m) return;
+  if (!text && !m.attachments?.length) return toast(`Teks ${rid ? 'balasan' : 'komentar'} tidak boleh kosong`, true);
+  if (text === m.text) return startEdit(null);
+  const b = f.querySelector('button[type="submit"]');
+  b.disabled = true;
+  try {
+    await api('PATCH', `/api/prototypes/${enc(id)}/comments/${enc(cid)}${rid ? `/replies/${enc(rid)}` : ''}`, { text });
+    toast(`${rid ?? cid} diperbarui`);
+    cm.editing = null;
+    cm.lastHtml = '';
+    await loadComments();
+    refresh(true);
+  } catch (err) {
+    toast(err.message, true);
+    b.disabled = false;
+    await loadComments(); // mis. agent baru saja membalas: tombol edit hilang
+  }
+});
+document.addEventListener('keydown', (e) => {
+  const f = e.target.closest?.('form.cm-edit');
+  if (!f || e.target.tagName !== 'TEXTAREA') return;
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); f.requestSubmit(); }
+  if (e.key === 'Escape') { e.preventDefault(); startEdit(null); }
+});
 
 document.addEventListener('input', (e) => { const f = e.target.closest?.('form.cm-q'); if (f) updateQForm(f); });
 document.addEventListener('change', (e) => { const f = e.target.closest?.('form.cm-q'); if (f) updateQForm(f); });

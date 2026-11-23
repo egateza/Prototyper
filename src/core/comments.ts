@@ -53,6 +53,8 @@ const replySchema = z.preprocess(
     choices: z.array(z.string()).optional(),
     /** Gambar lampiran: path relatif terhadap folder prototype, mis. ".prototyper/attachments/ab12….png". */
     attachments: z.array(z.string()).optional(),
+    /** Waktu teks balasan terakhir diedit pengguna. */
+    editedAt: z.string().optional(),
   }),
 );
 
@@ -91,6 +93,10 @@ const commentSchema = z.preprocess(
     anchor: anchorSchema.optional(),
     /** Gambar lampiran: path relatif terhadap folder prototype, mis. ".prototyper/attachments/ab12….png". */
     attachments: z.array(z.string()).optional(),
+    /** Waktu teks komentar terakhir diedit pengguna. */
+    editedAt: z.string().optional(),
+    /** Nomor balasan terbesar yang pernah dipakai (diisi saat balasan dihapus, agar id tidak dipakai ulang). */
+    replySeq: z.number().int().min(0).optional(),
   }),
 );
 
@@ -113,8 +119,11 @@ export interface QuestionAnswer {
   createdAt: string;
 }
 
-/** Balasan seperti di file, ditambah `answer` (dihitung) untuk pertanyaan berpilihan. */
-export type CommentReply = StoredReply & { answer?: QuestionAnswer | null };
+/**
+ * Balasan seperti di file, ditambah `answer` (dihitung) untuk pertanyaan berpilihan dan `editable`
+ * (balasan biasa dari pengguna yang belum ditanggapi agent).
+ */
+export type CommentReply = StoredReply & { answer?: QuestionAnswer | null; editable: boolean };
 
 /** Komentar seperti di file, ditambah field turunan untuk UI dan agent. */
 export type Comment = Omit<StoredComment, 'replies'> & {
@@ -123,6 +132,8 @@ export type Comment = Omit<StoredComment, 'replies'> & {
   waitingFor: Role | null;
   /** id pertanyaan berpilihan yang belum dijawab. */
   pendingQuestions: string[];
+  /** Boleh diedit/dihapus: open, ditulis pengguna, dan belum ada balasan agent. */
+  editable: boolean;
   /** true bila komentar dibaca dari arsip (`comments-archive/`). */
   archived?: true;
 };
@@ -224,11 +235,53 @@ function decorate(c: StoredComment): Comment {
       answers.set(r.answerTo, { replyId: r.id, author: r.author, choices: r.choices ?? [], text: r.text, createdAt: r.createdAt });
     }
   }
-  const replies: CommentReply[] = c.replies.map((r) => (r.options ? { ...r, answer: answers.get(r.id) ?? null } : { ...r }));
+  const replies: CommentReply[] = c.replies.map((r) => ({
+    ...r,
+    ...(r.options ? { answer: answers.get(r.id) ?? null } : {}),
+    editable: replyUntouched(c, r),
+  }));
   const pendingQuestions = c.status === 'open' ? replies.filter((r) => r.options && !r.answer).map((r) => r.id) : [];
   const lastRole = (c.replies[c.replies.length - 1] ?? c).role;
   const waitingFor: Role | null = c.status !== 'open' ? null : lastRole === 'agent' ? 'user' : 'agent';
-  return { ...c, replies, waitingFor, pendingQuestions };
+  return { ...c, replies, waitingFor, pendingQuestions, editable: untouched(c) };
+}
+
+/** Komentar yang belum dikerjakan agent: open, ditulis pengguna, tanpa balasan agent. */
+function untouched(c: StoredComment): boolean {
+  return c.status === 'open' && c.role === 'user' && !c.replies.some((r) => r.role === 'agent');
+}
+
+const replyIndex = (id: string) => Number(/-r(\d+)$/.exec(id)?.[1] ?? 0);
+
+/** id balasan berikutnya; tidak memakai ulang nomor balasan yang sudah dihapus. */
+function nextReplyId(c: StoredComment): string {
+  const max = Math.max(c.replySeq ?? 0, c.replies.length, ...c.replies.map((r) => replyIndex(r.id)));
+  return `${c.id}-r${max + 1}`;
+}
+
+/** Balasan biasa dari pengguna di komentar open yang belum ditanggapi agent (tidak ada balasan agent sesudahnya). */
+function replyUntouched(c: StoredComment, r: StoredReply): boolean {
+  if (c.status !== 'open' || r.role !== 'user' || r.options || r.answerTo) return false;
+  const i = c.replies.indexOf(r);
+  return i >= 0 && !c.replies.slice(i + 1).some((x) => x.role === 'agent');
+}
+
+export interface EditGuard {
+  /** true bila komentar sedang dikerjakan agent (run berjalan); dicek di dalam kunci file. */
+  working?: (c: Comment) => boolean;
+  /** Lewati pemeriksaan (CLI `comments rm --force`). */
+  force?: boolean;
+}
+
+function assertEditable(c: StoredComment, guard: EditGuard, verb: string): void {
+  if (guard.force) return;
+  if (!untouched(c)) {
+    const why = c.status !== 'open' ? 'sudah selesai' : c.role !== 'user' ? 'ditulis agent' : 'sudah dikerjakan agent';
+    throw new AppError('CONFLICT', `Komentar ${c.id} ${why}, jadi tidak bisa ${verb}. Tambahkan balasan bila ada perubahan.`);
+  }
+  if (guard.working?.(decorate(c))) {
+    throw new AppError('CONFLICT', `Komentar ${c.id} sedang dikerjakan agent, jadi tidak bisa ${verb}. Tunggu selesai atau hentikan agent dulu.`);
+  }
 }
 
 // Tulis berurutan per file agar dua request bersamaan di daemon tidak saling menimpa.
@@ -605,7 +658,7 @@ export async function replyComment(dir: string, id: string, input: ReplyInput, d
     const multi = input.multi === true;
     return mutate(dir, (data, now) => {
       const c = find(data, id);
-      c.replies.push({ id: `${c.id}-r${c.replies.length + 1}`, author: src.author, role: src.role, text, createdAt: now, options, ...(multi ? { multi } : {}) });
+      c.replies.push({ id: nextReplyId(c), author: src.author, role: src.role, text, createdAt: now, options, ...(multi ? { multi } : {}) });
       c.updatedAt = now;
       return c;
     });
@@ -625,7 +678,7 @@ export async function replyComment(dir: string, id: string, input: ReplyInput, d
       if (bad.length) throw new AppError('BAD_REQUEST', `Opsi tidak dikenal: ${bad.join(', ')}`);
       const choices = q.options.filter((o) => picked.includes(o)); // urutan mengikuti opsi
       if (!q.multi && choices.length !== 1) throw new AppError('BAD_REQUEST', 'Pertanyaan ini hanya boleh satu pilihan');
-      c.replies.push({ id: `${c.id}-r${c.replies.length + 1}`, author: src.author, role: src.role, text, createdAt: now, answerTo, choices });
+      c.replies.push({ id: nextReplyId(c), author: src.author, role: src.role, text, createdAt: now, answerTo, choices });
       c.updatedAt = now;
       return c;
     });
@@ -636,7 +689,7 @@ export async function replyComment(dir: string, id: string, input: ReplyInput, d
   return mutate(dir, (data, now) => {
     const c = find(data, id);
     c.replies.push({
-      id: `${c.id}-r${c.replies.length + 1}`, author: src.author, role: src.role, text, createdAt: now,
+      id: nextReplyId(c), author: src.author, role: src.role, text, createdAt: now,
       ...(attachments.length ? { attachments } : {}),
     });
     c.updatedAt = now;
@@ -713,7 +766,7 @@ export async function noteUndo(
       // Dicatat sebelum balasan pembatalan ditambahkan, agar "hasil" = laporan agent yang dibatalkan.
       const report = lastAgentReport(c);
       decisions.push(decisionLine(c, now, `↺ perubahan agent dibatalkan${report ? ` (${report})` : ''}${resolvedInRun ? ', dibuka lagi' : ''}`));
-      c.replies.push({ id: `${c.id}-r${c.replies.length + 1}`, author, role: 'agent', text, createdAt: now });
+      c.replies.push({ id: nextReplyId(c), author, role: 'agent', text, createdAt: now });
       c.updatedAt = now;
       touched.push(c.id);
     }
@@ -726,10 +779,87 @@ export function attachmentsOf(comments: readonly StoredComment[]): string[] {
   return comments.flatMap((c) => [...(c.attachments ?? []), ...c.replies.flatMap((r) => r.attachments ?? [])]);
 }
 
-export async function deleteComment(dir: string, id: string): Promise<Comment> {
+/**
+ * Ubah teks komentar yang belum dikerjakan agent. Lampiran tetap; teks boleh kosong bila komentar
+ * berlampiran. Balasan pengguna (bila ada) tidak ikut diubah.
+ */
+export async function editComment(dir: string, id: string, input: { text?: unknown }, guard: EditGuard = {}): Promise<Comment> {
+  return update(dir, (data, now) => {
+    const c = find(data, id);
+    assertEditable(c, guard, 'diedit');
+    const text = c.attachments?.length ? optionalText(input.text) : cleanText(input.text);
+    if (text === c.text) return { value: decorate(c), changed: false };
+    c.text = text;
+    c.editedAt = now;
+    c.updatedAt = now;
+    return { value: decorate(c), changed: true };
+  });
+}
+
+function findReply(c: StoredComment, rid: string): StoredReply {
+  const r = c.replies.find((x) => x.id === rid);
+  if (!r) throw new AppError('NOT_FOUND', `Balasan "${rid}" tidak ditemukan di komentar ${c.id}`);
+  return r;
+}
+
+function assertReplyEditable(c: StoredComment, r: StoredReply, guard: EditGuard, verb: string): void {
+  if (guard.force) return;
+  if (!replyUntouched(c, r)) {
+    const why = c.status !== 'open' ? 'komentarnya sudah selesai'
+      : r.role !== 'user' ? 'ditulis agent'
+        : r.options || r.answerTo ? 'berupa pertanyaan/jawaban berpilihan'
+          : 'sudah ditanggapi agent';
+    throw new AppError('CONFLICT', `Balasan ${r.id} ${why}, jadi tidak bisa ${verb}. Tambahkan balasan baru bila ada perubahan.`);
+  }
+  if (guard.working?.(decorate(c))) {
+    throw new AppError('CONFLICT', `Komentar ${c.id} sedang dikerjakan agent, jadi balasannya tidak bisa ${verb}. Tunggu selesai atau hentikan agent dulu.`);
+  }
+}
+
+/** Ubah teks balasan pengguna yang belum ditanggapi agent. Teks boleh kosong bila balasan berlampiran. */
+export async function editReply(dir: string, id: string, rid: string, input: { text?: unknown }, guard: EditGuard = {}): Promise<Comment> {
+  return update(dir, (data, now) => {
+    const c = find(data, id);
+    const r = findReply(c, rid);
+    assertReplyEditable(c, r, guard, 'diedit');
+    const text = r.attachments?.length ? optionalText(input.text) : cleanText(input.text);
+    if (text === r.text) return { value: decorate(c), changed: false };
+    r.text = text;
+    r.editedAt = now;
+    c.updatedAt = now;
+    return { value: decorate(c), changed: true };
+  });
+}
+
+/** Hapus balasan pengguna yang belum ditanggapi agent; gambar lampirannya ikut dihapus bila tidak dipakai lagi. */
+export async function deleteReply(dir: string, id: string, rid: string, guard: EditGuard = {}): Promise<Comment> {
+  let removed: StoredReply | null = null;
+  let remaining: StoredComment[] = [];
+  const out = await mutate(dir, (data, now) => {
+    const c = find(data, id);
+    const r = findReply(c, rid);
+    assertReplyEditable(c, r, guard, 'dihapus');
+    c.replySeq = Math.max(c.replySeq ?? 0, c.replies.length, ...c.replies.map((x) => replyIndex(x.id)));
+    c.replies = c.replies.filter((x) => x !== r);
+    c.updatedAt = now;
+    removed = r;
+    remaining = data.comments;
+    return c;
+  });
+  const files = (removed as StoredReply | null)?.attachments ?? [];
+  if (files.length) {
+    const keep = new Set(attachmentsOf([...remaining, ...(await readArchive(dir).catch(() => []))]));
+    await removeUnreferenced(dir, files, keep).catch(() => {});
+  }
+  return out;
+}
+
+/** Hapus komentar yang belum dikerjakan agent (`guard.force` = komentar apa pun). */
+export async function deleteComment(dir: string, id: string, guard: EditGuard = {}): Promise<Comment> {
   let remaining: StoredComment[] = [];
   const removed = await mutate(dir, (data) => {
     const c = find(data, id);
+    assertEditable(c, guard, 'dihapus');
     data.comments = data.comments.filter((x) => x !== c);
     remaining = data.comments;
     return c;

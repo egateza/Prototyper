@@ -141,7 +141,13 @@ describe('API pairing perangkat (mode LAN)', () => {
     expect((await phone('GET', '/api/prototypes')).statusCode).toBe(200);
     const c = await phone('POST', '/api/prototypes/hp/comments', { text: 'Dari HP' });
     expect(c.statusCode).toBe(201);
-    expect((await phone('POST', `/api/prototypes/hp/comments/${c.json().id}/replies`, { text: 'balas' })).statusCode).toBe(201);
+    const cid = c.json().id;
+    expect((await phone('POST', `/api/prototypes/hp/comments/${cid}/replies`, { text: 'balas' })).statusCode).toBe(201);
+    // edit/hapus komentar & balasan yang belum dikerjakan agent
+    expect((await phone('PATCH', `/api/prototypes/hp/comments/${cid}/replies/${cid}-r1`, { text: 'balas lagi' })).statusCode).toBe(200);
+    expect((await phone('DELETE', `/api/prototypes/hp/comments/${cid}/replies/${cid}-r1`)).statusCode).toBe(200);
+    expect((await phone('PATCH', `/api/prototypes/hp/comments/${cid}`, { text: 'Dari HP (diedit)' })).statusCode).toBe(200);
+    expect((await phone('DELETE', `/api/prototypes/hp/comments/${cid}`)).statusCode).toBe(200);
     expect((await phone('POST', '/api/prototypes/hp/start')).statusCode).toBe(200);
     expect((await phone('POST', '/api/prototypes/hp/stop')).statusCode).toBe(200);
 

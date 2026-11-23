@@ -6,13 +6,18 @@ import {
   commentContext,
   countComments,
   deleteComment,
+  deleteReply,
+  editComment,
+  editReply,
   listComments,
   reopenComment,
   replyComment,
   resolveComment,
   type Comment,
   type CommentCounts,
+  type EditGuard,
 } from '../../core/comments.js';
+import type { AgentRunner } from '../../core/agent.js';
 import { AppError } from '../../core/errors.js';
 import type { Registry } from '../../core/registry.js';
 
@@ -35,8 +40,17 @@ function parseStatus(v: unknown): 'open' | 'resolved' | 'all' {
 }
 
 /** Komentar per prototype: /api/prototypes/:id/comments… */
-export const commentRoutes: FastifyPluginAsync<{ registry: Registry }> = async (app, { registry }) => {
+export const commentRoutes: FastifyPluginAsync<{ registry: Registry; agent?: AgentRunner }> = async (app, { registry, agent }) => {
   const dirOf = async (id: string) => (await registry.require(id)).path;
+
+  /** Komentar yang sedang dikerjakan run agent: yang diminta, atau semua yang menunggu agent bila run tanpa commentIds. */
+  const guardOf = (id: string): EditGuard => ({
+    working: (c) => {
+      if (!agent?.isRunning(id)) return false;
+      const ids = agent.info(id)?.commentIds ?? [];
+      return ids.length ? ids.includes(c.id) : c.waitingFor === 'agent';
+    },
+  });
 
   app.get<Params & { Querystring: { status?: string; page?: string; waiting?: string; archive?: string } }>(
     '/prototypes/:id/comments',
@@ -104,8 +118,26 @@ export const commentRoutes: FastifyPluginAsync<{ registry: Registry }> = async (
     return reply.send(createReadStream(file));
   });
 
+  // Edit & hapus hanya untuk komentar yang belum dikerjakan agent (lihat `editable`).
+  app.patch<CParams & { Body: Body }>('/prototypes/:id/comments/:cid', async (req) => {
+    const p = await registry.require(req.params.id);
+    return editComment(p.path, req.params.cid, { text: req.body?.text }, guardOf(p.id));
+  });
+
+  type RParams = { Params: { id: string; cid: string; rid: string } };
+  app.patch<RParams & { Body: Body }>('/prototypes/:id/comments/:cid/replies/:rid', async (req) => {
+    const p = await registry.require(req.params.id);
+    return editReply(p.path, req.params.cid, req.params.rid, { text: req.body?.text }, guardOf(p.id));
+  });
+
+  app.delete<RParams>('/prototypes/:id/comments/:cid/replies/:rid', async (req) => {
+    const p = await registry.require(req.params.id);
+    return deleteReply(p.path, req.params.cid, req.params.rid, guardOf(p.id));
+  });
+
   app.delete<CParams>('/prototypes/:id/comments/:cid', async (req) => {
-    const c = await deleteComment(await dirOf(req.params.id), req.params.cid);
+    const p = await registry.require(req.params.id);
+    const c = await deleteComment(p.path, req.params.cid, guardOf(p.id));
     return { removed: { id: c.id } };
   });
 };

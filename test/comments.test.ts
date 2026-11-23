@@ -8,6 +8,9 @@ import {
   commentsPath,
   countComments,
   deleteComment,
+  deleteReply,
+  editComment,
+  editReply,
   getComment,
   listComments,
   normalizePage,
@@ -39,7 +42,7 @@ describe('comments (core)', () => {
     expect((await listComments(dir, { page: '/kasir' })).map((c) => c.id)).toEqual(['c1']);
 
     expect(await reopenComment(dir, 'c1')).toMatchObject({ status: 'open', resolution: null, resolvedAt: null });
-    await deleteComment(dir, 'c2');
+    await deleteComment(dir, 'c2', { force: true }); // ditulis agent: hanya dengan force
     expect((await addComment(dir, { text: 'baru' })).id).toBe('c3');
 
     // file bisa dibaca langsung oleh agent tanpa Prototyper
@@ -123,6 +126,74 @@ describe('comments (core)', () => {
     expect(countComments(dir)).toEqual({ open: 1, resolved: 0, waitingUser: 1 });
   });
 
+  it('edit & hapus hanya untuk komentar yang belum dikerjakan agent', async () => {
+    const dir = tmpDir();
+    const a = await addComment(dir, { text: 'Tombol kecil' });
+    expect(a.editable).toBe(true);
+    const e = await editComment(dir, 'c1', { text: '  Tombol bayar terlalu kecil ' });
+    expect(e).toMatchObject({ text: 'Tombol bayar terlalu kecil', editable: true, editedAt: expect.any(String) });
+    // teks sama: tidak menulis ulang
+    expect((await editComment(dir, 'c1', { text: 'Tombol bayar terlalu kecil' })).editedAt).toBe(e.editedAt);
+    await expect(editComment(dir, 'c1', { text: ' ' })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    // balasan pengguna sendiri tidak mengunci
+    expect((await replyComment(dir, 'c1', { text: 'tambahan' })).editable).toBe(true);
+
+    // sedang dikerjakan agent (run berjalan)
+    const working = { working: (c: { id: string }) => c.id === 'c1' };
+    await expect(editComment(dir, 'c1', { text: 'x' }, working)).rejects.toMatchObject({ code: 'CONFLICT' });
+    await expect(deleteComment(dir, 'c1', working)).rejects.toMatchObject({ code: 'CONFLICT' });
+
+    // sudah dibalas agent
+    expect((await replyComment(dir, 'c1', { text: 'Sudah diperbesar' }, AGENT_SOURCE)).editable).toBe(false);
+    await expect(editComment(dir, 'c1', { text: 'x' })).rejects.toMatchObject({ code: 'CONFLICT' });
+    await expect(deleteComment(dir, 'c1')).rejects.toMatchObject({ code: 'CONFLICT' });
+
+    // ditulis agent / sudah selesai
+    await addComment(dir, { text: 'dari agent' }, AGENT_SOURCE);
+    await expect(deleteComment(dir, 'c2')).rejects.toMatchObject({ code: 'CONFLICT' });
+    await addComment(dir, { text: 'selesai sendiri' });
+    await resolveComment(dir, 'c3');
+    expect((await getComment(dir, 'c3')).editable).toBe(false);
+    await expect(editComment(dir, 'c3', { text: 'x' })).rejects.toMatchObject({ code: 'CONFLICT' });
+
+    await addComment(dir, { text: 'salah ketik' });
+    await deleteComment(dir, 'c4');
+    expect((await listComments(dir)).map((c) => c.id)).toEqual(['c1', 'c2', 'c3']);
+    await deleteComment(dir, 'c1', { force: true });
+    await expect(editComment(dir, 'c9', { text: 'x' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+
+  it('edit & hapus balasan pengguna yang belum ditanggapi agent; id balasan tidak dipakai ulang', async () => {
+    const dir = tmpDir();
+    await addComment(dir, { text: 'Perbesar tombol' });
+    await replyComment(dir, 'c1', { text: 'Pilih ukuran', options: ['Besar', 'Sedang'] }, AGENT_SOURCE); // r1
+    await replyComment(dir, 'c1', { answerTo: 'c1-r1', choices: ['Besar'] }); // r2
+    await replyComment(dir, 'c1', { text: 'tambahan 1' }); // r3
+    const c = await replyComment(dir, 'c1', { text: 'tambahan 2' }); // r4
+    expect(c.replies.map((r) => r.editable)).toEqual([false, false, true, true]);
+
+    const e = await editReply(dir, 'c1', 'c1-r3', { text: ' tambahan satu ' });
+    expect(e.replies[2]).toMatchObject({ text: 'tambahan satu', editedAt: expect.any(String) });
+    await expect(editReply(dir, 'c1', 'c1-r1', { text: 'x' })).rejects.toMatchObject({ code: 'CONFLICT' }); // dari agent
+    await expect(editReply(dir, 'c1', 'c1-r2', { text: 'x' })).rejects.toMatchObject({ code: 'CONFLICT' }); // jawaban
+    await expect(editReply(dir, 'c1', 'c1-r9', { text: 'x' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(editReply(dir, 'c1', 'c1-r3', { text: '' })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    await expect(deleteReply(dir, 'c1', 'c1-r3', { working: () => true })).rejects.toMatchObject({ code: 'CONFLICT' });
+
+    // hapus balasan terakhir: id berikutnya tetap baru
+    expect((await deleteReply(dir, 'c1', 'c1-r4')).replies.map((r) => r.id)).toEqual(['c1-r1', 'c1-r2', 'c1-r3']);
+    expect((await replyComment(dir, 'c1', { text: 'lagi' })).replies.at(-1)?.id).toBe('c1-r5');
+
+    // setelah agent membalas, balasan pengguna sebelumnya terkunci
+    const after = await replyComment(dir, 'c1', { text: 'Sudah' }, AGENT_SOURCE);
+    expect(after.replies.map((r) => r.editable)).toEqual([false, false, false, false, false]);
+    await expect(deleteReply(dir, 'c1', 'c1-r3')).rejects.toMatchObject({ code: 'CONFLICT' });
+    // komentar selesai: terkunci
+    await replyComment(dir, 'c1', { text: 'terakhir' });
+    await resolveComment(dir, 'c1');
+    await expect(editReply(dir, 'c1', 'c1-r7', { text: 'x' })).rejects.toMatchObject({ code: 'CONFLICT' });
+  });
+
   it('normalizePage', () => {
     expect(normalizePage(undefined)).toBe('/');
     expect(normalizePage('')).toBe('/');
@@ -163,7 +234,32 @@ describe('API komentar', () => {
     expect(all.json().comments[0].replies).toHaveLength(1);
 
     expect((await app.inject({ method: 'POST', url: `${base}/c1/reopen` })).json().status).toBe('open');
-    expect((await app.inject({ method: 'DELETE', url: `${base}/c1` })).json()).toEqual({ removed: { id: 'c1' } });
+    // balasan tanpa role = pengguna (walau author "agent"): masih bisa diedit
+    expect((await app.inject({ method: 'PATCH', url: `${base}/c1`, payload: { text: 'Perbesar font judul' } })).statusCode).toBe(200);
+    // sudah dibalas agent: tidak bisa diedit/dihapus
+    await app.inject({ method: 'POST', url: `${base}/c1/replies`, payload: { text: 'sudah', role: 'agent', author: 'agent' } });
+    expect((await app.inject({ method: 'PATCH', url: `${base}/c1`, payload: { text: 'x' } })).statusCode).toBe(409);
+    expect((await app.inject({ method: 'DELETE', url: `${base}/c1` })).statusCode).toBe(409);
+    await deleteComment(dir, 'c1', { force: true });
+  });
+
+  it('edit & hapus komentar lewat API', async () => {
+    const c = (await app.inject({ method: 'POST', url: base, payload: { text: 'Typo' } })).json();
+    expect(c.editable).toBe(true);
+    const e = await app.inject({ method: 'PATCH', url: `${base}/${c.id}`, payload: { text: 'Perbaiki typo di judul' } });
+    expect(e.statusCode).toBe(200);
+    expect(e.json()).toMatchObject({ id: c.id, text: 'Perbaiki typo di judul', editedAt: expect.any(String) });
+    expect((await app.inject({ method: 'PATCH', url: `${base}/${c.id}`, payload: { text: '' } })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'PATCH', url: `${base}/c99`, payload: { text: 'x' } })).statusCode).toBe(404);
+    // balasan
+    await app.inject({ method: 'POST', url: `${base}/${c.id}/replies`, payload: { text: 'lupa satu' } });
+    const re = await app.inject({ method: 'PATCH', url: `${base}/${c.id}/replies/${c.id}-r1`, payload: { text: 'lupa satu hal' } });
+    expect(re.statusCode).toBe(200);
+    expect(re.json().replies[0]).toMatchObject({ text: 'lupa satu hal', editable: true });
+    const rd = await app.inject({ method: 'DELETE', url: `${base}/${c.id}/replies/${c.id}-r1` });
+    expect(rd.json().replies).toEqual([]);
+    expect((await app.inject({ method: 'DELETE', url: `${base}/${c.id}/replies/${c.id}-r1` })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'DELETE', url: `${base}/${c.id}` })).json()).toEqual({ removed: { id: c.id } });
   });
 
   it('pertanyaan berpilihan lewat API + filter waiting', async () => {

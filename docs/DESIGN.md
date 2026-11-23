@@ -234,7 +234,10 @@ Base: `http://127.0.0.1:4000/api`. Semua respons JSON (kecuali SSE). Semua reque
 | POST | `/prototypes/:id/comments/:cid/replies` | balas `{ text, author?, role?, attachments? }`; pertanyaan berpilihan `{ text, options: [...], multi? }`; jawaban `{ answerTo, choices: [...], text? }` |
 | POST | `/prototypes/:id/comments/:cid/resolve` | selesai `{ note?, author? }` |
 | POST | `/prototypes/:id/comments/:cid/reopen` | buka lagi |
-| DELETE | `/prototypes/:id/comments/:cid` | hapus (gambar lampirannya ikut dihapus bila tidak dipakai komentar lain) |
+| PATCH | `/prototypes/:id/comments/:cid` | edit teks `{ text }`; hanya komentar `editable` (open, ditulis pengguna, belum ada balasan agent) yang tidak sedang dikerjakan run agent, selain itu 409 |
+| PATCH | `/prototypes/:id/comments/:cid/replies/:rid` | edit teks balasan `{ text }`; hanya balasan `editable` (balasan biasa dari pengguna, komentar open, belum ada balasan agent sesudahnya) yang tidak sedang dikerjakan run agent, selain itu 409 |
+| DELETE | `/prototypes/:id/comments/:cid/replies/:rid` | hapus balasan, syarat sama; nomor balasan yang dihapus tidak dipakai ulang (`replySeq`) |
+| DELETE | `/prototypes/:id/comments/:cid` | hapus, dengan syarat yang sama dengan edit (gambar lampirannya ikut dihapus bila tidak dipakai komentar lain); CLI `comments rm --force` melewati syarat |
 | POST | `/prototypes/:id/attachments` | unggah gambar `{ data }` (base64/data URL; PNG/JPG/GIF/WebP/SVG, jenis dikenali dari isi file, maks. 5 MB) → `{ name, path, type, size }`; disimpan di `.prototyper/attachments/<hash>.<ext>`, `path` dipakai di `attachments` (maks. 6) |
 | GET | `/prototypes/:id/attachments/:name` | sajikan gambar lampiran (SVG dengan `Content-Security-Policy: … sandbox` agar skrip di dalamnya tidak jalan walau dibuka langsung) |
 

@@ -280,11 +280,12 @@ export function registerCommentCommands(program: Command, act: Act): void {
   comments
     .command('rm <id> <commentId>')
     .alias('delete')
-    .description('hapus komentar')
+    .description('hapus komentar yang belum dikerjakan agent')
+    .option('--force', 'hapus walaupun komentar sudah dikerjakan agent / sudah selesai')
     .action(
-      act(async (ctx, [id, cid]) => {
+      act(async (ctx, [id, cid], cmd) => {
         const p = await ctx.registry.require(id ?? '');
-        const c = await deleteComment(p.path, cid ?? '');
+        const c = await deleteComment(p.path, cid ?? '', { force: cmd.opts<{ force?: boolean }>().force === true });
         if (ctx.json) return printJson({ removed: { id: c.id } });
         console.log(`✓ ${c.id} dihapus`);
       }),
