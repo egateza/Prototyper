@@ -1,7 +1,7 @@
 # Roadmap Prototyper
 
 > Catatan rencana kerja setelah v0.1. Untuk arsitektur yang sudah berjalan lihat [`DESIGN.md`](DESIGN.md).
-> Terakhir diperbarui: 23 November 2026 (versi 0.4.1 + ekspor halaman yang belum dirilis).
+> Terakhir diperbarui: 23 November 2026 (versi 0.4.1).
 
 ## Sudah selesai
 
@@ -28,7 +28,7 @@
 - [x] **LAN per prototype** (`prototyper lan <id> on|off`) dan mode LAN dari tray (0.3.11–0.4.0)
 - [x] **Edit dari HP** (0.4.0): pairing perangkat dengan QR (`src/core/devices.ts`), hak akses per request (`src/server/access.ts`), tampilan mobile
 - [x] **Dialog pilih file/folder OS** untuk tombol **Pilih…** (0.4.0)
-- [x] **Ekspor halaman** ke PNG/JPG/PDF lewat Chromium headless (`prototyper export`), belum dirilis
+- [x] **Ekspor halaman** ke PNG/JPG/PDF lewat Chromium headless (`prototyper export`, 0.4.1)
 - [x] Tes jalan di Windows lewat `scripts/vitest.mjs` (normalisasi huruf drive)
 - [x] Commit baseline
 
@@ -48,9 +48,8 @@
 Urutan yang disarankan:
 
 1. Verifikasi yang tersisa di atas.
-2. Rilis ekspor halaman (naikkan versi + entri `web/whatsnew.json`).
-3. **MCP server**.
-4. Lanjutan #3 dan #4 (daftar di bawah), sesuai kebutuhan.
+2. **MCP server**.
+3. Lanjutan #3 dan #4 (daftar di bawah), sesuai kebutuhan.
 
 ### #1 Membuat prototype baru
 

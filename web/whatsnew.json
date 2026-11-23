@@ -4,12 +4,15 @@
     {
       "version": "0.4.1",
       "date": "2026-11-23",
-      "title": "Daftar tray yang ringkas & label desain sistem",
+      "title": "Ekspor halaman, edit komentar & tray yang ringkas",
       "items": [
+        "**Ekspor halaman** ke PNG, JPG, atau PDF lewat tombol ekspor di bilah pratinjau (atau palet perintah). Hasilnya mengikuti perangkat, orientasi, dan tema terang/gelap di pratinjau. PNG/JPG bisa langsung disalin ke clipboard.",
+        "**Edit & hapus komentar** selama agent belum mengerjakannya: klik ikon pensil atau tong sampah di komentar. Balasan Anda juga bisa diedit/dihapus selama agent belum menanggapinya. Teks yang diubah diberi tanda *(diedit)*. Bisa juga dari HP yang sudah dipasangkan.",
         "Popup tray menampilkan **5 prototype** dulu. Klik **Tampilkan lagi** untuk 5 berikutnya (dengan loading singkat dan animasi tinggi yang halus), dan **Tampilkan lebih sedikit** untuk kembali ringkas.",
         "Setiap baris di tray kini punya label **Prototype** atau **Desain sistem** di bawah namanya, lengkap dengan statusnya.",
         "Label yang sama tampil di Web UI: item sidebar, kartu Beranda, dan judul halaman prototype.",
-        "Tombol palet perintah di bawah sidebar kini berupa ikon (Ctrl K) agar footer tidak meluber."
+        "Tombol palet perintah di bawah sidebar kini berupa ikon (Ctrl K) agar footer tidak meluber.",
+        "Setelah HP berhasil dipasangkan, halamannya langsung dimuat ulang dan masuk ke Web UI. Dialog **Hubungkan HP** tidak lagi meluber di layar sempit."
       ]
     },
     {

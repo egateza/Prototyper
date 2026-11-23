@@ -1,8 +1,14 @@
 ## Yang baru di 0.4.1
 
+- **Ekspor halaman ke PNG, JPG, dan PDF.** Tombol ekspor di bilah pratinjau (dan palet perintah): PNG/JPG dengan resolusi 1–3×, seluruh halaman atau layar saja, bisa disalin ke clipboard; PDF satu halaman seperti layar atau A4 cetak. Halaman dirender ulang oleh Edge/Chrome/Chromium headless (tanpa dependensi baru; `PROTOTYPER_BROWSER` untuk memaksa path browser) dan mengikuti pratinjau: ukuran & orientasi perangkat, tema terang/gelap, serta class/style/storage halaman agar tema dan status login ikut. Untuk agent: `prototyper export <id> -p /kasir -d mobile -o shot.png` (dan `GET /api/prototypes/:id/export`).
+- **Edit & hapus komentar yang belum dikerjakan agent.** Komentar bisa diedit/dihapus selama masih open, ditulis pengguna, dan belum ada balasan agent; balasan biasa dari pengguna selama agent belum menanggapinya. Selama run agent mengerjakan komentar itu, edit/hapus dikunci. Teks yang diubah diberi tanda *(diedit)*. Juga dari HP yang sudah dipasangkan. API: `PATCH /api/prototypes/:id/comments/:cid`, `PATCH`/`DELETE …/comments/:cid/replies/:rid`.
+- **Perubahan perilaku:** komentar yang sudah selesai atau sudah dibalas agent tidak bisa lagi dihapus dari Web UI/API. `prototyper comments rm` mengikuti aturan yang sama; tambahkan `--force` untuk tetap menghapus.
 - **Daftar tray yang ringkas.** Popup tray (klik kiri) menampilkan 5 prototype dulu. **Tampilkan lagi** menambah 5 baris, **Tampilkan lebih sedikit** kembali ke 5. Saat diklik, tombolnya menampilkan loading singkat lalu tinggi popup berubah dengan animasi halus, tidak lagi melompat.
 - **Label Prototype / Desain sistem.** Setiap baris di tray menampilkan jenisnya di bawah nama (biru untuk prototype, ungu untuk desain sistem) bersama statusnya. Label yang sama ada di Web UI: item sidebar, kartu Beranda, dan judul halaman prototype.
 - Tombol palet perintah di footer sidebar kini berupa ikon (Ctrl K di tooltip), sehingga footer tidak lagi meluber keluar sidebar.
+- Pairing HP: setelah kode diterima, halaman dimuat ulang dan langsung masuk Web UI. Dialog **Hubungkan HP** tidak meluber di layar sempit, dan kembali ke kode pairing bila HP yang baru terhubung dicabut. Petunjuk firewall di tray kini menyebut jaringan Private maupun Public.
+
+Pembaruan ke 0.4.1 mengubah kode server, jadi Prototyper dimulai ulang sekali.
 
 ## 0.4.0
 
