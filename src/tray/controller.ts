@@ -389,7 +389,7 @@ export class TrayController {
     s.daemonBusy = null;
     await this.poll();
     const addr = s.lanAddrs[0];
-    const firewall = 'Bila Windows meminta izin firewall, izinkan untuk jaringan Private.';
+    const firewall = 'Bila Windows meminta izin firewall, izinkan untuk jaringan yang sedang dipakai (Private atau Public).';
     if (next === 'off') {
       this.notify('Mode LAN dimatikan', 'Prototyper & prototype hanya bisa dibuka dari komputer ini.');
     } else if (!addr) {

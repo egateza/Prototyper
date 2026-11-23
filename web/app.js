@@ -2990,7 +2990,10 @@ $('#pair-form').addEventListener('submit', async (e) => {
   b.disabled = true;
   try {
     await api('POST', '/api/devices/pair', { code });
-    location.replace(`/${location.hash}`);
+    b.textContent = 'Terhubung ✓ Memuat…';
+    // replace() ke URL yang hanya beda hash tidak memuat ulang halaman, jadi reload eksplisit.
+    history.replaceState(null, '', `/${location.hash}`);
+    location.reload();
   } catch (err) {
     $('#pair-err').textContent = err.message;
     $('#pair-err').hidden = false;
@@ -3028,6 +3031,11 @@ async function loadDevices() {
       if (ph.paired || ph.err) ph.pairing = null;
     }
     ph.devices = r.devices;
+    // Perangkat yang baru terhubung sudah dicabut → kembali ke tampilan kode pairing.
+    if (ph.paired && !r.devices.some((d) => d.id === ph.paired.id)) {
+      ph.paired = null;
+      if (daemonLan === 'all' && !ph.pairing && !ph.err) newPairing();
+    }
   } catch (err) {
     ph.err = err.message;
   }

@@ -709,14 +709,17 @@ dialog.small p { margin: 0; }
 .pair-card p { margin: 0; font-size: 13.5px; line-height: 1.5; }
 #pair-code { width: 100%; min-width: 0; box-sizing: border-box; font: 600 28px/1.2 var(--mono); letter-spacing: .3em; text-align: center; padding: 12px; border: 1px solid var(--border-strong); border-radius: var(--r); background: var(--bg); color: var(--fg); }
 .pair-card .btn { justify-content: center; padding: 12px; font-size: 15px; }
-.phone-pair { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 18px; align-items: start; }
+#dlg-phone { width: min(560px, calc(100vw - 32px)); overflow-x: hidden; }
+#dlg-phone form { grid-template-columns: minmax(0, 1fr); }
+.phone-pair { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 18px; align-items: start; }
 .phone-qr { background: #fff; border-radius: var(--r); padding: 8px; border: 1px solid var(--border); }
 .phone-qr svg { display: block; width: 100%; height: auto; }
 .phone-info { display: grid; gap: 8px; font-size: 13px; }
 .phone-info p { margin: 0; }
-.phone-url { overflow-wrap: anywhere; font-size: 13px; }
+.phone-url { display: block; overflow-wrap: anywhere; white-space: normal; font-size: 13px; }
 .phone-code { font: 700 30px/1.1 var(--mono); letter-spacing: .12em; }
-.phone-addrs button { font-family: var(--mono); font-weight: 500; }
+.phone-addrs { flex-wrap: wrap; }
+.phone-addrs button { flex: 1 1 auto; min-width: 0; font-family: var(--mono); font-weight: 500; }
 .phone-sub { margin: 0; font-size: 13px; }
 .phone-devices { display: grid; gap: 6px; }
 .phone-devices p { margin: 0; font-size: 13px; }
