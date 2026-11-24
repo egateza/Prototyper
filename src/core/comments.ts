@@ -4,6 +4,119 @@ import { z } from 'zod';
 import { cleanAttachments, removeUnreferenced } from './attachments.js';
 import { AppError, errorMessage } from './errors.js';
 import { readJsonFile, writeJsonAtomic } from './fsutil.js';
+import { defineMessages, getProcessLocale, type Locale } from './i18n.js';
+
+/** Pesan error untuk peminta (bahasa request). */
+const t = defineMessages({
+  id: {
+    fieldRequired: '{field} wajib diisi',
+    fieldTooLong: '{field} terlalu panjang (maks. {max} karakter)',
+    fieldQuestion: 'pertanyaan',
+    badRole: 'role harus "user" atau "agent"',
+    optionsNotArray: 'options harus berupa array teks',
+    optionEmpty: 'setiap opsi harus berupa teks yang tidak kosong',
+    optionTooLong: 'opsi terlalu panjang (maks. {max} karakter)',
+    optionCount: 'jumlah opsi harus {min}-{max}',
+    optionDuplicate: 'opsi tidak boleh kembar',
+    anchorNotObject: 'anchor harus objek { selector, tag?, text?, quote?, html? }',
+    anchorSelectorRequired: 'anchor.selector wajib diisi',
+    anchorSelectorTooLong: 'anchor.selector terlalu panjang (maks. 1000 karakter)',
+    whyResolved: 'sudah selesai',
+    whyByAgent: 'ditulis agent',
+    whyWorked: 'sudah dikerjakan agent',
+    verbEdit: 'diedit',
+    verbDelete: 'dihapus',
+    commentLocked: 'Komentar {id} {why}, jadi tidak bisa {verb}. Tambahkan balasan bila ada perubahan.',
+    commentWorking: 'Komentar {id} sedang dikerjakan agent, jadi tidak bisa {verb}. Tunggu selesai atau hentikan agent dulu.',
+    fileCorrupt: '{file} rusak: {error}',
+    unknownFormat: 'format tidak dikenal',
+    fileNotJson: '{file} bukan JSON yang valid: {error}',
+    commentNotFound: 'Komentar "{id}" tidak ditemukan',
+    commentNotFoundArchive: 'Komentar "{id}" tidak ditemukan (bila sudah diarsipkan, pakai --include-archive)',
+    questionAndAnswer: 'Balasan tidak bisa sekaligus pertanyaan dan jawaban',
+    attachmentsPlainOnly: 'Lampiran hanya untuk komentar dan balasan biasa',
+    answerToInvalid: 'answerTo harus id balasan pertanyaan',
+    pickOne: 'Pilih minimal satu opsi',
+    questionNotFound: 'Pertanyaan "{qid}" tidak ditemukan di komentar {id}',
+    unknownOptions: 'Opsi tidak dikenal: {options}',
+    singleChoice: 'Pertanyaan ini hanya boleh satu pilihan',
+    replyNotFound: 'Balasan "{rid}" tidak ditemukan di komentar {id}',
+    whyReplyResolved: 'komentarnya sudah selesai',
+    whyReplyChoice: 'berupa pertanyaan/jawaban berpilihan',
+    whyReplyAnswered: 'sudah ditanggapi agent',
+    replyLocked: 'Balasan {rid} {why}, jadi tidak bisa {verb}. Tambahkan balasan baru bila ada perubahan.',
+    replyWorking: 'Komentar {id} sedang dikerjakan agent, jadi balasannya tidak bisa {verb}. Tunggu selesai atau hentikan agent dulu.',
+  },
+  en: {
+    fieldRequired: '{field} is required',
+    fieldTooLong: '{field} is too long (max. {max} characters)',
+    fieldQuestion: 'question',
+    badRole: 'role must be "user" or "agent"',
+    optionsNotArray: 'options must be an array of text',
+    optionEmpty: 'every option must be non-empty text',
+    optionTooLong: 'option is too long (max. {max} characters)',
+    optionCount: 'number of options must be {min}-{max}',
+    optionDuplicate: 'options must not be duplicated',
+    anchorNotObject: 'anchor must be an object { selector, tag?, text?, quote?, html? }',
+    anchorSelectorRequired: 'anchor.selector is required',
+    anchorSelectorTooLong: 'anchor.selector is too long (max. 1000 characters)',
+    whyResolved: 'is already resolved',
+    whyByAgent: 'was written by the agent',
+    whyWorked: 'was already handled by the agent',
+    verbEdit: 'edited',
+    verbDelete: 'deleted',
+    commentLocked: 'Comment {id} {why}, so it cannot be {verb}. Add a reply if something changed.',
+    commentWorking: 'The agent is working on comment {id}, so it cannot be {verb}. Wait until it finishes or stop the agent first.',
+    fileCorrupt: '{file} is corrupt: {error}',
+    unknownFormat: 'unknown format',
+    fileNotJson: '{file} is not valid JSON: {error}',
+    commentNotFound: 'Comment "{id}" not found',
+    commentNotFoundArchive: 'Comment "{id}" not found (if it was archived, use --include-archive)',
+    questionAndAnswer: 'A reply cannot be both a question and an answer',
+    attachmentsPlainOnly: 'Attachments are only for comments and plain replies',
+    answerToInvalid: 'answerTo must be the id of a question reply',
+    pickOne: 'Choose at least one option',
+    questionNotFound: 'Question "{qid}" not found in comment {id}',
+    unknownOptions: 'Unknown options: {options}',
+    singleChoice: 'This question allows only one choice',
+    replyNotFound: 'Reply "{rid}" not found in comment {id}',
+    whyReplyResolved: 'belongs to a resolved comment',
+    whyReplyChoice: 'is a multiple-choice question/answer',
+    whyReplyAnswered: 'was already answered by the agent',
+    replyLocked: 'Reply {rid} {why}, so it cannot be {verb}. Add a new reply if something changed.',
+    replyWorking: 'The agent is working on comment {id}, so its replies cannot be {verb}. Wait until it finishes or stop the agent first.',
+  },
+});
+
+/**
+ * Teks yang ditulis ke file awet di folder prototype (DECISIONS.md, nama penulis default):
+ * bahasa proses (pengaturan), lihat `getProcessLocale`. Pembaca file ini (`parseDecision`) tidak
+ * bergantung pada bahasa, jadi file campuran (sebagian Indonesia, sebagian Inggris) tetap terbaca.
+ */
+const w = defineMessages({
+  id: {
+    decisionsTitle: '# Keputusan',
+    decisionsIntro: 'Dicatat otomatis oleh Prototyper setiap komentar diselesaikan atau dibuka lagi (append-only).',
+    decisionsFormat: 'Format: `tanggal · komentar · halaman · elemen · permintaan → hasil`.',
+    image: '(gambar)',
+    reopened: '↺ dibuka lagi',
+    undone: '↺ perubahan agent dibatalkan{report}{reopened}',
+    undoneReopened: ', dibuka lagi',
+    defaultUser: 'pengguna',
+    localUser: 'Pengguna (PC ini)',
+  },
+  en: {
+    decisionsTitle: '# Decisions',
+    decisionsIntro: 'Recorded automatically by Prototyper whenever a comment is resolved or reopened (append-only).',
+    decisionsFormat: 'Format: `date · comment · page · element · request → outcome`.',
+    image: '(image)',
+    reopened: '↺ reopened',
+    undone: '↺ agent changes undone{report}{reopened}',
+    undoneReopened: ', reopened',
+    defaultUser: 'user',
+    localUser: 'User (this PC)',
+  },
+});
 
 /**
  * Komentar disimpan di folder prototype (`.prototyper/comments.json`), bukan di PROTOTYPER_HOME,
@@ -159,9 +272,20 @@ export interface Source {
   fixed?: boolean;
 }
 
-export const USER_SOURCE: Source = { author: 'pengguna', role: 'user' };
+/** Penulis default (CLI/API tanpa `author`); namanya mengikuti bahasa pengaturan saat ditulis (disimpan di file). */
+export const USER_SOURCE: Source = {
+  get author() {
+    return w.in(getProcessLocale(), 'defaultUser');
+  },
+  role: 'user',
+};
 /** Penulis dari Web UI di komputer tempat Prototyper berjalan. */
-export const LOCAL_USER_SOURCE: Source = { author: 'Pengguna (PC ini)', role: 'user' };
+export const LOCAL_USER_SOURCE: Source = {
+  get author() {
+    return w.in(getProcessLocale(), 'localUser');
+  },
+  role: 'user',
+};
 export const AGENT_SOURCE: Source = { author: 'agent', role: 'agent' };
 
 export function commentsPath(dir: string): string {
@@ -169,10 +293,10 @@ export function commentsPath(dir: string): string {
 }
 
 function cleanText(v: unknown, field = 'text'): string {
-  if (typeof v !== 'string' || !v.trim()) throw new AppError('BAD_REQUEST', `${field} wajib diisi`);
-  const t = v.trim();
-  if (t.length > MAX_TEXT) throw new AppError('BAD_REQUEST', `${field} terlalu panjang (maks. ${MAX_TEXT} karakter)`);
-  return t;
+  if (typeof v !== 'string' || !v.trim()) throw new AppError('BAD_REQUEST', t('fieldRequired', { field }));
+  const s = v.trim();
+  if (s.length > MAX_TEXT) throw new AppError('BAD_REQUEST', t('fieldTooLong', { field, max: MAX_TEXT }));
+  return s;
 }
 
 function optionalText(v: unknown, field = 'text'): string {
@@ -184,7 +308,7 @@ function source(input: { author?: unknown; role?: unknown }, def: Source): Sourc
   if (def.fixed) return { author: def.author, role: def.role, ...(def.deviceId ? { deviceId: def.deviceId } : {}) };
   const author = typeof input.author === 'string' && input.author.trim() ? input.author.trim().slice(0, 80) : def.author;
   if (input.role !== undefined && input.role !== 'user' && input.role !== 'agent') {
-    throw new AppError('BAD_REQUEST', 'role harus "user" atau "agent"');
+    throw new AppError('BAD_REQUEST', t('badRole'));
   }
   return { author, role: (input.role as Role | undefined) ?? def.role, ...(def.deviceId ? { deviceId: def.deviceId } : {}) };
 }
@@ -204,14 +328,14 @@ export function withDeviceNames<T extends { author: string; deviceId?: string; r
 }
 
 function cleanOptions(v: unknown): string[] {
-  if (!Array.isArray(v)) throw new AppError('BAD_REQUEST', 'options harus berupa array teks');
+  if (!Array.isArray(v)) throw new AppError('BAD_REQUEST', t('optionsNotArray'));
   const opts = v.map((o) => (typeof o === 'string' ? o.trim() : ''));
-  if (opts.some((o) => !o)) throw new AppError('BAD_REQUEST', 'setiap opsi harus berupa teks yang tidak kosong');
-  if (opts.some((o) => o.length > MAX_OPTION)) throw new AppError('BAD_REQUEST', `opsi terlalu panjang (maks. ${MAX_OPTION} karakter)`);
+  if (opts.some((o) => !o)) throw new AppError('BAD_REQUEST', t('optionEmpty'));
+  if (opts.some((o) => o.length > MAX_OPTION)) throw new AppError('BAD_REQUEST', t('optionTooLong', { max: MAX_OPTION }));
   if (opts.length < MIN_OPTIONS || opts.length > MAX_OPTIONS) {
-    throw new AppError('BAD_REQUEST', `jumlah opsi harus ${MIN_OPTIONS}-${MAX_OPTIONS}`);
+    throw new AppError('BAD_REQUEST', t('optionCount', { min: MIN_OPTIONS, max: MAX_OPTIONS }));
   }
-  if (new Set(opts.map((o) => o.toLowerCase())).size !== opts.length) throw new AppError('BAD_REQUEST', 'opsi tidak boleh kembar');
+  if (new Set(opts.map((o) => o.toLowerCase())).size !== opts.length) throw new AppError('BAD_REQUEST', t('optionDuplicate'));
   return opts;
 }
 
@@ -224,11 +348,11 @@ function clip(v: unknown, max: number): string | undefined {
 /** Validasi anchor dari klien. undefined/null = komentar tanpa elemen. */
 export function cleanAnchor(v: unknown): CommentAnchor | undefined {
   if (v === undefined || v === null) return undefined;
-  if (typeof v !== 'object' || Array.isArray(v)) throw new AppError('BAD_REQUEST', 'anchor harus objek { selector, tag?, text?, quote?, html? }');
+  if (typeof v !== 'object' || Array.isArray(v)) throw new AppError('BAD_REQUEST', t('anchorNotObject'));
   const a = v as Record<string, unknown>;
   const selector = typeof a.selector === 'string' ? a.selector.trim() : '';
-  if (!selector) throw new AppError('BAD_REQUEST', 'anchor.selector wajib diisi');
-  if (selector.length > 1000) throw new AppError('BAD_REQUEST', 'anchor.selector terlalu panjang (maks. 1000 karakter)');
+  if (!selector) throw new AppError('BAD_REQUEST', t('anchorSelectorRequired'));
+  if (selector.length > 1000) throw new AppError('BAD_REQUEST', t('anchorSelectorTooLong'));
   const tag = clip(a.tag, 40);
   const text = clip(a.text, 300);
   const quote = clip(a.quote, 1000);
@@ -298,14 +422,17 @@ export interface EditGuard {
   force?: boolean;
 }
 
-function assertEditable(c: StoredComment, guard: EditGuard, verb: string): void {
+type Verb = 'verbEdit' | 'verbDelete';
+
+function assertEditable(c: StoredComment, guard: EditGuard, verbKey: Verb): void {
   if (guard.force) return;
+  const verb = t(verbKey);
   if (!untouched(c)) {
-    const why = c.status !== 'open' ? 'sudah selesai' : c.role !== 'user' ? 'ditulis agent' : 'sudah dikerjakan agent';
-    throw new AppError('CONFLICT', `Komentar ${c.id} ${why}, jadi tidak bisa ${verb}. Tambahkan balasan bila ada perubahan.`);
+    const why = t(c.status !== 'open' ? 'whyResolved' : c.role !== 'user' ? 'whyByAgent' : 'whyWorked');
+    throw new AppError('CONFLICT', t('commentLocked', { id: c.id, why, verb }));
   }
   if (guard.working?.(decorate(c))) {
-    throw new AppError('CONFLICT', `Komentar ${c.id} sedang dikerjakan agent, jadi tidak bisa ${verb}. Tunggu selesai atau hentikan agent dulu.`);
+    throw new AppError('CONFLICT', t('commentWorking', { id: c.id, verb }));
   }
 }
 
@@ -320,7 +447,7 @@ function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
 
 function parseFile(data: unknown, file: string): CommentsFile {
   const r = fileSchema.safeParse(data);
-  if (!r.success) throw new AppError('INTERNAL', `${file} rusak: ${r.error.issues[0]?.message ?? 'format tidak dikenal'}`);
+  if (!r.success) throw new AppError('INTERNAL', t('fileCorrupt', { file, error: r.error.issues[0]?.message ?? t('unknownFormat') }));
   return r.data;
 }
 
@@ -330,7 +457,7 @@ async function readFile(dir: string): Promise<CommentsFile> {
   try {
     data = await readJsonFile(file);
   } catch (err) {
-    throw new AppError('INTERNAL', `${file} bukan JSON yang valid: ${errorMessage(err)}`);
+    throw new AppError('INTERNAL', t('fileNotJson', { file, error: errorMessage(err) }));
   }
   if (data === undefined) return { version: 1, nextId: 1, comments: [] };
   return parseFile(data, file);
@@ -338,7 +465,7 @@ async function readFile(dir: string): Promise<CommentsFile> {
 
 function find(data: CommentsFile, id: string): StoredComment {
   const c = data.comments.find((x) => x.id === id);
-  if (!c) throw new AppError('NOT_FOUND', `Komentar "${id}" tidak ditemukan`);
+  if (!c) throw new AppError('NOT_FOUND', t('commentNotFound', { id }));
   return c;
 }
 
@@ -420,10 +547,7 @@ export const CONTEXT_LIMITS = { related: 10, decisions: 20 } as const;
 export async function commentContext(dir: string, id: string, opts: { includeArchive?: boolean } = {}): Promise<CommentContext> {
   const all = await pool(dir, opts.includeArchive);
   const self = all.find((x) => x.c.id === id);
-  if (!self) {
-    const hint = opts.includeArchive ? '' : ' (bila sudah diarsipkan, pakai --include-archive)';
-    throw new AppError('NOT_FOUND', `Komentar "${id}" tidak ditemukan${hint}`);
-  }
+  if (!self) throw new AppError('NOT_FOUND', t(opts.includeArchive ? 'commentNotFound' : 'commentNotFoundArchive', { id }));
   const c = self.c;
   const selector = c.anchor?.selector;
   const time = (x: StoredComment) => x.resolvedAt ?? x.updatedAt;
@@ -465,11 +589,11 @@ async function readArchiveFile(file: string): Promise<StoredComment[]> {
   try {
     data = await readJsonFile(file);
   } catch (err) {
-    throw new AppError('INTERNAL', `${file} bukan JSON yang valid: ${errorMessage(err)}`);
+    throw new AppError('INTERNAL', t('fileNotJson', { file, error: errorMessage(err) }));
   }
   if (data === undefined) return [];
   const r = archiveFileSchema.safeParse(data);
-  if (!r.success) throw new AppError('INTERNAL', `${file} rusak: ${r.error.issues[0]?.message ?? 'format tidak dikenal'}`);
+  if (!r.success) throw new AppError('INTERNAL', t('fileCorrupt', { file, error: r.error.issues[0]?.message ?? t('unknownFormat') }));
   return r.data.comments;
 }
 
@@ -518,14 +642,10 @@ export interface Decision {
   text: string;
 }
 
-const DECISIONS_HEADER = [
-  '# Keputusan',
-  '',
-  'Dicatat otomatis oleh Prototyper setiap komentar diselesaikan atau dibuka lagi (append-only).',
-  'Format: `tanggal · komentar · halaman · elemen · permintaan → hasil`.',
-  '',
-  '',
-].join('\n');
+/** Kepala DECISIONS.md (ditulis sekali saat file dibuat, dalam bahasa pengaturan). */
+export function decisionsHeader(locale: Locale = getProcessLocale()): string {
+  return [w.in(locale, 'decisionsTitle'), '', w.in(locale, 'decisionsIntro'), w.in(locale, 'decisionsFormat'), '', ''].join('\n');
+}
 const SEP = ' · ';
 
 export function decisionsPath(dir: string): string {
@@ -552,10 +672,13 @@ function lastAgentReport(c: StoredComment): string | null {
   return null;
 }
 
-/** Satu baris log untuk komentar `c`; `outcome` null = pakai catatan resolve / laporan agent terakhir. */
+/**
+ * Satu baris log untuk komentar `c`; `outcome` null = pakai catatan resolve / laporan agent terakhir.
+ * Formatnya (pemisah ` · `, `→`) sama untuk semua bahasa sehingga `parseDecision` tidak bergantung bahasa.
+ */
 export function decisionLine(c: StoredComment, now: string, outcome: string | null = null): string {
   const result = outcome ?? c.resolution ?? lastAgentReport(c);
-  const text = `${oneLine(c.text || (c.attachments?.length ? '(gambar)' : ''), 160)}${result ? ` → ${oneLine(result, 240)}` : ''}`;
+  const text = `${oneLine(c.text || (c.attachments?.length ? w.in(getProcessLocale(), 'image') : ''), 160)}${result ? ` → ${oneLine(result, 240)}` : ''}`;
   return `- ${[localDate(now), c.id, c.page, c.anchor ? oneLine(c.anchor.selector, 200) : '-', text].join(SEP)}`;
 }
 
@@ -566,7 +689,10 @@ export function parseDecision(line: string): Decision | null {
   return { date, id, page, selector: selector === '-' ? null : selector, text };
 }
 
-/** Semua baris keputusan, urut kronologis. File tidak ada = kosong. */
+/**
+ * Semua baris keputusan, urut kronologis. File tidak ada = kosong. Kepala file (bahasa apa pun) dan
+ * baris lain yang bukan keputusan dilewati, jadi file yang ditulis dengan bahasa lain tetap terbaca.
+ */
 export async function readDecisions(dir: string): Promise<Decision[]> {
   const raw = await fs.readFile(decisionsPath(dir), 'utf8').catch(() => '');
   return raw.split(/\r?\n/).map(parseDecision).filter((d): d is Decision => d !== null);
@@ -577,7 +703,7 @@ async function appendDecisions(dir: string, lines: string[]): Promise<void> {
   const file = decisionsPath(dir);
   await fs.mkdir(path.dirname(file), { recursive: true });
   const exists = await fs.stat(file).then(() => true, () => false);
-  await fs.appendFile(file, `${exists ? '' : DECISIONS_HEADER}${lines.join('\n')}\n`, 'utf8');
+  await fs.appendFile(file, `${exists ? '' : decisionsHeader()}${lines.join('\n')}\n`, 'utf8');
 }
 
 // ---------- Tulis ----------
@@ -675,11 +801,11 @@ export async function replyComment(dir: string, id: string, input: ReplyInput, d
   const src = source(input, def);
   const isQuestion = input.options !== undefined;
   const isAnswer = input.answerTo !== undefined;
-  if (isQuestion && isAnswer) throw new AppError('BAD_REQUEST', 'Balasan tidak bisa sekaligus pertanyaan dan jawaban');
-  if ((isQuestion || isAnswer) && input.attachments !== undefined) throw new AppError('BAD_REQUEST', 'Lampiran hanya untuk komentar dan balasan biasa');
+  if (isQuestion && isAnswer) throw new AppError('BAD_REQUEST', t('questionAndAnswer'));
+  if ((isQuestion || isAnswer) && input.attachments !== undefined) throw new AppError('BAD_REQUEST', t('attachmentsPlainOnly'));
 
   if (isQuestion) {
-    const text = cleanText(input.text, 'pertanyaan');
+    const text = cleanText(input.text, t('fieldQuestion'));
     const options = cleanOptions(input.options);
     const multi = input.multi === true;
     return mutate(dir, (data, now) => {
@@ -691,19 +817,19 @@ export async function replyComment(dir: string, id: string, input: ReplyInput, d
   }
 
   if (isAnswer) {
-    if (typeof input.answerTo !== 'string') throw new AppError('BAD_REQUEST', 'answerTo harus id balasan pertanyaan');
+    if (typeof input.answerTo !== 'string') throw new AppError('BAD_REQUEST', t('answerToInvalid'));
     const answerTo = input.answerTo;
     const text = optionalText(input.text);
-    if (!Array.isArray(input.choices) || !input.choices.length) throw new AppError('BAD_REQUEST', 'Pilih minimal satu opsi');
+    if (!Array.isArray(input.choices) || !input.choices.length) throw new AppError('BAD_REQUEST', t('pickOne'));
     const picked = input.choices.map((x) => (typeof x === 'string' ? x.trim() : ''));
     return mutate(dir, (data, now) => {
       const c = find(data, id);
       const q = c.replies.find((r) => r.id === answerTo);
-      if (!q?.options) throw new AppError('NOT_FOUND', `Pertanyaan "${answerTo}" tidak ditemukan di komentar ${c.id}`);
+      if (!q?.options) throw new AppError('NOT_FOUND', t('questionNotFound', { qid: answerTo, id: c.id }));
       const bad = picked.filter((p) => !q.options?.includes(p));
-      if (bad.length) throw new AppError('BAD_REQUEST', `Opsi tidak dikenal: ${bad.join(', ')}`);
+      if (bad.length) throw new AppError('BAD_REQUEST', t('unknownOptions', { options: bad.join(', ') }));
       const choices = q.options.filter((o) => picked.includes(o)); // urutan mengikuti opsi
-      if (!q.multi && choices.length !== 1) throw new AppError('BAD_REQUEST', 'Pertanyaan ini hanya boleh satu pilihan');
+      if (!q.multi && choices.length !== 1) throw new AppError('BAD_REQUEST', t('singleChoice'));
       c.replies.push({ id: nextReplyId(c), author: src.author, role: src.role, text, createdAt: now, answerTo, choices, ...deviceOf(src) });
       c.updatedAt = now;
       return c;
@@ -754,7 +880,7 @@ export async function reopenComment(dir: string, id: string): Promise<Comment> {
     c.resolution = null;
     c.updatedAt = now;
     return c;
-  }, (c, now) => (wasResolved ? decisionLine(c, now, '↺ dibuka lagi') : null));
+  }, (c, now) => (wasResolved ? decisionLine(c, now, w.in(getProcessLocale(), 'reopened')) : null));
 }
 
 /**
@@ -792,7 +918,9 @@ export async function noteUndo(
       if (c.status !== 'open') continue;
       // Dicatat sebelum balasan pembatalan ditambahkan, agar "hasil" = laporan agent yang dibatalkan.
       const report = lastAgentReport(c);
-      decisions.push(decisionLine(c, now, `↺ perubahan agent dibatalkan${report ? ` (${report})` : ''}${resolvedInRun ? ', dibuka lagi' : ''}`));
+      const l = getProcessLocale();
+      const outcome = w.in(l, 'undone', { report: report ? ` (${report})` : '', reopened: resolvedInRun ? w.in(l, 'undoneReopened') : '' });
+      decisions.push(decisionLine(c, now, outcome));
       c.replies.push({ id: nextReplyId(c), author, role: 'agent', text, createdAt: now });
       c.updatedAt = now;
       touched.push(c.id);
@@ -813,7 +941,7 @@ export function attachmentsOf(comments: readonly StoredComment[]): string[] {
 export async function editComment(dir: string, id: string, input: { text?: unknown }, guard: EditGuard = {}): Promise<Comment> {
   return update(dir, (data, now) => {
     const c = find(data, id);
-    assertEditable(c, guard, 'diedit');
+    assertEditable(c, guard, 'verbEdit');
     const text = c.attachments?.length ? optionalText(input.text) : cleanText(input.text);
     if (text === c.text) return { value: decorate(c), changed: false };
     c.text = text;
@@ -825,21 +953,22 @@ export async function editComment(dir: string, id: string, input: { text?: unkno
 
 function findReply(c: StoredComment, rid: string): StoredReply {
   const r = c.replies.find((x) => x.id === rid);
-  if (!r) throw new AppError('NOT_FOUND', `Balasan "${rid}" tidak ditemukan di komentar ${c.id}`);
+  if (!r) throw new AppError('NOT_FOUND', t('replyNotFound', { rid, id: c.id }));
   return r;
 }
 
-function assertReplyEditable(c: StoredComment, r: StoredReply, guard: EditGuard, verb: string): void {
+function assertReplyEditable(c: StoredComment, r: StoredReply, guard: EditGuard, verbKey: Verb): void {
   if (guard.force) return;
+  const verb = t(verbKey);
   if (!replyUntouched(c, r)) {
-    const why = c.status !== 'open' ? 'komentarnya sudah selesai'
-      : r.role !== 'user' ? 'ditulis agent'
-        : r.options || r.answerTo ? 'berupa pertanyaan/jawaban berpilihan'
-          : 'sudah ditanggapi agent';
-    throw new AppError('CONFLICT', `Balasan ${r.id} ${why}, jadi tidak bisa ${verb}. Tambahkan balasan baru bila ada perubahan.`);
+    const why = t(c.status !== 'open' ? 'whyReplyResolved'
+      : r.role !== 'user' ? 'whyByAgent'
+        : r.options || r.answerTo ? 'whyReplyChoice'
+          : 'whyReplyAnswered');
+    throw new AppError('CONFLICT', t('replyLocked', { rid: r.id, why, verb }));
   }
   if (guard.working?.(decorate(c))) {
-    throw new AppError('CONFLICT', `Komentar ${c.id} sedang dikerjakan agent, jadi balasannya tidak bisa ${verb}. Tunggu selesai atau hentikan agent dulu.`);
+    throw new AppError('CONFLICT', t('replyWorking', { id: c.id, verb }));
   }
 }
 
@@ -848,7 +977,7 @@ export async function editReply(dir: string, id: string, rid: string, input: { t
   return update(dir, (data, now) => {
     const c = find(data, id);
     const r = findReply(c, rid);
-    assertReplyEditable(c, r, guard, 'diedit');
+    assertReplyEditable(c, r, guard, 'verbEdit');
     const text = r.attachments?.length ? optionalText(input.text) : cleanText(input.text);
     if (text === r.text) return { value: decorate(c), changed: false };
     r.text = text;
@@ -865,7 +994,7 @@ export async function deleteReply(dir: string, id: string, rid: string, guard: E
   const out = await mutate(dir, (data, now) => {
     const c = find(data, id);
     const r = findReply(c, rid);
-    assertReplyEditable(c, r, guard, 'dihapus');
+    assertReplyEditable(c, r, guard, 'verbDelete');
     c.replySeq = Math.max(c.replySeq ?? 0, c.replies.length, ...c.replies.map((x) => replyIndex(x.id)));
     c.replies = c.replies.filter((x) => x !== r);
     c.updatedAt = now;
@@ -886,7 +1015,7 @@ export async function deleteComment(dir: string, id: string, guard: EditGuard = 
   let remaining: StoredComment[] = [];
   const removed = await mutate(dir, (data) => {
     const c = find(data, id);
-    assertEditable(c, guard, 'dihapus');
+    assertEditable(c, guard, 'verbDelete');
     data.comments = data.comments.filter((x) => x !== c);
     remaining = data.comments;
     return c;

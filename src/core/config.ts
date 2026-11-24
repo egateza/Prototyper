@@ -1,5 +1,23 @@
 import os from 'node:os';
 import path from 'node:path';
+import { defineMessages } from './i18n.js';
+
+const t = defineMessages({
+  id: {
+    badPort: '{name} tidak valid: "{value}" (harus 1-65535)',
+    badRange: 'PROTOTYPER_PORT_RANGE tidak valid: "{value}" (format: 4100-4199)',
+    rangeReversed: 'PROTOTYPER_PORT_RANGE terbalik: "{value}"',
+    badRepo: 'PROTOTYPER_UPDATE_REPO tidak valid: "{value}" (format: pemilik/nama)',
+    portClash: 'Port daemon {port} bentrok dengan rentang port prototype {start}-{end}',
+  },
+  en: {
+    badPort: '{name} is invalid: "{value}" (must be 1-65535)',
+    badRange: 'PROTOTYPER_PORT_RANGE is invalid: "{value}" (format: 4100-4199)',
+    rangeReversed: 'PROTOTYPER_PORT_RANGE is reversed: "{value}"',
+    badRepo: 'PROTOTYPER_UPDATE_REPO is invalid: "{value}" (format: owner/name)',
+    portClash: 'Daemon port {port} overlaps the prototype port range {start}-{end}',
+  },
+});
 
 export interface PortRange {
   start: number;
@@ -67,7 +85,7 @@ function parsePort(value: string | undefined, fallback: number, name: string): n
   if (value === undefined || value === '') return fallback;
   const n = Number(value);
   if (!Number.isInteger(n) || n < 1 || n > 65535) {
-    throw new Error(`${name} tidak valid: "${value}" (harus 1-65535)`);
+    throw new Error(t('badPort', { name, value }));
   }
   return n;
 }
@@ -75,10 +93,10 @@ function parsePort(value: string | undefined, fallback: number, name: string): n
 function parseRange(value: string | undefined): PortRange {
   if (value === undefined || value === '') return { start: 4100, end: 4199 };
   const m = /^(\d+)-(\d+)$/.exec(value.trim());
-  if (!m) throw new Error(`PROTOTYPER_PORT_RANGE tidak valid: "${value}" (format: 4100-4199)`);
+  if (!m) throw new Error(t('badRange', { value }));
   const start = parsePort(m[1], 0, 'PROTOTYPER_PORT_RANGE');
   const end = parsePort(m[2], 0, 'PROTOTYPER_PORT_RANGE');
-  if (start > end) throw new Error(`PROTOTYPER_PORT_RANGE terbalik: "${value}"`);
+  if (start > end) throw new Error(t('rangeReversed', { value }));
   return { start, end };
 }
 
@@ -87,7 +105,7 @@ export const DEFAULT_UPDATE_REPO = 'egateza/Prototyper';
 function parseRepo(value: string | undefined): string {
   if (value === undefined || value === '') return DEFAULT_UPDATE_REPO;
   const v = value.trim();
-  if (!/^[\w.-]+\/[\w.-]+$/.test(v)) throw new Error(`PROTOTYPER_UPDATE_REPO tidak valid: "${value}" (format: pemilik/nama)`);
+  if (!/^[\w.-]+\/[\w.-]+$/.test(v)) throw new Error(t('badRepo', { value }));
   return v;
 }
 
@@ -114,7 +132,7 @@ export function loadConfig(
   const dsWorkspace = path.resolve(overrides.dsWorkspace ?? (env.PROTOTYPER_DS_WORKSPACE || path.join(home, 'design-systems')));
 
   if (port >= portRange.start && port <= portRange.end) {
-    throw new Error(`Port daemon ${port} bentrok dengan rentang port prototype ${portRange.start}-${portRange.end}`);
+    throw new Error(t('portClash', { port, start: portRange.start, end: portRange.end }));
   }
 
   return {

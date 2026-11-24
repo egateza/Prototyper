@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { formatContext } from '../src/cli/comments.js';
 import {
   addComment,
@@ -20,6 +20,7 @@ import {
   replyComment,
   resolveComment,
 } from '../src/core/comments.js';
+import { setLocale, withLocale } from '../src/core/i18n.js';
 import { parseManifest } from '../src/core/manifest.js';
 import { buildApp } from '../src/server/app.js';
 import { makePrototype, testConfig, tmpDir } from './helpers.js';
@@ -63,6 +64,55 @@ describe('log keputusan (DECISIONS.md)', () => {
   it('teks berisi pemisah tetap bisa diurai', () => {
     expect(parseDecision('- 2026-11-16 · c3 · /a · - · x → y')).toEqual({ date: '2026-11-16', id: 'c3', page: '/a', selector: null, text: 'x → y' });
     expect(parseDecision('# Keputusan')).toBeNull();
+  });
+});
+
+describe('log keputusan multibahasa', () => {
+  afterEach(() => setLocale('id'));
+
+  it('ditulis dalam bahasa pengaturan; file lama Indonesia tetap terbaca setelah ganti ke Inggris, dan sebaliknya', async () => {
+    const dir = tmpDir();
+    await addComment(dir, { text: 'Warna header', page: '/' });
+    await resolveComment(dir, 'c1', { note: 'Ungu' });
+    await reopenComment(dir, 'c1');
+
+    setLocale('en');
+    await resolveComment(dir, 'c1', { note: 'Purple' });
+    await reopenComment(dir, 'c1');
+    const since = new Date().toISOString();
+    await replyComment(dir, 'c1', { text: 'Header is green', role: 'agent', author: 'agent' });
+    await noteUndo(dir, { since, until: new Date().toISOString() }, 'Undone');
+    const raw = readFileSync(decisionsPath(dir), 'utf8');
+    expect(raw).toMatch(/^# Keputusan/); // kepala ditulis sekali, saat file dibuat
+    const texts = ['Warna header → Ungu', 'Warna header → ↺ dibuka lagi', 'Warna header → Purple', 'Warna header → ↺ reopened', 'Warna header → ↺ agent changes undone (Header is green)'];
+    expect((await readDecisions(dir)).map((d) => d.text)).toEqual(texts);
+    expect((await commentContext(dir, 'c1')).decisions.map((d) => d.text)).toEqual(texts);
+
+    setLocale('id');
+    expect((await readDecisions(dir)).map((d) => d.text)).toEqual(texts);
+
+    // File baru saat bahasa Inggris: kepala Inggris; tetap terbaca saat bahasa Indonesia.
+    setLocale('en');
+    const dir2 = tmpDir();
+    await addComment(dir2, { text: 'Logo', page: '/a', anchor: BTN });
+    await resolveComment(dir2, 'c1', { note: 'Bigger' });
+    expect(readFileSync(decisionsPath(dir2), 'utf8')).toMatch(/^# Decisions\n\nRecorded automatically by Prototyper/);
+    setLocale('id');
+    await addComment(dir2, { text: 'Judul', page: '/a' });
+    await resolveComment(dir2, 'c2', { note: 'Diganti' });
+    expect((await readDecisions(dir2)).map((d) => [d.id, d.selector, d.text])).toEqual([
+      ['c1', '#bayar', 'Logo → Bigger'],
+      ['c2', null, 'Judul → Diganti'],
+    ]);
+    expect(parseDecision('# Decisions')).toBeNull();
+    expect(parseDecision('Format: `date · comment · page · element · request → outcome`.')).toBeNull();
+    expect(parseDecision('Format: `tanggal · komentar · halaman · elemen · permintaan → hasil`.')).toBeNull();
+  });
+
+  it('pesan error mengikuti bahasa peminta', async () => {
+    const dir = tmpDir();
+    await expect(withLocale('en', () => commentContext(dir, 'c9'))).rejects.toThrow('Comment "c9" not found (if it was archived, use --include-archive)');
+    await expect(commentContext(dir, 'c9', { includeArchive: true })).rejects.toThrow('Komentar "c9" tidak ditemukan');
   });
 });
 

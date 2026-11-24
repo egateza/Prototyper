@@ -229,19 +229,25 @@ export function resolveWebSwap(
   root: string,
   runningAppDir: string,
   runtime: number,
-): { ok: true; app: AppInfo; webDir: string } | { ok: false; reason: string } {
+): { ok: true; app: AppInfo; webDir: string } | { ok: false; code: WebSwapBlock; appId?: string; reason: string } {
   const current = readCurrent(root);
-  if (!current) return { ok: false, reason: 'current.json tidak ada' };
-  if (!isUsableApp(root, current, runtime)) return { ok: false, reason: `aplikasi ${current.id} tidak bisa dipakai` };
+  if (!current) return { ok: false, code: 'noCurrent', reason: 'current.json tidak ada' };
+  if (!isUsableApp(root, current, runtime)) return { ok: false, code: 'unusable', appId: current.id, reason: `aplikasi ${current.id} tidak bisa dipakai` };
   const dir = path.join(root, current.id);
   const own = readCodeHash(runningAppDir);
   const next = readCodeHash(dir);
-  if (!own || !next) return { ok: false, reason: 'codeHash tidak tersedia' };
-  if (own !== next) return { ok: false, reason: 'kode aplikasi berubah' };
+  if (!own || !next) return { ok: false, code: 'noCodeHash', reason: 'codeHash tidak tersedia' };
+  if (own !== next) return { ok: false, code: 'codeChanged', reason: 'kode aplikasi berubah' };
   const webDir = path.join(dir, 'web');
-  if (!existsSync(path.join(webDir, 'index.html'))) return { ok: false, reason: 'web/index.html tidak ada' };
+  if (!existsSync(path.join(webDir, 'index.html'))) return { ok: false, code: 'noWeb', reason: 'web/index.html tidak ada' };
   return { ok: true, app: { id: current.id, version: current.version, runtime: current.runtime }, webDir };
 }
+
+/**
+ * Alasan pembaruan Web UI perlu mulai ulang (`reason` = teks Indonesia; pesan untuk pengguna diterjemahkan
+ * dari `code` di server, agar modul ini tetap tanpa i18n karena ikut di-bundle ke bootstrap SEA).
+ */
+export type WebSwapBlock = 'noCurrent' | 'unusable' | 'noCodeHash' | 'codeChanged' | 'noWeb';
 
 /** Hapus folder aplikasi di app store kecuali `keep` (dan current.json). Diam bila ada yang terkunci. */
 export function pruneAppStore(root: string, keep: string[]): string[] {

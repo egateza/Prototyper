@@ -21,10 +21,52 @@ import { healthRoutes } from './routes/health.js';
 import { pickRoutes } from './routes/pick.js';
 import { prototypeRoutes } from './routes/prototypes.js';
 import { updateRoutes } from './routes/update.js';
+import { settingsRoutes } from './routes/settings.js';
+import { registerRequestLocale } from './locale.js';
+import { autoSyncAgentFiles } from '../core/autosync.js';
+import { defineMessages, getProcessLocale, withLocale } from '../core/i18n.js';
+import { applyLangSetting, type LangState } from '../core/settings.js';
 import { checkForUpdate, installContext, UpdateChecker } from '../core/selfupdate.js';
 import type { UpdateCheck } from '../core/update.js';
 import { spawnSelfUpdate } from '../cli/update.js';
 import { VERSION } from '../version.js';
+
+// Alasan Web UI tidak bisa dialihkan tanpa mulai ulang (kode dari resolveWebSwap).
+const tSwap = defineMessages({
+  id: {
+    noCurrent: 'current.json tidak ada',
+    unusable: 'aplikasi {appId} tidak bisa dipakai',
+    noCodeHash: 'codeHash tidak tersedia',
+    codeChanged: 'kode aplikasi berubah',
+    noWeb: 'web/index.html tidak ada',
+    webSwitched: 'Web UI dialihkan ke {version} ({dir})',
+  },
+  en: {
+    noCurrent: 'current.json is missing',
+    unusable: 'app {appId} cannot be used',
+    noCodeHash: 'codeHash is not available',
+    codeChanged: 'the app code changed',
+    noWeb: 'web/index.html is missing',
+    webSwitched: 'Web UI switched to {version} ({dir})',
+  },
+});
+
+const t = defineMessages({
+  id: {
+    internal: 'Terjadi kesalahan internal: {message}',
+    routeNotFound: 'Route {method} {url} tidak ditemukan',
+    shutdownUnavailable: 'Shutdown tidak tersedia',
+    reloadWebSeaOnly: 'Pembaruan tanpa restart hanya untuk prototyper.exe',
+    restartNeeded: 'Perlu mulai ulang: {reason}',
+  },
+  en: {
+    internal: 'Internal error: {message}',
+    routeNotFound: 'Route {method} {url} not found',
+    shutdownUnavailable: 'Shutdown is not available',
+    reloadWebSeaOnly: 'Updating without restart is only available for prototyper.exe',
+    restartNeeded: 'Restart required: {reason}',
+  },
+});
 
 export interface BuildAppOptions {
   config: Config;
@@ -66,6 +108,8 @@ export interface AppContext {
   devices: DeviceStore;
   /** Perender ekspor halaman (PDF/PNG/JPG). */
   capture: Capturer;
+  /** Pengaturan bahasa saat ini (diperbarui lewat PUT /api/settings). */
+  lang: LangState;
 }
 
 export const WEB_DIR = path.join(APP_DIR, 'web');
@@ -82,10 +126,13 @@ export async function buildApp({ config, logger = false, onShutdown, agentComman
   const agent = new AgentRunner(config, agentCommands);
   const devices = new DeviceStore(config.home);
   await devices.load();
-  const ctx: AppContext = { config, registry, runtime, agent, state, staleProcesses, web: web ?? { dir: WEB_DIR, version: VERSION }, devices, capture: capture ?? createCapturer() };
+  const ctx: AppContext = { config, registry, runtime, agent, state, staleProcesses, web: web ?? { dir: WEB_DIR, version: VERSION }, devices, capture: capture ?? createCapturer(), lang: applyLangSetting(config.home) };
 
   const app = Fastify({ logger, forceCloseConnections: true });
   const startedAt = Date.now();
+
+  // Bahasa respons per request (sebelum hook hak akses agar pesannya ikut diterjemahkan).
+  registerRequestLocale(app, () => ctx.lang);
 
   // Hak akses: komputer ini = semua; HP terpasang (mode LAN) = baca + alur komentar/agent; lainnya
   // ditolak. Juga memeriksa Host (DNS rebinding) dan Origin (CSRF). Lihat access.ts.
@@ -102,11 +149,11 @@ export async function buildApp({ config, logger = false, onShutdown, agentComman
       return reply.status(status).send(errorBody('BAD_REQUEST', (err as Error).message));
     }
     app.log.error(err);
-    return reply.status(500).send(errorBody('INTERNAL', `Terjadi kesalahan internal: ${(err as Error).message}`));
+    return reply.status(500).send(errorBody('INTERNAL', t('internal', { message: (err as Error).message })));
   });
 
   app.setNotFoundHandler((req, reply) => {
-    reply.status(404).send(errorBody('NOT_FOUND', `Route ${req.method} ${req.url} tidak ditemukan`));
+    reply.status(404).send(errorBody('NOT_FOUND', t('routeNotFound', { method: req.method, url: req.url })));
   });
 
   app.addHook('onClose', async () => {
@@ -115,7 +162,19 @@ export async function buildApp({ config, logger = false, onShutdown, agentComman
     await runtime.stopAll();
   });
 
-  await app.register(healthRoutes, { prefix: '/api', startedAt, lanMode: config.lanMode, home: config.home, workspace: config.workspace, dsWorkspace: config.dsWorkspace, version: () => ctx.web.version });
+  await app.register(healthRoutes, { prefix: '/api', startedAt, lanMode: config.lanMode, home: config.home, workspace: config.workspace, dsWorkspace: config.dsWorkspace, version: () => ctx.web.version, lang: () => ctx.lang });
+  await app.register(settingsRoutes, {
+    prefix: '/api',
+    home: config.home,
+    lang: () => ctx.lang,
+    onLangChange: (next, prev) => {
+      ctx.lang = next;
+      // Petunjuk agent (AGENTS.md) di prototype ditulis dalam bahasa pengaturan: tulis ulang di belakang layar.
+      if (next.locale !== prev.locale && config.autoSyncAgents) {
+        void withLocale(next.locale, () => autoSyncAgentFiles(config, registry)).catch(() => undefined);
+      }
+    },
+  });
   await app.register(prototypeRoutes, { prefix: '/api', ctx });
   await app.register(commentRoutes, { prefix: '/api', registry, agent, devices });
   await app.register(agentRoutes, { prefix: '/api', registry, agent });
@@ -136,7 +195,7 @@ export async function buildApp({ config, logger = false, onShutdown, agentComman
   await app.register(updateRoutes, { prefix: '/api', checker, install: update?.install ?? (() => spawnSelfUpdate(config)) });
 
   app.post('/api/shutdown', async (_req, reply) => {
-    if (!onShutdown) throw new AppError('NOT_IMPLEMENTED', 'Shutdown tidak tersedia');
+    if (!onShutdown) throw new AppError('NOT_IMPLEMENTED', t('shutdownUnavailable'));
     setTimeout(onShutdown, 50);
     return reply.send({ ok: true });
   });
@@ -144,11 +203,11 @@ export async function buildApp({ config, logger = false, onShutdown, agentComman
   // Pembaruan yang hanya mengubah web/ (codeHash sama): pindah folder Web UI tanpa memulai ulang daemon
   // maupun prototype. Dipanggil tray setelah memasang paket aplikasi; lihat resolveWebSwap.
   app.post('/api/app/reload-web', async () => {
-    if (!appHost) throw new AppError('NOT_IMPLEMENTED', 'Pembaruan tanpa restart hanya untuk prototyper.exe');
+    if (!appHost) throw new AppError('NOT_IMPLEMENTED', t('reloadWebSeaOnly'));
     const r = resolveWebSwap(appHost.root, appHost.appDir, appHost.runtime);
-    if (!r.ok) throw new AppError('CONFLICT', `Perlu mulai ulang: ${r.reason}`);
+    if (!r.ok) throw new AppError('CONFLICT', t('restartNeeded', { reason: tSwap(r.code, { appId: r.appId }) }));
     ctx.web = { dir: r.webDir, version: r.app.version };
-    app.log.info(`Web UI dialihkan ke ${r.app.version} (${r.webDir})`);
+    app.log.info(tSwap.in(getProcessLocale(), 'webSwitched', { version: r.app.version, dir: r.webDir }));
     return { version: r.app.version, webDir: r.webDir };
   });
 

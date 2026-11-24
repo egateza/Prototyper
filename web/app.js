@@ -1,4 +1,12 @@
 // Web UI Prototyper — layout Workspace: sidebar daftar + detail, pratinjau, dan log live.
+import { FALLBACK_LOCALE, LOCALES, LOCALE_INFO, SOURCE_LOCALE, applyDom, getLocale, intlTag, register, resolveLocale, setLocale, t } from './i18n.js';
+import messages from './locales/app.js';
+
+// Kamus didaftarkan sebelum konstanta berteks di bawah dievaluasi. Bahasa berganti → halaman dimuat ulang,
+// jadi konstanta seperti LABEL cukup dihitung sekali.
+register(messages);
+applyDom();
+
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
@@ -6,8 +14,8 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
 
 const ACTIVE = ['starting', 'running', 'stopping'];
 const LABEL = {
-  running: 'Berjalan', starting: 'Memulai', stopping: 'Menghentikan', stopped: 'Berhenti',
-  crashed: 'Crash', failed: 'Gagal', invalid: 'Tidak valid',
+  running: t('statusRunning'), starting: t('statusStarting'), stopping: t('statusStopping'), stopped: t('statusStopped'),
+  crashed: t('statusCrashed'), failed: t('statusFailed'), invalid: t('statusInvalid'),
 };
 const svg = (d, extra = 'fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"') =>
   `<svg viewBox="0 0 24 24" aria-hidden="true"><path ${extra} d="${d}"/></svg>`;
@@ -40,6 +48,7 @@ const ICON = {
   panel: svg('M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1ZM15 5v14', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"'),
   globe: svg('M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18ZM3.5 9h17M3.5 15h17M12 3c-2.5 2.6-3.5 5.6-3.5 9s1 6.4 3.5 9M12 3c2.5 2.6 3.5 5.6 3.5 9s-1 6.4-3.5 9', 'fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"'),
   download: svg('M12 3v12M7 10l5 5 5-5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2', 'fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"'),
+  lang: svg('M4 5h8M8 3v2M10.5 5c-.8 3.6-3 6.4-6 8M6 8.5c1 1.8 2.6 3.3 4.5 4.3M13 21l4-10 4 10M14.4 17.5h5.2', 'fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"'),
   clip: svg('M20.5 11.5l-8.4 8.4a5 5 0 0 1-7.1-7.1l8.4-8.4a3.3 3.3 0 0 1 4.7 4.7l-8.4 8.4a1.7 1.7 0 0 1-2.4-2.4l7.7-7.7', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'),
 };
 
@@ -51,7 +60,7 @@ let ACCESS = LOCAL_HOST ? 'local' : 'device';
 let LOCAL = LOCAL_HOST; // semua operasi
 let EDIT = true; // alur komentar → agent → periksa hasil
 document.documentElement.dataset.access = ACCESS;
-const RO_TITLE = 'Hanya bisa dari komputer tempat Prototyper berjalan';
+const RO_TITLE = t('roTitle');
 /** Aksi tombol prototype yang boleh dari HP terpasang (selaras DEVICE_WRITES di access.ts). */
 const DEVICE_ACTS = new Set(['start', 'stop', 'restart', 'lan']);
 function setAccess(a) {
@@ -135,7 +144,7 @@ function deviceBtn(k, d) {
   const land = on && d.w && ui.landscape;
   const size = d.w ? ` ${land ? `${d.h}×${d.w}` : `${d.w}×${d.h}`}` : '';
   const title = !d.w || !on ? d.label
-    : `${d.label} ${land ? 'landscape' : 'portrait'}${size}${on ? ` — klik lagi untuk ${land ? 'portrait' : 'landscape'}` : ''}`;
+    : t(land ? 'deviceTitleLandscape' : 'deviceTitlePortrait', { label: d.label, size });
   return `<button type="button" class="icon-btn${land ? ' land' : ''}" data-act="device" data-dev="${k}" aria-pressed="${on}" title="${title}">${ICON[k]}</button>`;
 }
 function setLandscape(on) {
@@ -153,7 +162,7 @@ const isProblem = (p) => ['crashed', 'failed', 'invalid'].includes(st(p));
 /** Prototype ini adalah desain sistem (designSystem.source). */
 const isDs = (p) => p.manifest?.designSystem?.source === true;
 /** Label jenis: desain sistem atau prototype biasa (sama dengan popup tray). */
-const kindTag = (p) => (isDs(p) ? '<span class="kind-tag ds">Desain sistem</span>' : '<span class="kind-tag">Prototype</span>');
+const kindTag = (p) => (isDs(p) ? `<span class="kind-tag ds">${t('designSystem')}</span>` : `<span class="kind-tag">${t('prototype')}</span>`);
 /** URL yang dibuka dari browser ini: host sama dengan UI (penting di mode LAN). */
 const openUrl = (p) => (p.url && p.port ? `${location.protocol}//${location.hostname}:${p.port}/` : null);
 function hue(id) { let h = 0; for (const c of id) h = (h * 31 + c.charCodeAt(0)) % 360; return h; }
@@ -164,9 +173,9 @@ function initials(p) {
 function uptime(p) {
   if (!p.startedAt || !isActive(p)) return null;
   const m = Math.max(0, Math.floor((Date.now() - new Date(p.startedAt).getTime()) / 60000));
-  if (m < 1) return 'baru saja';
-  if (m < 60) return `${m} mnt`;
-  return `${Math.floor(m / 60)} j ${m % 60} mnt`;
+  if (m < 1) return t('uptimeJustNow');
+  if (m < 60) return t('uptimeMinutes', { m });
+  return t('uptimeHours', { h: Math.floor(m / 60), m: m % 60 });
 }
 function visible() {
   const q = ui.query.trim().toLowerCase();
@@ -180,7 +189,7 @@ function visible() {
 
 // ---------- Komponen ----------
 const statusHtml = (p) => `<span class="status ${st(p)}" title="${LABEL[st(p)]}"><i class="dot"></i>${LABEL[st(p)]}</span>`;
-const avatar = (p, cls = '') => `<span class="mono-av ${cls} ${isDs(p) ? 'ds' : ''} ${isActive(p) ? '' : 'off'}" style="--h:${hue(p.id)}" ${isDs(p) ? 'title="Desain sistem"' : ''}>${esc(initials(p))}</span>`;
+const avatar = (p, cls = '') => `<span class="mono-av ${cls} ${isDs(p) ? 'ds' : ''} ${isActive(p) ? '' : 'off'}" style="--h:${hue(p.id)}" ${isDs(p) ? `title="${t('designSystem')}"` : ''}>${esc(initials(p))}</span>`;
 function btn(act, p, { label, icon, cls = '', title = label, mutating = true, disabled = false, pressed }) {
   const ro = mutating && !(DEVICE_ACTS.has(act) ? EDIT : LOCAL);
   const dis = disabled || ro || ui.busy.has(p.id);
@@ -191,28 +200,27 @@ function btn(act, p, { label, icon, cls = '', title = label, mutating = true, di
 function lanBtn(p) {
   if (daemonLan !== 'off') {
     return btn('lan', p, { label: 'LAN', icon: ICON.globe, cls: 'ghost lan-btn', pressed: true, disabled: true, mutating: false,
-      title: 'Semua prototype sudah terbuka ke LAN (mode LAN daemon dari tray atau --lan / --lan-prototypes)' });
+      title: t('lanAllOpenTitle') });
   }
   const on = !!p.lanExposed;
-  const restart = isActive(p) ? ' (prototype di-restart)' : '';
+  const restart = isActive(p) ? t('lanRestartNote') : '';
   return btn('lan', p, { label: 'LAN', icon: ICON.globe, cls: `ghost lan-btn${on ? ' on' : ''}`, pressed: on, disabled: !p.valid,
-    title: on ? `Terbuka untuk perangkat lain di jaringan yang sama. Klik untuk menutup${restart}.`
-      : `Buka prototype ini untuk perangkat lain di jaringan yang sama (Web UI tetap hanya dari komputer ini)${restart}.` });
+    title: on ? t('lanOpenTitle', { restart }) : t('lanClosedTitle', { restart }) });
 }
 function actionsHtml(p) {
   const b = ui.busy.has(p.id);
   const out = [];
   if (isActive(p)) {
-    out.push(btn('restart', p, { label: 'Restart', icon: ICON.restart }));
-    out.push(btn('stop', p, { label: 'Stop', icon: ICON.stop }));
+    out.push(btn('restart', p, { label: t('restart'), icon: ICON.restart }));
+    out.push(btn('stop', p, { label: t('stop'), icon: ICON.stop }));
   } else {
-    out.push(btn('start', p, { label: b ? 'Memproses…' : 'Start', icon: ICON.play, cls: 'primary', disabled: !p.valid }));
+    out.push(btn('start', p, { label: b ? t('processing') : t('start'), icon: ICON.play, cls: 'primary', disabled: !p.valid }));
   }
   if (p.type === 'command' && p.manifest?.command?.install) {
-    out.push(btn('install', p, { label: 'Install', icon: ICON.install, cls: 'ghost', title: `Jalankan: ${p.manifest.command.install}`, disabled: isActive(p) }));
+    out.push(btn('install', p, { label: 'Install', icon: ICON.install, cls: 'ghost', title: t('installTitle', { cmd: p.manifest.command.install }), disabled: isActive(p) }));
   }
   out.push(lanBtn(p));
-  out.push(btn('remove', p, { label: '', icon: ICON.trash, cls: 'ghost danger', title: 'Hapus dari daftar' }));
+  out.push(btn('remove', p, { label: '', icon: ICON.trash, cls: 'ghost danger', title: t('removeFromList') }));
   return out.join('');
 }
 function jsonHtml(obj) {
@@ -226,7 +234,7 @@ function urlsHtml(p) {
   if (!u) return '<span class="muted">—</span>';
   const extra = p.lanUrls.filter((x) => !u.startsWith(x));
   return [u, ...extra].map((x) => `<span class="url"><a href="${esc(x)}" target="_blank" rel="noopener">${esc(x.replace(/^https?:\/\//, '').replace(/\/$/, ''))}</a>
-    <button type="button" class="icon-btn copy" data-act="copy" data-url="${esc(x)}" title="Salin URL">${ICON.copy}</button></span>`).join('<br>');
+    <button type="button" class="icon-btn copy" data-act="copy" data-url="${esc(x)}" title="${t('copyUrl')}">${ICON.copy}</button></span>`).join('<br>');
 }
 
 // ---------- Sidebar ----------
@@ -236,20 +244,20 @@ function renderSide() {
   // Desain sistem dikelompokkan sendiri di atas (fondasi bersama), prototype per status di bawahnya.
   const protos = vis.filter((x) => !isDs(x));
   const groups = [
-    ['Desain sistem', vis.filter(isDs)],
-    ['Aktif', protos.filter(isActive)],
-    ['Bermasalah', protos.filter(isProblem)],
-    ['Berhenti', protos.filter((x) => !isActive(x) && !isProblem(x))],
+    [t('groupDesignSystems'), vis.filter(isDs)],
+    [t('groupActive'), protos.filter(isActive)],
+    [t('groupProblems'), protos.filter(isProblem)],
+    [t('groupStopped'), protos.filter((x) => !isActive(x) && !isProblem(x))],
   ].filter(([, xs]) => xs.length);
   const empty = !loaded ? '' : list.length === 0
-    ? '<div class="empty"><b>Belum ada prototype</b>Daftarkan folder pertama Anda.</div>'
-    : vis.length === 0 ? '<div class="empty"><b>Tidak ada yang cocok</b>Coba kata kunci lain atau ganti filter.</div>' : '';
+    ? `<div class="empty"><b>${t('sideEmptyTitle')}</b>${t('sideEmptyBody')}</div>`
+    : vis.length === 0 ? `<div class="empty"><b>${t('sideNoMatchTitle')}</b>${t('sideNoMatchBody')}</div>` : '';
   const html = groups.map(([g, xs]) => `<div class="ws-group">${g} · ${xs.length}</div>${xs.map((x) => `
     <button type="button" class="ws-item" data-act="select" data-id="${esc(x.id)}" aria-current="${x.id === ui.selected}">
-      ${avatar(x, 'sm')}<span class="t"><b>${esc(x.name)}</b><span>${kindTag(x)}${x.url ? `:${x.port}` : esc(x.id)}${sideDsHtml(x)}</span></span>${x.comments?.open ? `<span class="cm-badge${x.comments.waitingUser ? ' wait' : ''}" title="${x.comments.open} komentar open${x.comments.waitingUser ? `, ${x.comments.waitingUser} menunggu jawaban Anda` : ''}">${x.comments.open}</span>` : ''}${statusHtml(x)}
+      ${avatar(x, 'sm')}<span class="t"><b>${esc(x.name)}</b><span>${kindTag(x)}${x.url ? `:${x.port}` : esc(x.id)}${sideDsHtml(x)}</span></span>${x.comments?.open ? `<span class="cm-badge${x.comments.waitingUser ? ' wait' : ''}" title="${x.comments.waitingUser ? t('sideBadgeTitleWaiting', { open: x.comments.open, waiting: x.comments.waitingUser }) : t('sideBadgeTitle', { open: x.comments.open })}">${x.comments.open}</span>` : ''}${statusHtml(x)}
     </button>`).join('')}`).join('') + empty;
   const home = loaded && list.length ? `<button type="button" class="ws-item ws-home" data-act="select" data-id="" aria-current="${!ui.selected}">
-      <span class="home-ic">${ICON.home}</span><span class="t"><b>Beranda</b><span>ringkasan semua prototype</span></span>${totalWaitingUser() ? `<span class="cm-badge wait" title="Komentar menunggu jawaban Anda">${totalWaitingUser()}</span>` : ''}
+      <span class="home-ic">${ICON.home}</span><span class="t"><b>${t('home')}</b><span>${t('homeSub')}</span></span>${totalWaitingUser() ? `<span class="cm-badge wait" title="${t('waitingYouTitle')}">${totalWaitingUser()}</span>` : ''}
     </button>` : '';
   const fullHtml = home + html;
   if (fullHtml !== lastSide) { $('#side-list').innerHTML = fullHtml; lastSide = fullHtml; }
@@ -264,13 +272,13 @@ function sideDsHtml(p) {
     const info = ds.list?.find((x) => x.id === p.id);
     if (!info) return '';
     const stale = info.consumers.filter((c) => c.outdated).length;
-    return ` · ${info.consumers.length} pemakai${stale ? `<span class="ds-mark stale" title="${stale} prototype perlu sinkron">●</span>` : ''}`;
+    return ` · ${t('dsConsumers', { n: info.consumers.length })}${stale ? `<span class="ds-mark stale" title="${t('dsStaleTitle', { n: stale })}">●</span>` : ''}`;
   }
   if (d.use) {
     const c = ds.list?.find((x) => x.id === d.use)?.consumers.find((x) => x.id === p.id);
-    return `<span class="ds-mark${c?.outdated ? ' stale' : ''}" title="Memakai desain sistem ${esc(d.use)}${c?.outdated ? ' (perlu sinkron)' : ''}">◇</span>`;
+    return `<span class="ds-mark${c?.outdated ? ' stale' : ''}" title="${t(c?.outdated ? 'dsUsesStale' : 'dsUses', { id: esc(d.use) })}">◇</span>`;
   }
-  return `<span class="ds-mark" title="Desain sistem sendiri: ${esc(d.local.join(', '))}">◆</span>`;
+  return `<span class="ds-mark" title="${t('dsOwnTitle', { paths: esc(d.local.join(', ')) })}">◆</span>`;
 }
 
 // ---------- Panel utama ----------
@@ -310,15 +318,15 @@ function renderMain() {
     <div class="actions">${actionsHtml(p)}</div>`);
 
   const u = openUrl(p);
-  patch('#d-addr', u ? esc(u) : 'tidak berjalan');
+  patch('#d-addr', u ? esc(u) : t('notRunning'));
   patch('#d-bar-btns', `
-    ${ui.preview ? `<span class="dev-seg" role="group" aria-label="Ukuran jendela">${Object.entries(DEVICES).map(([k, d]) =>
+    ${ui.preview ? `<span class="dev-seg" role="group" aria-label="${t('windowSize')}">${Object.entries(DEVICES).map(([k, d]) =>
       deviceBtn(k, d)).join('')}</span>` : ''}
-    ${u && ui.preview && EDIT && p.status === 'running' ? `<button type="button" class="pick-btn${embed.mode ? ' on' : ''}" data-act="cm-pick" title="Komentari elemen: klik elemen atau blok teks di pratinjau (Esc untuk batal)" aria-pressed="${embed.mode}">${ICON.pick}<span>${embed.mode ? 'Pilih elemen…' : 'Komentari'}</span></button>` : ''}
-    ${u && p.status === 'running' ? `<button type="button" class="icon-btn" data-act="export" title="Ekspor halaman ini ke PNG, JPG, atau PDF">${ICON.download}</button>` : ''}
-    ${u && ui.preview ? `<button type="button" class="icon-btn" data-act="reload-preview" title="Muat ulang pratinjau">${ICON.restart}</button>` : ''}
-    <button type="button" class="icon-btn" data-act="toggle-preview" title="${ui.preview ? 'Sembunyikan pratinjau' : 'Tampilkan pratinjau'}">${ui.preview ? ICON.eyeOff : ICON.eye}</button>
-    ${u ? `<a class="icon-btn" href="${esc(u)}" target="_blank" rel="noopener" title="Buka di tab baru">${ICON.ext}</a>` : ''}`);
+    ${u && ui.preview && EDIT && p.status === 'running' ? `<button type="button" class="pick-btn${embed.mode ? ' on' : ''}" data-act="cm-pick" title="${t('pickTitle')}" aria-pressed="${embed.mode}">${ICON.pick}<span>${embed.mode ? t('pickActive') : t('pickLabel')}</span></button>` : ''}
+    ${u && p.status === 'running' ? `<button type="button" class="icon-btn" data-act="export" title="${t('exportTitle')}">${ICON.download}</button>` : ''}
+    ${u && ui.preview ? `<button type="button" class="icon-btn" data-act="reload-preview" title="${t('reloadPreview')}">${ICON.restart}</button>` : ''}
+    <button type="button" class="icon-btn" data-act="toggle-preview" title="${ui.preview ? t('hidePreview') : t('showPreview')}">${ui.preview ? ICON.eyeOff : ICON.eye}</button>
+    ${u ? `<a class="icon-btn" href="${esc(u)}" target="_blank" rel="noopener" title="${t('openNewTab')}">${ICON.ext}</a>` : ''}`);
   patch('#d-view', viewHtml(p, u));
   const frame = $('#d-view iframe');
   if (frame !== embed.frame) { embed.frame = frame; embed.origin = null; embed.page = null; if (embed.mode) { embed.mode = false; patchBar(); } }
@@ -344,38 +352,38 @@ function skeleton(p) {
         </div>
         <div id="d-err"></div>
         <div class="ws-log sec" data-sec="log">
-          <div class="log-tools sec-head">${secTitle('log', 'Log')}<span class="live" id="log-live"><i></i>Live</span><span class="spacer"></span>
-            <button type="button" class="btn sm ghost" data-act="clear-log">Bersihkan tampilan</button></div>
+          <div class="log-tools sec-head">${secTitle('log', t('logTitle'))}<span class="live" id="log-live"><i></i>${t('live')}</span><span class="spacer"></span>
+            <button type="button" class="btn sm ghost" data-act="clear-log">${t('clearView')}</button></div>
           <pre class="log" id="log" data-id="${esc(p.id)}"></pre>
         </div>
       </div>
       <div class="col ws-right">
         <section class="cm-panel sec" data-sec="comments">
-          <div class="log-tools sec-head">${secTitle('comments', 'Komentar')}<span class="cm-count" id="cm-count"></span><span class="spacer"></span>
+          <div class="log-tools sec-head">${secTitle('comments', t('comments'))}<span class="cm-count" id="cm-count"></span><span class="spacer"></span>
             <button type="button" class="btn sm ghost cm-collapse-all" id="cm-collapse-all" data-act="cm-collapse-all" hidden></button>
             <div class="seg cm-filter" id="cm-filter">
-              <button type="button" data-f="open">Open</button><button type="button" data-f="resolved">Selesai</button><button type="button" data-f="all">Semua</button>
+              <button type="button" data-f="open">${t('cmFilterOpen')}</button><button type="button" data-f="resolved">${t('cmFilterResolved')}</button><button type="button" data-f="all">${t('cmFilterAll')}</button>
             </div>
             <button type="button" class="icon-btn panel-btn" id="btn-panel-hide" data-act="toggle-panel"></button></div>
           ${EDIT ? '<div class="agent-bar" id="agent-bar" hidden></div><pre class="log agent-log" id="agent-log" hidden></pre>' : ''}
           <div class="cm-list-wrap">
-            <div class="cm-list" id="cm-list"><p class="muted cm-empty">Memuat…</p></div>
-            <button type="button" class="cm-latest" id="cm-latest" data-act="cm-latest" title="Gulir ke pesan terbaru" hidden>↓ <span>Terbaru</span></button>
+            <div class="cm-list" id="cm-list"><p class="muted cm-empty">${t('loading')}</p></div>
+            <button type="button" class="cm-latest" id="cm-latest" data-act="cm-latest" title="${t('cmLatestTitle')}" hidden>↓ <span>${t('cmLatest')}</span></button>
           </div>
           ${EDIT ? `<form class="cm-form" id="cm-form">
-            <div class="cm-replying" id="cm-replying" hidden><span></span><button type="button" class="btn sm ghost" data-act="cm-cancel-reply">Batal</button></div>
-            <div class="cm-anchor" id="cm-anchor" hidden><span class="cm-anchor-ic">${ICON.pick}</span><span class="cm-anchor-t"></span><button type="button" class="icon-btn" data-act="cm-clear-anchor" title="Lepas elemen">✕</button></div>
+            <div class="cm-replying" id="cm-replying" hidden><span></span><button type="button" class="btn sm ghost" data-act="cm-cancel-reply">${t('cancel')}</button></div>
+            <div class="cm-anchor" id="cm-anchor" hidden><span class="cm-anchor-ic">${ICON.pick}</span><span class="cm-anchor-t"></span><button type="button" class="icon-btn" data-act="cm-clear-anchor" title="${t('cmClearAnchor')}">✕</button></div>
             <div class="cm-files" id="cm-files" hidden></div>
-            <textarea id="cm-text" rows="2" placeholder="Tulis komentar untuk prototype ini…  (Ctrl+Enter untuk kirim)"></textarea>
+            <textarea id="cm-text" rows="2" placeholder="${t('cmPlaceholder')}"></textarea>
             <div class="cm-form-row">
-              <button type="button" class="icon-btn" data-act="cm-attach" title="Lampirkan gambar (atau tempel dengan Ctrl+V / seret ke kolom komentar)">${ICON.clip}</button>
+              <button type="button" class="icon-btn" data-act="cm-attach" title="${t('cmAttachTitle')}">${ICON.clip}</button>
               <input type="file" id="cm-file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml,.svg" multiple hidden>
-              <label class="cm-page-field" id="cm-page-field"><span>Halaman</span><input id="cm-page" value="${esc(cm.pages[p.id] ?? '/')}" spellcheck="false" autocomplete="off" title="Path halaman yang dikomentari, mis. /kasir"></label>
+              <label class="cm-page-field" id="cm-page-field"><span>${t('page')}</span><input id="cm-page" value="${esc(cm.pages[p.id] ?? '/')}" spellcheck="false" autocomplete="off" title="${t('cmPageTitle')}"></label>
               <span class="spacer"></span>
-              <button type="submit" class="btn primary sm" id="cm-send">Kirim</button>
+              <button type="submit" class="btn primary sm" id="cm-send">${t('send')}</button>
             </div>
           </form>` : ''}
-          <p class="muted hint">Atau dari terminal/agent lain: <code>prototyper comments ${esc(p.id)} --waiting agent --json</code></p>
+          <p class="muted hint">${t('cmCliHint', { cmd: `<code>prototyper comments ${esc(p.id)} --waiting agent --json</code>` })}</p>
         </section>
         <div class="col" id="d-info"></div>
       </div>
@@ -383,16 +391,16 @@ function skeleton(p) {
 }
 
 function placeholderMain(key) {
-  if (key === 'loading') return '<div class="ws-empty"><div class="empty">Memuat…</div></div>';
+  if (key === 'loading') return `<div class="ws-empty"><div class="empty">${t('loading')}</div></div>`;
   if (key === 'none') return homeSkeleton();
   if (key === 'whatsnew') return whatsNewSkeleton();
   return `<div class="ws-empty"><div class="empty welcome">
-    <b>Belum ada prototype terdaftar</b>
-    <p>Buat prototype baru dari template, daftarkan folder yang sudah ada, atau dari terminal:</p>
+    <b>${t('welcomeTitle')}</b>
+    <p>${t('welcomeBody')}</p>
     <pre class="json">prototyper new &lt;id&gt; [--template vite-react]\nprototyper add &lt;folder&gt;</pre>
     <div class="welcome-actions">
-      <button type="button" class="btn primary" data-act="new" ${LOCAL ? '' : `disabled title="${RO_TITLE}"`}>Buat baru</button>
-      <button type="button" class="btn" data-act="add" ${LOCAL ? '' : `disabled title="${RO_TITLE}"`}>Daftarkan folder</button>
+      <button type="button" class="btn primary" data-act="new" ${LOCAL ? '' : `disabled title="${RO_TITLE}"`}>${t('createNew')}</button>
+      <button type="button" class="btn" data-act="add" ${LOCAL ? '' : `disabled title="${RO_TITLE}"`}>${t('registerFolder')}</button>
     </div>
   </div></div>`;
 }
@@ -458,44 +466,44 @@ function togglePreview() {
 // menampilkan lagi tidak memuat ulang halaman dan state prototype tidak hilang.
 function viewHtml(p, u) {
   if (p.status === 'running' && u) {
-    return `<iframe src="${esc(u)}" data-n="${previewNonce}" title="Pratinjau ${esc(p.name)}"></iframe>`;
+    return `<iframe src="${esc(u)}" data-n="${previewNonce}" title="${t('previewFrameTitle', { name: esc(p.name) })}"></iframe>`;
   }
-  const title = p.status === 'starting' ? 'Sedang memulai…'
-    : p.status === 'stopping' ? 'Sedang menghentikan…'
-    : isProblem(p) ? 'Prototype bermasalah' : 'Pratinjau belum tersedia';
-  const sub = p.valid && !isActive(p) ? (isProblem(p) ? 'Periksa log, lalu Start lagi.' : 'Tekan Start untuk menjalankan.') : !p.valid ? 'Perbaiki prototyper.json dulu.' : '';
+  const title = p.status === 'starting' ? t('viewStarting')
+    : p.status === 'stopping' ? t('viewStopping')
+    : isProblem(p) ? t('viewProblem') : t('viewUnavailable');
+  const sub = p.valid && !isActive(p) ? (isProblem(p) ? t('viewProblemSub') : t('viewStoppedSub')) : !p.valid ? t('viewInvalidSub') : '';
   return `<div><b>${title}</b>${sub}</div>`;
 }
 
 function infoHtml(p) {
   const rows = [
     ['ID', `<code>${esc(p.id)}</code>`],
-    ['Folder', `<span class="mono">${esc(p.path)}</span>
-      <button type="button" class="icon-btn copy" data-act="copy" data-url="${esc(p.path)}" title="Salin path">${ICON.copy}</button>`],
-    ['Jenis', p.type ? `<span class="type-tag">${p.type}</span>` : '—'],
+    [t('infoFolder'), `<span class="mono">${esc(p.path)}</span>
+      <button type="button" class="icon-btn copy" data-act="copy" data-url="${esc(p.path)}" title="${t('copyPath')}">${ICON.copy}</button>`],
+    [t('infoType'), p.type ? `<span class="type-tag">${p.type}</span>` : '—'],
     ['URL', urlsHtml(p)],
     ['Port / PID', `${p.port ?? '—'} / ${p.pid ?? '—'}`],
-    ['Uptime', uptime(p) ?? '—'],
-    ['Exit code', p.exitCode ?? '—'],
-    ['Instruksi agent', `${p.instructions.exists
+    [t('infoUptime'), uptime(p) ?? '—'],
+    [t('infoExitCode'), p.exitCode ?? '—'],
+    [t('infoInstructions'), `${p.instructions.exists
       ? `<span class="mono">${esc(p.instructions.path.split(/[\\/]/).pop())}</span> ✓`
-      : `<span class="muted">Belum ada ${esc(p.instructions.path.split(/[\\/]/).pop())}</span>`}${LOCAL && p.valid
-      ? ` <button type="button" class="btn sm ghost instr-sync" data-act="sync-instr" data-id="${esc(p.id)}" title="Pasang/perbarui petunjuk Prototyper di AGENTS.md dan CLAUDE.md (sama dengan prototyper agents sync)" ${ui.busy.has(`sync:${p.id}`) ? 'disabled' : ''}>${ICON.restart}Sinkronkan</button>`
+      : `<span class="muted">${t('infoNoFile', { file: esc(p.instructions.path.split(/[\\/]/).pop()) })}</span>`}${LOCAL && p.valid
+      ? ` <button type="button" class="btn sm ghost instr-sync" data-act="sync-instr" data-id="${esc(p.id)}" title="${t('syncInstrTitle')}" ${ui.busy.has(`sync:${p.id}`) ? 'disabled' : ''}>${ICON.restart}${t('syncInstr')}</button>`
       : ''}`],
-    ['Desain sistem', dsRowHtml(p)],
+    [t('designSystem'), dsRowHtml(p)],
   ];
   const editBtn = LOCAL
-    ? `<button type="button" class="btn sm ${p.valid ? 'ghost' : 'primary'}" data-act="edit-manifest" data-id="${esc(p.id)}">${p.valid ? 'Edit' : 'Perbaiki manifest'}</button>`
+    ? `<button type="button" class="btn sm ${p.valid ? 'ghost' : 'primary'}" data-act="edit-manifest" data-id="${esc(p.id)}">${p.valid ? t('edit') : t('fixManifest')}</button>`
     : '';
   return `<section class="sec" data-sec="detail">
-      <div class="log-tools sec-head">${secTitle('detail', 'Detail')}</div>
+      <div class="log-tools sec-head">${secTitle('detail', t('detail'))}</div>
       <dl class="kv">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
-      ${p.tags.length ? `<div class="chips">${p.tags.map((t) => `<span class="tag">#${esc(t)}</span>`).join('')}</div>` : ''}
-      <div class="callout info">Untuk agent: <code>prototyper info ${esc(p.id)} --json</code></div>
+      ${p.tags.length ? `<div class="chips">${p.tags.map((tag) => `<span class="tag">#${esc(tag)}</span>`).join('')}</div>` : ''}
+      <div class="callout info">${t('forAgent', { cmd: `<code>prototyper info ${esc(p.id)} --json</code>` })}</div>
     </section>
     <section class="sec" data-sec="manifest">
       <div class="log-tools sec-head">${secTitle('manifest', 'prototyper.json')}<span class="spacer"></span>${editBtn}</div>
-      ${p.manifest ? `<pre class="json">${jsonHtml(p.manifest)}</pre>` : '<p class="muted" style="margin:0">Manifest tidak bisa dibaca.</p>'}
+      ${p.manifest ? `<pre class="json">${jsonHtml(p.manifest)}</pre>` : `<p class="muted" style="margin:0">${t('manifestUnreadable')}</p>`}
     </section>`;
 }
 
@@ -512,7 +520,7 @@ function applySections() {
     const collapsed = ui.secCollapsed.has(el.dataset.sec);
     el.classList.toggle('sec-collapsed', collapsed);
     const b = el.querySelector('.sec-toggle');
-    if (b) { b.setAttribute('aria-expanded', String(!collapsed)); b.title = collapsed ? 'Tampilkan section' : 'Ciutkan section'; }
+    if (b) { b.setAttribute('aria-expanded', String(!collapsed)); b.title = collapsed ? t('secExpand') : t('secCollapse'); }
   }
 }
 function toggleSection(key) {
@@ -535,16 +543,16 @@ function applyPanel() {
   const hide = $('#btn-panel-hide');
   if (hide && !hide.innerHTML) {
     hide.innerHTML = ICON.panel;
-    hide.title = 'Sembunyikan panel kanan (])';
+    hide.title = t('panelHide');
     hide.setAttribute('aria-label', hide.title);
   }
   const show = $('#btn-panel-show');
   if (!show) return;
-  const label = 'Tampilkan panel kanan (])';
+  const label = t('panelShow');
   const c = cm.data?.counts;
   const n = c ? (c.waitingUser || c.open || 0) : 0;
   show.innerHTML = `${ICON.panel}${n ? `<span class="panel-badge${c.waitingUser ? ' wait' : ''}">${n}</span>` : ''}`;
-  show.title = n ? `${label} — ${c.waitingUser ? `${n} komentar menunggu Anda` : `${n} komentar open`}` : label;
+  show.title = n ? `${label} — ${c.waitingUser ? t('cmWaitingYouCount', { n }) : t('cmOpenCount', { n })}` : label;
   show.setAttribute('aria-label', label);
 }
 
@@ -585,7 +593,7 @@ function updateFabs() {
   badge.textContent = n > 99 ? '99+' : String(n);
   badge.classList.toggle('wait', !!c?.waitingUser);
   fcm.setAttribute('aria-expanded', String(sheet() === 'cm'));
-  fcm.title = n ? `Komentar — ${c.waitingUser ? `${n} menunggu Anda` : `${n} open`}` : 'Komentar';
+  fcm.title = n ? `${t('comments')} — ${c.waitingUser ? t('waitingYouShort', { n }) : t('openShort', { n })}` : t('comments');
   fpick.hidden = !(p && EDIT && ui.preview && p.status === 'running' && embed.origin);
   fpick.setAttribute('aria-pressed', String(embed.mode));
   $('#fab-menu').setAttribute('aria-expanded', String(sheet() === 'side'));
@@ -635,7 +643,7 @@ async function refresh(force = false) {
   try {
     const next = await api('GET', '/api/prototypes');
     if (!upd.installing) $('#offline').hidden = true;
-    if (ui.shutdown) { ui.shutdown = false; $('#offline').textContent = 'Daemon tidak terjangkau. Mencoba lagi…'; }
+    if (ui.shutdown) { ui.shutdown = false; $('#offline').textContent = t('offline'); }
     const key = JSON.stringify(next);
     loaded = true;
     if (force || key !== lastKey) { lastKey = key; list = next; }
@@ -656,20 +664,20 @@ async function run(act, p) {
   render();
   try {
     if (act === 'install') {
-      toast(`Menjalankan install untuk ${p.name}…`);
+      toast(t('installRunning', { name: p.name }));
       const r = await api('POST', `/api/prototypes/${enc(p.id)}/install`);
-      toast(r.ok ? `Install ${p.name} selesai` : `Install ${p.name} gagal (kode ${r.exitCode})`, !r.ok);
+      toast(r.ok ? t('installDone', { name: p.name }) : t('installFailed', { name: p.name, code: r.exitCode }), !r.ok);
     } else if (act === 'lan') {
       const on = !p.lanExposed;
       const v = await api('PUT', `/api/prototypes/${enc(p.id)}/lan`, { exposed: on });
-      if (!on) toast(`Akses LAN ${p.name} ditutup`);
-      else if (v.lanUrls.length) toast(`${p.name} terbuka di LAN: ${v.lanUrls[0]}`);
-      else if (isActive(v)) toast(`Akses LAN ${p.name} dibuka, tapi tidak ada jaringan terdeteksi`, true);
-      else toast(`Akses LAN ${p.name} dibuka; berlaku saat Start`);
+      if (!on) toast(t('lanClosedToast', { name: p.name }));
+      else if (v.lanUrls.length) toast(t('lanOpenToast', { name: p.name, url: v.lanUrls[0] }));
+      else if (isActive(v)) toast(t('lanNoNetworkToast', { name: p.name }), true);
+      else toast(t('lanOnStartToast', { name: p.name }));
     } else {
       const v = await api('POST', `/api/prototypes/${enc(p.id)}/${act}`);
-      if (act === 'stop') toast(`${p.name} dihentikan`);
-      else if (v.url) toast(`${p.name} berjalan di ${openUrl(v) ?? v.url}`);
+      if (act === 'stop') toast(t('stoppedToast', { name: p.name }));
+      else if (v.url) toast(t('runningAtToast', { name: p.name, url: openUrl(v) ?? v.url }));
     }
   } catch (err) {
     toast(err.message, true);
@@ -681,8 +689,8 @@ async function run(act, p) {
 
 // ---------- Sinkron petunjuk agent (AGENTS.md / CLAUDE.md) ----------
 const SYNC_LABEL = {
-  created: 'dibuat', updated: 'diperbarui', unchanged: 'sudah terbaru',
-  skipped: 'dilewati (agent.syncInstructions: false)', missing: 'belum dipasang', error: 'gagal',
+  created: t('syncCreated'), updated: t('syncUpdated'), unchanged: t('syncUnchanged'),
+  skipped: t('syncSkipped'), missing: t('syncMissing'), error: t('syncError'),
 };
 const describeSync = (files) => files.map((f) => `${f.file} ${SYNC_LABEL[f.action] ?? f.action}${f.error ? `: ${f.error}` : ''}`).join(', ');
 
@@ -707,9 +715,9 @@ async function syncAllInstructions() {
     const { results } = await api('POST', '/api/instructions/sync');
     const changed = results.filter((r) => r.agentFiles.some((f) => f.action === 'created' || f.action === 'updated'));
     const failed = results.filter((r) => r.error || r.agentFiles.some((f) => f.action === 'error'));
-    const parts = [changed.length ? `diperbarui: ${changed.map((r) => r.id).join(', ')}` : 'semua sudah terbaru'];
-    if (failed.length) parts.push(`gagal/dilewati: ${failed.map((r) => r.id).join(', ')}`);
-    toast(`Petunjuk agent — ${parts.join('; ')}`, failed.length > 0);
+    const parts = [changed.length ? t('syncAllUpdated', { ids: changed.map((r) => r.id).join(', ') }) : t('syncAllUpToDate')];
+    if (failed.length) parts.push(t('syncAllFailed', { ids: failed.map((r) => r.id).join(', ') }));
+    toast(t('syncAllToast', { parts: parts.join('; ') }), failed.length > 0);
   } catch (err) {
     toast(err.message, true);
   } finally {
@@ -734,15 +742,15 @@ function confirmDialog({ title, body, ok, list, tone = 'danger' }) {
 
 async function confirmRemove(p) {
   const yes = await confirmDialog({
-    title: `Hapus "${p.name}" dari daftar?`,
-    body: `Folder ${p.path} tidak dihapus — hanya keluar dari daftar Prototyper.${isActive(p) ? ' Prototype yang berjalan akan dihentikan.' : ''}`,
-    ok: 'Hapus',
+    title: t('removeConfirmTitle', { name: p.name }),
+    body: t('removeConfirmBody', { path: p.path }) + (isActive(p) ? t('removeConfirmRunning') : ''),
+    ok: t('remove'),
   });
   if (!yes) return;
   ui.busy.add(p.id);
   try {
     await api('DELETE', `/api/prototypes/${enc(p.id)}`);
-    toast(`"${p.id}" dihapus dari daftar`);
+    toast(t('removedToast', { id: p.id }));
     if (ui.selected === p.id) ui.selected = null;
   } catch (err) {
     toast(err.message, true);
@@ -756,16 +764,16 @@ async function confirmShutdown() {
   if (!LOCAL) return toast(RO_TITLE, true);
   const n = list.filter(isActive).length;
   const yes = await confirmDialog({
-    title: 'Matikan Prototyper?',
-    body: `Daemon dan Web UI berhenti${n ? `, dan ${n} prototype yang berjalan ikut dihentikan` : ''}. Nyalakan lagi dengan: prototyper serve (atau perintah prototyper apa pun).`,
-    ok: 'Matikan',
+    title: t('shutdownConfirmTitle'),
+    body: n ? t('shutdownConfirmBodyRunning', { n }) : t('shutdownConfirmBody'),
+    ok: t('shutdownOk'),
   });
   if (!yes) return;
   try {
     await api('POST', '/api/shutdown');
     ui.shutdown = true;
     disconnectLog();
-    $('#offline').textContent = 'Prototyper sudah dimatikan. Nyalakan lagi dengan: prototyper serve — halaman ini tersambung otomatis.';
+    $('#offline').textContent = t('shutdownDone');
     $('#offline').hidden = false;
   } catch (err) {
     toast(err.message, true);
@@ -782,21 +790,21 @@ function select(id) {
 
 document.addEventListener('click', (e) => {
   if (e.target.closest('a')) return;
-  const t = e.target.closest('[data-act]');
-  if (!t || !$('#ws').contains(t)) return;
-  const { act, id } = t.dataset;
+  const el = e.target.closest('[data-act]');
+  if (!el || !$('#ws').contains(el)) return;
+  const { act, id } = el.dataset;
   const p = id ? byId(id) : null;
   switch (act) {
     case 'start': case 'stop': case 'restart': case 'install': case 'lan': return run(act, p);
     case 'remove': return p && confirmRemove(p);
     case 'select': return select(id);
     case 'copy':
-      navigator.clipboard?.writeText(t.dataset.url).then(() => toast('Disalin'), () => toast('Gagal menyalin', true));
+      navigator.clipboard?.writeText(el.dataset.url).then(() => toast(t('copied')), () => toast(t('copyFailed'), true));
       return;
     case 'clear-log': { const pre = $('#log'); if (pre) pre.textContent = ''; return; }
     case 'toggle-preview': return togglePreview();
     case 'reload-preview': previewNonce++; return render();
-    case 'device': return setDevice(t.dataset.dev);
+    case 'device': return setDevice(el.dataset.dev);
     case 'export': return openExport(byId(ui.selected));
     case 'edit-manifest': return p && openManifestEditor(p);
     case 'sync-instr': return p && syncInstructions(p);
@@ -806,7 +814,7 @@ document.addEventListener('click', (e) => {
     case 'add': return openAdd();
     case 'new': return openNew();
     case 'agent-run': return runAgent();
-    case 'agent-run-one': return runAgent([t.dataset.cid]);
+    case 'agent-run-one': return runAgent([el.dataset.cid]);
     case 'agent-stop': return stopAgent();
     case 'agent-undo': return undoAgent();
     case 'agent-list': return openAgentsDialog();
@@ -814,24 +822,24 @@ document.addEventListener('click', (e) => {
     case 'agent-resume': if (ag.fresh.has(cm.id)) ag.fresh.delete(cm.id); else ag.fresh.add(cm.id); return renderAgent();
     case 'cm-pick': return togglePick();
     case 'cm-attach': return $('#cm-file')?.click();
-    case 'cm-rm-file': return removeFile(t.dataset.k);
+    case 'cm-rm-file': return removeFile(el.dataset.k);
     case 'cm-clear-anchor': return setAnchor(null);
-    case 'cm-focus': return focusAnchor(t.dataset.cid);
+    case 'cm-focus': return focusAnchor(el.dataset.cid);
     case 'cm-latest': return scrollToLatest();
     case 'cm-toggle': {
-      const c = cm.data?.comments?.find((x) => x.id === t.dataset.cid);
+      const c = cm.data?.comments?.find((x) => x.id === el.dataset.cid);
       return c && setCollapsed([c.id], !isCollapsed(c));
     }
     case 'cm-collapse-all': return toggleCollapseAll();
-    case 'sec-toggle': return toggleSection(t.dataset.sec);
+    case 'sec-toggle': return toggleSection(el.dataset.sec);
     case 'toggle-panel': return isMobile() ? setSheet(null) : setPanelHidden(!ui.panelHidden);
-    case 'cm-reply': return startReply(t.dataset.cid);
+    case 'cm-reply': return startReply(el.dataset.cid);
     case 'cm-cancel-reply': return startReply(null);
-    case 'cm-resolve': return commentAction('resolve', t.dataset.cid);
-    case 'cm-reopen': return commentAction('reopen', t.dataset.cid);
-    case 'cm-delete': return commentAction('delete', t.dataset.cid);
-    case 'cm-edit': return startEdit(t.dataset.rid ?? t.dataset.cid);
-    case 'cm-delete-reply': return deleteReply(t.dataset.cid, t.dataset.rid);
+    case 'cm-resolve': return commentAction('resolve', el.dataset.cid);
+    case 'cm-reopen': return commentAction('reopen', el.dataset.cid);
+    case 'cm-delete': return commentAction('delete', el.dataset.cid);
+    case 'cm-edit': return startEdit(el.dataset.rid ?? el.dataset.cid);
+    case 'cm-delete-reply': return deleteReply(el.dataset.cid, el.dataset.rid);
     case 'cm-edit-cancel': return startEdit(null);
   }
 });
@@ -872,15 +880,15 @@ document.addEventListener('keydown', (e) => {
 
 // ---------- Tema ----------
 const mql = matchMedia('(prefers-color-scheme: dark)');
-function setTheme(t) {
-  ui.theme = t;
-  writePref('prototyper:theme', t);
+function setTheme(theme) {
+  ui.theme = theme;
+  writePref('prototyper:theme', theme);
   applyTheme();
 }
 function applyTheme() {
   const root = document.documentElement;
   if (ui.theme === 'auto') delete root.dataset.theme; else root.dataset.theme = ui.theme;
-  const label = { auto: 'Tema: otomatis', light: 'Tema: terang', dark: 'Tema: gelap' }[ui.theme];
+  const label = { auto: t('themeAuto'), light: t('themeLight'), dark: t('themeDark') }[ui.theme];
   const b = $('#btn-theme');
   b.innerHTML = { auto: ICON.auto, light: ICON.sun, dark: ICON.moon }[ui.theme];
   b.title = label;
@@ -903,7 +911,7 @@ function applySide() {
   if (ui.sidePinned) delete root.dataset.side; else root.dataset.side = 'auto';
   if (ui.sidePinned) $('#ws').classList.remove('side-open');
   const b = $('#btn-pin');
-  const label = ui.sidePinned ? 'Sidebar disematkan — klik untuk sembunyi otomatis ([)' : 'Sembunyi otomatis — klik untuk menyematkan sidebar ([)';
+  const label = ui.sidePinned ? t('sidePinnedTitle') : t('sideAutoTitle');
   b.innerHTML = ui.sidePinned ? ICON.pin : ICON.pinOff;
   b.title = label;
   b.setAttribute('aria-label', label);
@@ -963,8 +971,8 @@ function renderUpdateBar() {
   bar.hidden = !(i?.available || upd.installing);
   if (bar.hidden) return;
   bar.innerHTML = upd.installing
-    ? `<span class="upd-dot spin"></span><span><b>Memasang ${esc(upd.installing)}…</b><small>Prototyper dimulai ulang</small></span>`
-    : `<span class="upd-dot"></span><span><b>Pembaruan ${esc(i.latest)}</b><small>${i.autoInstall && LOCAL ? 'Klik untuk memasang' : 'Lihat cara memperbarui'}</small></span>`;
+    ? `<span class="upd-dot spin"></span><span><b>${t('updInstalling', { v: esc(upd.installing) })}</b><small>${t('updRestarting')}</small></span>`
+    : `<span class="upd-dot"></span><span><b>${t('updAvailable', { v: esc(i.latest) })}</b><small>${i.autoInstall && LOCAL ? t('updClickInstall') : t('updSeeHow')}</small></span>`;
 }
 
 function openUpdateDialog() {
@@ -976,26 +984,26 @@ function renderUpdateDialog() {
   const dlg = $('#dlg-update');
   if (!dlg.open && !upd.checking) return;
   const i = upd.info;
-  const checked = i?.checkedAt ? new Date(i.checkedAt).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : null;
+  const checked = i?.checkedAt ? new Date(i.checkedAt).toLocaleString(intlTag(), { dateStyle: 'medium', timeStyle: 'short' }) : null;
   let body;
-  if (upd.checking) body = '<p class="muted">Memeriksa pembaruan…</p>';
-  else if (!i) body = '<p class="muted">Belum diperiksa.</p>';
+  if (upd.checking) body = `<p class="muted">${t('updChecking')}</p>`;
+  else if (!i) body = `<p class="muted">${t('updNotChecked')}</p>`;
   else if (i.available) {
-    body = `<p>Prototyper <b>${esc(i.latest)}</b> sudah rilis. Versi Anda <b>${esc(i.current)}</b>.</p>
+    body = `<p>${t('updReleased', { latest: `<b>${esc(i.latest)}</b>`, current: `<b>${esc(i.current)}</b>` })}</p>
       ${i.autoInstall
-        ? `<p class="muted">Daemon dan semua prototype akan dihentikan sebentar, lalu dinyalakan lagi otomatis setelah pembaruan terpasang${i.kind === 'msi' ? ' (lewat installer MSI)' : ''}.</p>`
-        : `<div class="callout info">${esc(i.hint ?? 'Instalasi ini tidak bisa diperbarui otomatis.')}</div>`}
+        ? `<p class="muted">${t(i.kind === 'msi' ? 'updAutoNoteMsi' : 'updAutoNote')}</p>`
+        : `<div class="callout info">${esc(i.hint ?? t('updNoAuto'))}</div>`}
       ${LOCAL ? '' : `<div class="callout warn">${RO_TITLE}.</div>`}`;
-  } else body = `<p>Prototyper <b>${esc(i.current)}</b> sudah versi terbaru${i.latest ? '' : ' (belum pernah diperiksa)'}.</p>`;
-  const err = i?.error ? `<div class="callout err">Gagal memeriksa: ${esc(i.error)}</div>` : '';
+  } else body = `<p>${t(i.latest ? 'updUpToDate' : 'updUpToDateNever', { current: `<b>${esc(i.current)}</b>` })}</p>`;
+  const err = i?.error ? `<div class="callout err">${t('updCheckFailed', { error: esc(i.error) })}</div>` : '';
   const canInstall = i?.available && i.autoInstall && LOCAL && !upd.checking;
-  $('#upd-form').innerHTML = `<h2>Pembaruan Prototyper</h2>${body}${err}
-    ${checked ? `<p class="muted upd-checked">Terakhir diperiksa ${esc(checked)}${i.enabled ? '' : ' · pemeriksaan otomatis mati (PROTOTYPER_UPDATE_CHECK=0)'}</p>` : ''}
+  $('#upd-form').innerHTML = `<h2>${t('updTitle')}</h2>${body}${err}
+    ${checked ? `<p class="muted upd-checked">${t('updLastChecked', { when: esc(checked) })}${i.enabled ? '' : t('updAutoOff')}</p>` : ''}
     <div class="dlg-foot">
-      ${i?.pageUrl ? `<a class="btn ghost" href="${esc(i.pageUrl)}" target="_blank" rel="noopener">Catatan rilis</a>` : ''}
+      ${i?.pageUrl ? `<a class="btn ghost" href="${esc(i.pageUrl)}" target="_blank" rel="noopener">${t('updReleaseNotes')}</a>` : ''}
       <span class="spacer"></span>
-      <button type="button" class="btn" data-upd="check"${upd.checking ? ' disabled' : ''}>Periksa lagi</button>
-      ${canInstall ? '<button type="button" class="btn primary" data-upd="install">Perbarui sekarang</button>' : '<button value="close" class="btn">Tutup</button>'}
+      <button type="button" class="btn" data-upd="check"${upd.checking ? ' disabled' : ''}>${t('updCheckAgain')}</button>
+      ${canInstall ? `<button type="button" class="btn primary" data-upd="install">${t('updNow')}</button>` : `<button value="close" class="btn">${t('close')}</button>`}
     </div>`;
 }
 
@@ -1012,7 +1020,7 @@ async function installUpdate() {
   renderUpdateBar();
   disconnectLog();
   const offline = $('#offline');
-  offline.textContent = `Memasang Prototyper ${r.version}… Halaman dimuat ulang otomatis setelah selesai. Log: ${r.log}`;
+  offline.textContent = t('updInstallingOffline', { v: r.version, log: r.log });
   // Tunggu daemon versi baru menyala (MSI bisa makan waktu beberapa menit).
   const deadline = Date.now() + 10 * 60_000;
   const poll = async () => {
@@ -1021,7 +1029,7 @@ async function installUpdate() {
     if (Date.now() > deadline) {
       upd.installing = null;
       renderUpdateBar();
-      offline.textContent = `Pembaruan belum selesai setelah 10 menit. Periksa log: ${r.log}`;
+      offline.textContent = t('updTimeout', { log: r.log });
       offline.hidden = false;
       return;
     }
@@ -1076,11 +1084,11 @@ function openAdd() {
   if (!LOCAL) return toast(RO_TITLE, true);
   resetAdd('add');
   add.step = 1;
-  $('#add-title').textContent = 'Daftarkan prototype';
-  $('#add-sub').innerHTML = 'Arahkan ke folder prototype. Bila belum ada <code>prototyper.json</code>, isinya dideteksi otomatis.';
+  $('#add-title').textContent = t('addTitle');
+  $('#add-sub').innerHTML = t('addSub');
   $('#add-path').value = '';
   $('#add-step1').hidden = false; $('#add-step2').hidden = true;
-  $('#add-next').textContent = 'Lanjut';
+  $('#add-next').textContent = t('next');
   $('#dlg-add').showModal();
   $('#add-path').focus();
 }
@@ -1088,14 +1096,14 @@ function openManifestEditor(p) {
   resetAdd('edit');
   add.id = p.id;
   add.step = 2;
-  $('#add-title').textContent = p.valid ? `Edit prototyper.json — ${p.name}` : 'Perbaiki prototyper.json';
-  $('#add-sub').textContent = 'Perubahan ditulis ke file prototyper.json di folder prototype.';
+  $('#add-title').textContent = p.valid ? t('editManifestTitle', { name: p.name }) : t('fixManifestTitle');
+  $('#add-sub').textContent = t('editManifestSub');
   $('#add-folder').textContent = p.path;
   $('#add-type-row').hidden = true;
   $('#add-notes').innerHTML = '';
   $('#add-json').value = p.manifest ? JSON.stringify(p.manifest, null, 2) : '';
   $('#add-step1').hidden = true; $('#add-step2').hidden = false;
-  $('#add-next').textContent = 'Simpan';
+  $('#add-next').textContent = t('save');
   $('#dlg-add').showModal();
   if (!p.manifest) {
     // Ambil isi mentah file agar bisa diperbaiki.
@@ -1117,10 +1125,10 @@ function showDetect(d) {
   $('#add-notes').innerHTML = d.notes.map((n) => `<li>${esc(n)}</li>`).join('');
   $('#add-json').value = d.raw ?? JSON.stringify(d.manifest, null, 2);
   $('#add-sub').textContent = d.exists
-    ? 'prototyper.json tidak valid — perbaiki lalu simpan.'
-    : 'Folder belum punya prototyper.json — periksa hasil deteksi.';
+    ? t('detectInvalid')
+    : t('detectNew');
   $('#add-step1').hidden = true; $('#add-step2').hidden = false;
-  $('#add-next').textContent = 'Simpan & daftarkan';
+  $('#add-next').textContent = t('saveAndRegister');
   $('#add-err').hidden = true;
   if (d.error) showAddErr(d.error);
   $('#add-json').focus();
@@ -1128,7 +1136,7 @@ function showDetect(d) {
 function showAddErr(message, details = []) {
   const el = $('#add-err');
   // Bila ada daftar detail, judul ringkas saja agar pesan tidak tampil dua kali.
-  el.innerHTML = esc(details.length ? 'Manifest belum valid:' : message)
+  el.innerHTML = esc(details.length ? t('manifestNotValid') : message)
     + (details.length ? `<ul>${details.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : '');
   el.hidden = false;
 }
@@ -1148,16 +1156,16 @@ $('#add-form').addEventListener('submit', async (e) => {
       const path = $('#add-path').value.trim();
       if (!path) { $('#add-path').focus(); return; }
       const d = await api('POST', '/api/manifest/detect', { path });
-      if (d.exists && d.valid) done(await api('POST', '/api/prototypes', { path: d.path }), `"${d.manifest.id}" terdaftar`);
+      if (d.exists && d.valid) done(await api('POST', '/api/prototypes', { path: d.path }), t('registeredToast', { id: d.manifest.id }));
       else showDetect(d);
       return;
     }
     let manifest;
-    try { manifest = JSON.parse($('#add-json').value); } catch (err) { return showAddErr(`JSON tidak valid: ${err.message}`); }
+    try { manifest = JSON.parse($('#add-json').value); } catch (err) { return showAddErr(t('jsonInvalid', { error: err.message })); }
     if (add.mode === 'edit') {
-      done(await api('PUT', `/api/prototypes/${enc(add.id)}/manifest`, { manifest }), 'prototyper.json disimpan');
+      done(await api('PUT', `/api/prototypes/${enc(add.id)}/manifest`, { manifest }), t('manifestSaved'));
     } else {
-      done(await api('POST', '/api/prototypes', { path: add.d.path, manifest, overwrite: add.d.exists }), `"${manifest.id}" terdaftar`);
+      done(await api('POST', '/api/prototypes', { path: add.d.path, manifest, overwrite: add.d.exists }), t('registeredToast', { id: manifest.id }));
     }
   } catch (err) {
     showAddErr(err.message, err.details);
@@ -1189,17 +1197,17 @@ const SEEN_KEY = 'prototyper:seen-version';
 const wnUnseen = () => !!wn.version && readPref(SEEN_KEY, '') !== wn.version;
 /** Titik di samping versi (satu-satunya pintu ke halaman ini di Web UI) sampai halaman dibuka untuk versi itu. */
 const wnMark = () => $('#meta').classList.toggle('new', wnUnseen());
-function wnInline(t) {
-  return esc(t).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+function wnInline(text) {
+  return esc(text).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
 }
 function wnDate(d) {
   const x = new Date(`${d}T00:00:00`);
-  return Number.isNaN(x.getTime()) ? esc(d) : x.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+  return Number.isNaN(x.getTime()) ? esc(d) : x.toLocaleDateString(intlTag(), { day: 'numeric', month: 'long', year: 'numeric' });
 }
 function whatsNewSkeleton() {
   return `<div class="home whatsnew">
     <header class="home-head">
-      <div><h1>Yang baru</h1><p class="muted">Perubahan di setiap versi Prototyper.</p></div>
+      <div><h1>${t('whatsNew')}</h1><p class="muted">${t('whatsNewSub')}</p></div>
     </header>
     <section id="wn-body"></section>
   </div>`;
@@ -1221,16 +1229,25 @@ function renderWhatsNew() {
   if (wnUnseen()) { writePref(SEEN_KEY, wn.version); wnMark(); }
   if (!wn.data && !wn.error) {
     if (!wn.loading) loadWhatsNew();
-    return patch('#wn-body', '<p class="muted">Memuat…</p>');
+    return patch('#wn-body', `<p class="muted">${t('loading')}</p>`);
   }
-  if (!wn.data) return patch('#wn-body', `<div class="callout err">Gagal memuat daftar perubahan: ${esc(wn.error)}</div>`);
+  if (!wn.data) return patch('#wn-body', `<div class="callout err">${t('wnLoadFailed', { error: esc(wn.error) })}</div>`);
   const rel = Array.isArray(wn.data.releases) ? wn.data.releases : [];
-  patch('#wn-body', `<div class="wn-list">${rel.map((r) => `<article class="wn-rel${r.version === wn.version ? ' current' : ''}">
-      <div class="wn-head"><span class="wn-ver">v${esc(r.version)}</span>${r.version === wn.version ? '<span class="h-chip accent">versi Anda</span>' : ''}<span class="spacer"></span><span class="muted">${r.date ? wnDate(r.date) : ''}</span></div>
-      ${r.title ? `<h2>${esc(r.title)}</h2>` : ''}
-      <ul>${(r.items ?? []).map((i) => `<li>${wnInline(i)}</li>`).join('')}</ul>
-    </article>`).join('')}</div>
-    ${wn.data.releasesUrl ? `<p class="muted wn-foot">Semua rilis dan berkas unduhan: <a href="${esc(wn.data.releasesUrl)}" target="_blank" rel="noopener">GitHub Releases ${ICON.ext}</a></p>` : ''}`);
+  patch('#wn-body', `<div class="wn-list">${rel.map((r) => {
+    const { title, items } = wnLocalized(r);
+    return `<article class="wn-rel${r.version === wn.version ? ' current' : ''}">
+      <div class="wn-head"><span class="wn-ver">v${esc(r.version)}</span>${r.version === wn.version ? `<span class="h-chip accent">${t('wnYourVersion')}</span>` : ''}<span class="spacer"></span><span class="muted">${r.date ? wnDate(r.date) : ''}</span></div>
+      ${title ? `<h2>${esc(title)}</h2>` : ''}
+      <ul>${(items ?? []).map((i) => `<li>${wnInline(i)}</li>`).join('')}</ul>
+    </article>`;
+  }).join('')}</div>
+    ${wn.data.releasesUrl ? `<p class="muted wn-foot">${t('wnAllReleases')} <a href="${esc(wn.data.releasesUrl)}" target="_blank" rel="noopener">GitHub Releases ${ICON.ext}</a></p>` : ''}`);
+}
+/** Judul & isi rilis dalam bahasa aktif: `translations[bahasa]` (atau FALLBACK_LOCALE), selain itu versi sumber. */
+function wnLocalized(r) {
+  const loc = getLocale();
+  const tr = loc === SOURCE_LOCALE ? null : (r.translations?.[loc] ?? r.translations?.[FALLBACK_LOCALE]);
+  return { title: tr?.title ?? r.title, items: Array.isArray(tr?.items) ? tr.items : r.items };
 }
 
 // ---------- Beranda ----------
@@ -1239,9 +1256,9 @@ function dsChipHtml(p) {
   const d = p.manifest?.designSystem;
   if (d?.use) {
     const c = ds.list?.find((x) => x.id === d.use)?.consumers.find((x) => x.id === p.id);
-    return `<span class="h-chip ${c?.outdated ? 'warn' : 'ds'}" title="Memakai desain sistem ${esc(d.use)}${c?.outdated ? ' — perlu sinkron' : ''}">◇ ${esc(d.use)}</span>`;
+    return `<span class="h-chip ${c?.outdated ? 'warn' : 'ds'}" title="${t(c?.outdated ? 'dsUsesStale' : 'dsUses', { id: esc(d.use) })}">◇ ${esc(d.use)}</span>`;
   }
-  if (d?.local) return `<span class="h-chip ds" title="Desain sistem sendiri: ${esc(d.local.join(', '))}">◆ desain sistem sendiri</span>`;
+  if (d?.local) return `<span class="h-chip ds" title="${t('dsOwnTitle', { paths: esc(d.local.join(', ')) })}">◆ ${t('dsOwnChip')}</span>`;
   return '';
 }
 /** Kartu desain sistem di Beranda: pemakai (klik untuk membuka), status sinkron, dan aksi. */
@@ -1251,18 +1268,18 @@ function dsCardHtml(p) {
   const stale = users.filter((c) => c.outdated);
   const u = openUrl(p);
   const act = isActive(p)
-    ? btn('stop', p, { label: 'Stop', icon: ICON.stop })
-    : btn('start', p, { label: ui.busy.has(p.id) ? 'Memproses…' : 'Buka katalog', icon: ICON.play, cls: 'primary', disabled: !p.valid });
+    ? btn('stop', p, { label: t('stop'), icon: ICON.stop })
+    : btn('start', p, { label: ui.busy.has(p.id) ? t('processing') : t('openCatalog'), icon: ICON.play, cls: 'primary', disabled: !p.valid });
   const sync = stale.length && LOCAL
-    ? `<button type="button" class="btn sm" data-act="ds-sync" data-id="${esc(p.id)}" title="Salin ulang token & komponen ke ${stale.length} prototype" ${ui.busy.has(`ds:${p.id}`) ? 'disabled' : ''}>${ICON.restart}Sebarkan (${stale.length})</button>` : '';
+    ? `<button type="button" class="btn sm" data-act="ds-sync" data-id="${esc(p.id)}" title="${t('dsSyncCardTitle', { n: stale.length })}" ${ui.busy.has(`ds:${p.id}`) ? 'disabled' : ''}>${ICON.restart}${t('dsSyncCard', { n: stale.length })}</button>` : '';
   return `<article class="h-card ds ${isActive(p) ? 'on' : ''}" data-act="select" data-id="${esc(p.id)}" tabindex="0">
       <div class="h-card-top">${avatar(p)}<div class="t"><b>${esc(p.name)}</b><span>${kindTag(p)}${esc(p.id)}</span></div>${statusHtml(p)}</div>
       ${p.description ? `<p class="h-desc">${esc(p.description)}</p>` : ''}
       <div class="h-meta">
-        ${u ? `<a href="${esc(u)}" target="_blank" rel="noopener" class="h-url">${esc(u.replace(/^https?:\/\//, '').replace(/\/$/, ''))} ${ICON.ext}</a>` : `<span class="muted">${info ? (users.length ? `dipakai ${users.length} prototype` : 'belum dipakai prototype lain') : ''}</span>`}
+        ${u ? `<a href="${esc(u)}" target="_blank" rel="noopener" class="h-url">${esc(u.replace(/^https?:\/\//, '').replace(/\/$/, ''))} ${ICON.ext}</a>` : `<span class="muted">${info ? (users.length ? t('dsUsedBy', { n: users.length }) : t('dsUnused')) : ''}</span>`}
       </div>
-      ${users.length ? `<div class="h-ds-users">${users.map((c) => `<span class="h-chip ${c.outdated ? 'warn' : 'ds'}" data-act="select" data-id="${esc(c.id)}" title="${c.outdated ? 'Perlu sinkron' : 'Terbaru'} — buka ${esc(c.name)}">${esc(c.id)}${c.outdated ? ' ●' : ''}</span>`).join('')}</div>` : ''}
-      <div class="h-card-actions">${act}${sync}<span class="spacer"></span><span class="h-open">Buka detail →</span></div>
+      ${users.length ? `<div class="h-ds-users">${users.map((c) => `<span class="h-chip ${c.outdated ? 'warn' : 'ds'}" data-act="select" data-id="${esc(c.id)}" title="${t(c.outdated ? 'dsConsumerStale' : 'dsConsumerFresh', { name: esc(c.name) })}">${esc(c.id)}${c.outdated ? ' ●' : ''}</span>`).join('')}</div>` : ''}
+      <div class="h-card-actions">${act}${sync}<span class="spacer"></span><span class="h-open">${t('openDetail')}</span></div>
     </article>`;
 }
 
@@ -1272,17 +1289,17 @@ const totalWaitingUser = () => sum((p) => p.comments?.waitingUser);
 function homeSkeleton() {
   return `<div class="home">
     <header class="home-head">
-      <div><h1>Beranda</h1><p class="muted">Ringkasan semua prototype di komputer ini.</p></div>
+      <div><h1>${t('home')}</h1><p class="muted">${t('homeTitleSub')}</p></div>
       <div class="home-actions">
-        <button type="button" class="btn primary" data-act="new" ${LOCAL ? '' : `disabled title="${RO_TITLE}"`}>${ICON.plus}Buat baru</button>
-        <button type="button" class="btn" data-act="add" ${LOCAL ? '' : `disabled title="${RO_TITLE}"`}>Daftarkan folder</button>
+        <button type="button" class="btn primary" data-act="new" ${LOCAL ? '' : `disabled title="${RO_TITLE}"`}>${ICON.plus}${t('createNew')}</button>
+        <button type="button" class="btn" data-act="add" ${LOCAL ? '' : `disabled title="${RO_TITLE}"`}>${t('registerFolder')}</button>
       </div>
     </header>
     <section class="home-stats" id="h-stats"></section>
     <section id="h-attn"></section>
     <section id="h-ds"></section>
     <section>
-      <div class="log-tools"><h3 class="section-title">Prototype</h3><span class="spacer"></span><span class="muted" id="h-count"></span></div>
+      <div class="log-tools"><h3 class="section-title">${t('homePrototypes')}</h3><span class="spacer"></span><span class="muted" id="h-count"></span></div>
       <div class="home-cards" id="h-cards"></div>
     </section>
     <section id="h-agents"></section>
@@ -1299,56 +1316,56 @@ function renderHome() {
   const protos = list.filter((p) => !isDs(p));
   const stat = (n, label, cls = '', sub = '') => `<div class="h-stat ${cls}"><b>${n}</b><span>${label}</span>${sub ? `<small>${sub}</small>` : ''}</div>`;
   patch('#h-stats', [
-    stat(protos.length, 'Prototype', '', [problems ? `${problems} bermasalah` : '', dss.length ? `+ ${dss.length} desain sistem` : ''].filter(Boolean).join(' · ')),
-    stat(running, 'Berjalan', running ? 'ok' : ''),
-    stat(waitUser, 'Menunggu Anda', waitUser ? 'warn' : '', 'komentar perlu jawaban'),
-    stat(waitAgent, 'Menunggu agent', waitAgent ? 'accent' : '', 'siap dikerjakan'),
+    stat(protos.length, t('statPrototypes'), '', [problems ? t('statProblems', { n: problems }) : '', dss.length ? t('statDesignSystems', { n: dss.length }) : ''].filter(Boolean).join(' · ')),
+    stat(running, t('statusRunning'), running ? 'ok' : ''),
+    stat(waitUser, t('waitingYou'), waitUser ? 'warn' : '', t('statWaitingYouSub')),
+    stat(waitAgent, t('waitingAgent'), waitAgent ? 'accent' : '', t('statWaitingAgentSub')),
   ].join(''));
 
   const attn = [];
   for (const p of list) {
     const c = p.comments ?? { open: 0, waitingUser: 0 };
-    if (c.waitingUser) attn.push({ p, cls: 'warn', text: `${c.waitingUser} komentar menunggu jawaban Anda` });
-    if (c.open - c.waitingUser > 0) attn.push({ p, cls: 'accent', text: `${c.open - c.waitingUser} komentar menunggu agent` });
-    if (isProblem(p)) attn.push({ p, cls: 'err', text: p.valid ? `${LABEL[st(p)]}${p.error ? ` — ${p.error}` : ''}` : 'Manifest tidak valid' });
+    if (c.waitingUser) attn.push({ p, cls: 'warn', text: t('attnWaitingYou', { n: c.waitingUser }) });
+    if (c.open - c.waitingUser > 0) attn.push({ p, cls: 'accent', text: t('attnWaitingAgent', { n: c.open - c.waitingUser }) });
+    if (isProblem(p)) attn.push({ p, cls: 'err', text: p.valid ? `${LABEL[st(p)]}${p.error ? ` — ${p.error}` : ''}` : t('manifestInvalid') });
     const stale = isDs(p) ? (ds.list?.find((x) => x.id === p.id)?.consumers ?? []).filter((c) => c.outdated) : [];
-    if (stale.length) attn.push({ p, cls: 'accent', text: `${stale.length} prototype perlu sinkron desain sistem: ${stale.map((c) => c.id).join(', ')}` });
+    if (stale.length) attn.push({ p, cls: 'accent', text: t('attnDsStale', { n: stale.length, ids: stale.map((c) => c.id).join(', ') }) });
   }
-  patch('#h-attn', attn.length ? `<div class="log-tools"><h3 class="section-title">Perlu perhatian</h3></div>
+  patch('#h-attn', attn.length ? `<div class="log-tools"><h3 class="section-title">${t('attnTitle')}</h3></div>
     <div class="h-attn">${attn.map((a) => `<button type="button" class="h-attn-item ${a.cls}" data-act="select" data-id="${esc(a.p.id)}">
-      ${avatar(a.p, 'sm')}<span class="t"><b>${esc(a.p.name)}</b><span>${esc(a.text)}</span></span><span class="h-go">Buka →</span></button>`).join('')}</div>` : '');
+      ${avatar(a.p, 'sm')}<span class="t"><b>${esc(a.p.name)}</b><span>${esc(a.text)}</span></span><span class="h-go">${t('openArrow')}</span></button>`).join('')}</div>` : '');
 
-  patch('#h-ds', dss.length ? `<div class="log-tools"><h3 class="section-title">Desain sistem</h3><span class="spacer"></span>
-      <span class="muted">token &amp; komponen yang dipakai bersama</span></div>
+  patch('#h-ds', dss.length ? `<div class="log-tools"><h3 class="section-title">${t('groupDesignSystems')}</h3><span class="spacer"></span>
+      <span class="muted">${t('homeDsSub')}</span></div>
     <div class="home-cards">${dss.map(dsCardHtml).join('')}</div>` : '');
-  $('#h-count').textContent = `${protos.length} terdaftar`;
+  $('#h-count').textContent = t('registeredCount', { n: protos.length });
   const order = [...protos].sort((a, b) => Number(isActive(b)) - Number(isActive(a)) || Number(isProblem(b)) - Number(isProblem(a)));
   patch('#h-cards', order.map((p) => {
     const u = openUrl(p);
     const c = p.comments ?? { open: 0, waitingUser: 0 };
     const act = isActive(p)
-      ? btn('stop', p, { label: 'Stop', icon: ICON.stop })
-      : btn('start', p, { label: ui.busy.has(p.id) ? 'Memproses…' : 'Start', icon: ICON.play, cls: 'primary', disabled: !p.valid });
+      ? btn('stop', p, { label: t('stop'), icon: ICON.stop })
+      : btn('start', p, { label: ui.busy.has(p.id) ? t('processing') : t('start'), icon: ICON.play, cls: 'primary', disabled: !p.valid });
     return `<article class="h-card ${isActive(p) ? 'on' : ''}" data-act="select" data-id="${esc(p.id)}" tabindex="0">
       <div class="h-card-top">${avatar(p)}<div class="t"><b>${esc(p.name)}</b><span>${kindTag(p)}${esc(p.id)}${p.type ? ` · ${p.type}` : ''}</span></div>${statusHtml(p)}</div>
       ${p.description ? `<p class="h-desc">${esc(p.description)}</p>` : ''}
       <div class="h-meta">
-        ${u ? `<a href="${esc(u)}" target="_blank" rel="noopener" class="h-url">${esc(u.replace(/^https?:\/\//, '').replace(/\/$/, ''))} ${ICON.ext}</a>` : `<span class="muted">${p.valid ? 'tidak berjalan' : 'tidak valid'}</span>`}
+        ${u ? `<a href="${esc(u)}" target="_blank" rel="noopener" class="h-url">${esc(u.replace(/^https?:\/\//, '').replace(/\/$/, ''))} ${ICON.ext}</a>` : `<span class="muted">${p.valid ? t('notRunning') : t('invalidLower')}</span>`}
         <span class="spacer"></span>
         ${dsChipHtml(p)}
-        ${c.waitingUser ? `<span class="h-chip warn" title="Menunggu jawaban Anda">${c.waitingUser} menunggu Anda</span>` : ''}
-        ${c.open - c.waitingUser > 0 ? `<span class="h-chip accent" title="Menunggu agent">${c.open - c.waitingUser} untuk agent</span>` : ''}
+        ${c.waitingUser ? `<span class="h-chip warn" title="${t('waitingYourAnswer')}">${t('waitingYouShort', { n: c.waitingUser })}</span>` : ''}
+        ${c.open - c.waitingUser > 0 ? `<span class="h-chip accent" title="${t('waitingAgent')}">${t('forAgentShort', { n: c.open - c.waitingUser })}</span>` : ''}
       </div>
-      <div class="h-card-actions">${act}<span class="spacer"></span><span class="h-open">Buka detail →</span></div>
+      <div class="h-card-actions">${act}<span class="spacer"></span><span class="h-open">${t('openDetail')}</span></div>
     </article>`;
   }).join(''));
 
   const av = (ag.agents ?? []).filter((a) => a.available);
-  patch('#h-agents', `<div class="log-tools"><h3 class="section-title">Agent lokal</h3><span class="spacer"></span>
-      <button type="button" class="btn sm ghost" data-act="agent-list">${ICON.gear}Kelola</button></div>
-    <div class="h-agents">${!ag.agents ? '<span class="muted">Memeriksa agent…</span>'
-      : av.length ? av.map((a) => `<span class="h-agent">${agentLogo(a.id)}<b>${esc(a.name)}</b><small>${esc(a.version ?? '')}</small>${a.support === 'tested' ? '' : '<span class="agent-exp">eksperimental</span>'}</span>`).join('')
-      : '<span class="muted">Belum ada agent coding yang terdeteksi (Claude Code, Codex, Gemini CLI, Copilot CLI).</span>'}</div>`);
+  patch('#h-agents', `<div class="log-tools"><h3 class="section-title">${t('localAgents')}</h3><span class="spacer"></span>
+      <button type="button" class="btn sm ghost" data-act="agent-list">${ICON.gear}${t('manage')}</button></div>
+    <div class="h-agents">${!ag.agents ? `<span class="muted">${t('agentsChecking')}</span>`
+      : av.length ? av.map((a) => `<span class="h-agent">${agentLogo(a.id)}<b>${esc(a.name)}</b><small>${esc(a.version ?? '')}</small>${a.support === 'tested' ? '' : `<span class="agent-exp">${t('experimental')}</span>`}</span>`).join('')
+      : `<span class="muted">${t('agentsNoneDetected')}</span>`}</div>`);
 }
 
 // ---------- Komentar ----------
@@ -1374,21 +1391,21 @@ function fmtTime(iso) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   const same = d.toDateString() === new Date().toDateString();
-  return same ? d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
-    : d.toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  return same ? d.toLocaleTimeString(intlTag(), { hour: '2-digit', minute: '2-digit' })
+    : d.toLocaleString(intlTag(), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
-const WAIT = { user: ['user', 'Menunggu Anda'], agent: ['agent', 'Menunggu agent'] };
+const WAIT = { user: ['user', t('waitingYou')], agent: ['agent', t('waitingAgent')] };
 
 function questionHtml(c, r) {
   const type = r.multi ? 'checkbox' : 'radio';
-  const head = `<div class="cm-q-head"><b>${esc(r.author)}</b><span class="cm-q-tag">${r.multi ? 'Pilih satu atau lebih' : 'Pilih satu'}</span><span class="cm-meta">${fmtTime(r.createdAt)}</span></div>
+  const head = `<div class="cm-q-head"><b>${esc(r.author)}</b><span class="cm-q-tag">${r.multi ? t('qPickMany') : t('qPickOne')}</span><span class="cm-meta">${fmtTime(r.createdAt)}</span></div>
     <p class="cm-text">${esc(r.text)}</p>`;
   if (r.answer || c.status !== 'open' || !EDIT) {
     const chosen = r.answer?.choices ?? [];
     return `<div class="cm-question answered" data-rid="${esc(r.id)}">${head}
       <ul class="cm-opts-done">${r.options.map((o) => `<li class="${chosen.includes(o) ? 'on' : ''}">${chosen.includes(o) ? '✓' : '○'} ${esc(o)}</li>`).join('')}</ul>
-      ${r.answer ? '' : `<p class="muted cm-q-none">${c.status === 'open' ? 'Belum dijawab.' : 'Tidak dijawab.'}</p>`}
+      ${r.answer ? '' : `<p class="muted cm-q-none">${c.status === 'open' ? t('qNotAnswered') : t('qUnanswered')}</p>`}
     </div>`;
   }
   const name = `q-${r.id}`;
@@ -1396,8 +1413,8 @@ function questionHtml(c, r) {
     <div class="cm-opts" role="${r.multi ? 'group' : 'radiogroup'}">
       ${r.options.map((o) => `<label class="cm-opt"><input type="${type}" name="${esc(name)}" value="${esc(o)}"><span>${esc(o)}</span></label>`).join('')}
     </div>
-    <textarea rows="2" placeholder="Catatan untuk jawaban — atau tulis pertanyaan balik tanpa memilih opsi"></textarea>
-    <div class="cm-q-row"><span class="muted cm-q-hint"></span><span class="spacer"></span><button type="submit" class="btn primary sm" disabled>Kirim</button></div>
+    <textarea rows="2" placeholder="${t('qNotePlaceholder')}"></textarea>
+    <div class="cm-q-row"><span class="muted cm-q-hint"></span><span class="spacer"></span><button type="submit" class="btn primary sm" disabled>${t('send')}</button></div>
   </form>`;
 }
 
@@ -1405,33 +1422,33 @@ function questionHtml(c, r) {
 const attachmentUrl = (rel) => `/api/prototypes/${enc(cm.id)}/attachments/${enc(rel.split('/').pop())}`;
 function attachmentsHtml(list) {
   if (!list?.length) return '';
-  return `<div class="cm-atts">${list.map((a) => `<a href="${esc(attachmentUrl(a))}" target="_blank" rel="noopener" title="${esc(a)}"><img src="${esc(attachmentUrl(a))}" alt="Lampiran gambar" loading="lazy"></a>`).join('')}</div>`;
+  return `<div class="cm-atts">${list.map((a) => `<a href="${esc(attachmentUrl(a))}" target="_blank" rel="noopener" title="${esc(a)}"><img src="${esc(attachmentUrl(a))}" alt="${t('attachmentAlt')}" loading="lazy"></a>`).join('')}</div>`;
 }
 const textHtml = (t) => (t ? `<p class="cm-text">${esc(t)}</p>` : '');
 
 function replyHtml(c, r) {
   if (r.options) return questionHtml(c, r);
   if (r.answerTo) {
-    return `<div class="cm-reply cm-answer ${r.role === 'agent' ? 'agent' : 'user'}" data-rid="${esc(r.id)}"><b>${esc(r.author)}</b><span>memilih</span>${(r.choices ?? []).map((x) => `<span class="cm-chip">${esc(x)}</span>`).join('')}<span class="cm-meta">${fmtTime(r.createdAt)}</span>${r.text ? `<p class="cm-text">${esc(r.text)}</p>` : ''}</div>`;
+    return `<div class="cm-reply cm-answer ${r.role === 'agent' ? 'agent' : 'user'}" data-rid="${esc(r.id)}"><b>${esc(r.author)}</b><span>${t('chose')}</span>${(r.choices ?? []).map((x) => `<span class="cm-chip">${esc(x)}</span>`).join('')}<span class="cm-meta">${fmtTime(r.createdAt)}</span>${r.text ? `<p class="cm-text">${esc(r.text)}</p>` : ''}</div>`;
   }
   // Balasan pengguna yang belum ditanggapi agent boleh diedit/dihapus (server juga memeriksanya).
   const changeable = EDIT && r.editable && !isWorking(c);
   const editing = changeable && cm.editing === r.id;
   const tools = changeable && !editing ? `<span class="cm-reply-tools">
-      <button type="button" class="icon-btn cm-edit-btn" data-act="cm-edit" data-cid="${esc(c.id)}" data-rid="${esc(r.id)}" title="Edit balasan">${ICON.pencil}</button>
-      <button type="button" class="icon-btn" data-act="cm-delete-reply" data-cid="${esc(c.id)}" data-rid="${esc(r.id)}" title="Hapus balasan">${ICON.trash}</button>
+      <button type="button" class="icon-btn cm-edit-btn" data-act="cm-edit" data-cid="${esc(c.id)}" data-rid="${esc(r.id)}" title="${t('editReply')}">${ICON.pencil}</button>
+      <button type="button" class="icon-btn" data-act="cm-delete-reply" data-cid="${esc(c.id)}" data-rid="${esc(r.id)}" title="${t('deleteReply')}">${ICON.trash}</button>
     </span>` : '';
   const body = editing ? editFormHtml(c.id, r.id, r.text) : `${textHtml(r.text)}${editedHtml(r)}`;
   return `<div class="cm-reply ${r.role === 'agent' ? 'agent' : 'user'}" data-rid="${esc(r.id)}"><b>${r.role === 'agent' ? '<span class="cm-role-ic" aria-hidden="true">✦</span>' : ''}${esc(r.author)}</b><span class="cm-meta">${fmtTime(r.createdAt)}</span>${tools}${body}${attachmentsHtml(r.attachments)}</div>`;
 }
 
-const editedHtml = (m) => (m.editedAt ? `<span class="cm-edited" title="Diedit ${esc(fmtTime(m.editedAt))}">(diedit)</span>` : '');
+const editedHtml = (m) => (m.editedAt ? `<span class="cm-edited" title="${t('editedAt', { when: esc(fmtTime(m.editedAt)) })}">${t('edited')}</span>` : '');
 function editFormHtml(cid, rid, text) {
   return `<form class="cm-edit" data-cid="${esc(cid)}"${rid ? ` data-rid="${esc(rid)}"` : ''}>
-      <textarea rows="3" aria-label="Teks ${rid ? `balasan ${esc(rid)}` : `komentar ${esc(cid)}`}">${esc(text)}</textarea>
-      <div class="cm-q-row"><span class="muted cm-q-hint">Ctrl+Enter simpan · Esc batal</span><span class="spacer"></span>
-        <button type="button" class="btn sm ghost" data-act="cm-edit-cancel">Batal</button>
-        <button type="submit" class="btn primary sm">Simpan</button></div>
+      <textarea rows="3" aria-label="${rid ? t('replyTextLabel', { id: esc(rid) }) : t('commentTextLabel', { id: esc(cid) })}">${esc(text)}</textarea>
+      <div class="cm-q-row"><span class="muted cm-q-hint">${t('editHint')}</span><span class="spacer"></span>
+        <button type="button" class="btn sm ghost" data-act="cm-edit-cancel">${t('cancel')}</button>
+        <button type="submit" class="btn primary sm">${t('save')}</button></div>
     </form>`;
 }
 
@@ -1482,11 +1499,11 @@ const snippet = (t, n = 90) => { const s = String(t ?? '').replace(/\s+/g, ' ').
 function collapsedSummary(c) {
   const n = c.replies.length;
   const last = c.replies[n - 1];
-  const lastText = last ? (last.options ? `❓ ${last.text}` : last.answerTo ? `memilih ${(last.choices ?? []).join(', ')}` : last.text || '(gambar)') : '';
-  return `<button type="button" class="cm-summary" data-act="cm-toggle" data-cid="${esc(c.id)}" title="Tampilkan percakapan lengkap">
-      <span class="cm-sum-n">${n ? `${n} balasan` : 'Tanpa balasan'}</span>
+  const lastText = last ? (last.options ? `❓ ${last.text}` : last.answerTo ? `${t('chose')} ${(last.choices ?? []).join(', ')}` : last.text || t('imageOnly')) : '';
+  return `<button type="button" class="cm-summary" data-act="cm-toggle" data-cid="${esc(c.id)}" title="${t('showThread')}">
+      <span class="cm-sum-n">${n ? t('replyCount', { n }) : t('noReplies')}</span>
       ${last ? `<span class="cm-sum-last"><b>${esc(last.author)}:</b> ${esc(snippet(lastText))}</span>` : ''}
-      <span class="cm-sum-more">Tampilkan</span>
+      <span class="cm-sum-more">${t('show')}</span>
     </button>`;
 }
 
@@ -1494,9 +1511,9 @@ function commentHtml(c) {
   const collapsed = isCollapsed(c);
   const working = isWorking(c);
   const wait = c.waitingFor ? WAIT[c.waitingFor] : null;
-  const head = `<header data-act="cm-toggle" data-cid="${esc(c.id)}" title="${collapsed ? 'Bentangkan' : 'Ciutkan'} percakapan">
+  const head = `<header data-act="cm-toggle" data-cid="${esc(c.id)}" title="${collapsed ? t('expandThread') : t('collapseThread')}">
       <span class="cm-chev" aria-hidden="true">▸</span><code>${esc(c.id)}</code><span class="cm-page">${esc(c.page)}</span>
-      ${working ? '<span class="cm-working"><i></i>Sedang dikerjakan</span>' : ''}
+      ${working ? `<span class="cm-working"><i></i>${t('working')}</span>` : ''}
       ${wait ? `<span class="cm-wait ${wait[0]}">${wait[1]}</span>` : ''}
       <span class="cm-meta">${esc(c.author)} · ${fmtTime(c.createdAt)}</span></header>`;
   const cls = `cm ${c.status}${collapsed ? ' collapsed' : ''}${working ? ' working' : ''}${cm.replyTo === c.id ? ' replying' : ''}${c.waitingFor === 'user' ? ' needs-you' : ''}`;
@@ -1510,14 +1527,14 @@ function commentHtml(c) {
   const changeable = c.editable && !working;
   const editing = changeable && cm.editing === c.id;
   const actions = EDIT && !editing ? `<div class="cm-actions">
-      ${c.waitingFor === 'agent' && pickedAgent() ? `<button type="button" class="btn sm ghost agent-one" data-act="agent-run-one" data-cid="${esc(c.id)}" title="Minta ${esc(pickedAgent().name)} mengerjakan komentar ini saja" ${ag.state?.running ? 'disabled' : ''}>${ICON.spark}Kerjakan</button>` : ''}
-      <button type="button" class="btn sm ghost" data-act="cm-reply" data-cid="${esc(c.id)}">Balas</button>
+      ${c.waitingFor === 'agent' && pickedAgent() ? `<button type="button" class="btn sm ghost agent-one" data-act="agent-run-one" data-cid="${esc(c.id)}" title="${t('workOnOneTitle', { agent: esc(pickedAgent().name) })}" ${ag.state?.running ? 'disabled' : ''}>${ICON.spark}${t('workOnIt')}</button>` : ''}
+      <button type="button" class="btn sm ghost" data-act="cm-reply" data-cid="${esc(c.id)}">${t('reply')}</button>
       ${c.status === 'open'
-        ? `<button type="button" class="btn sm ghost" data-act="cm-resolve" data-cid="${esc(c.id)}">✓ Selesai</button>`
-        : `<button type="button" class="btn sm ghost" data-act="cm-reopen" data-cid="${esc(c.id)}">Buka lagi</button>`}
+        ? `<button type="button" class="btn sm ghost" data-act="cm-resolve" data-cid="${esc(c.id)}">✓ ${t('resolve')}</button>`
+        : `<button type="button" class="btn sm ghost" data-act="cm-reopen" data-cid="${esc(c.id)}">${t('reopen')}</button>`}
       <span class="spacer"></span>
-      ${changeable ? `<button type="button" class="icon-btn cm-edit-btn" data-act="cm-edit" data-cid="${esc(c.id)}" title="Edit komentar">${ICON.pencil}</button>
-      <button type="button" class="icon-btn" data-act="cm-delete" data-cid="${esc(c.id)}" title="Hapus komentar">${ICON.trash}</button>` : ''}
+      ${changeable ? `<button type="button" class="icon-btn cm-edit-btn" data-act="cm-edit" data-cid="${esc(c.id)}" title="${t('editComment')}">${ICON.pencil}</button>
+      <button type="button" class="icon-btn" data-act="cm-delete" data-cid="${esc(c.id)}" title="${t('deleteComment')}">${ICON.trash}</button>` : ''}
     </div>` : '';
   const body = editing ? editFormHtml(c.id, null, c.text) : `${textHtml(c.text)}${editedHtml(c)}`;
   return `<article class="${cls}" data-cid="${esc(c.id)}">${head}
@@ -1525,7 +1542,7 @@ function commentHtml(c) {
     ${body}
     ${attachmentsHtml(c.attachments)}
     ${c.replies.map((r) => replyHtml(c, r)).join('')}
-    ${c.status === 'resolved' ? `<div class="cm-res">✓ Selesai${c.resolvedBy ? ` oleh ${esc(c.resolvedBy)}` : ''}${c.resolvedAt ? ` · ${fmtTime(c.resolvedAt)}` : ''}${c.resolution ? `<p class="cm-text">${esc(c.resolution)}</p>` : ''}</div>` : ''}
+    ${c.status === 'resolved' ? `<div class="cm-res">✓ ${c.resolvedBy ? t('resolvedBy', { who: esc(c.resolvedBy) }) : t('resolved')}${c.resolvedAt ? ` · ${fmtTime(c.resolvedAt)}` : ''}${c.resolution ? `<p class="cm-text">${esc(c.resolution)}</p>` : ''}</div>` : ''}
     ${actions}
   </article>`;
 }
@@ -1569,8 +1586,8 @@ function updateQForm(f) {
   const text = f.querySelector('textarea').value.trim();
   const b = f.querySelector('button[type="submit"]');
   b.disabled = !picked && !text;
-  b.textContent = picked ? 'Kirim jawaban' : text ? 'Kirim pertanyaan balik' : 'Kirim';
-  f.querySelector('.cm-q-hint').textContent = picked ? (text ? 'Pilihan + catatan' : '') : text ? 'Opsi tetap menunggu dijawab' : 'Pilih opsi, atau tanya balik';
+  b.textContent = picked ? t('qSendAnswer') : text ? t('qSendQuestion') : t('send');
+  f.querySelector('.cm-q-hint').textContent = picked ? (text ? t('qHintChoiceNote') : '') : text ? t('qHintStillWaiting') : t('qHintPick');
 }
 
 function renderComments() {
@@ -1579,7 +1596,7 @@ function renderComments() {
   for (const b of $$('#cm-filter button')) b.setAttribute('aria-pressed', String(b.dataset.f === cm.filter));
   const d = cm.data;
   let html;
-  if (!d) html = '<p class="muted cm-empty">Memuat…</p>';
+  if (!d) html = `<p class="muted cm-empty">${t('loading')}</p>`;
   else if (d.error) html = `<div class="callout err">${esc(d.error)}</div>`;
   else {
     // Yang menunggu Anda di atas, lalu terbaru lebih dulu.
@@ -1590,18 +1607,18 @@ function renderComments() {
       .sort(([a, ia], [b, ib]) => rank(a) - rank(b) || ib - ia)
       .map(([c]) => c);
     html = items.length ? items.map(commentHtml).join('')
-      : `<p class="muted cm-empty">${cm.filter === 'open' ? (d.counts.resolved ? 'Semua komentar sudah selesai.' : 'Belum ada komentar.') : 'Tidak ada komentar.'}</p>`;
+      : `<p class="muted cm-empty">${cm.filter === 'open' ? (d.counts.resolved ? t('cmAllResolved') : t('cmNone')) : t('cmNoComments')}</p>`;
   }
   $('#cm-count').innerHTML = d && !d.error
-    ? `${d.counts.open} open${d.counts.waitingUser ? ` · <b class="cm-count-wait">${d.counts.waitingUser} menunggu Anda</b>` : ''} · ${d.counts.resolved} selesai`
+    ? `${t('openShort', { n: d.counts.open })}${d.counts.waitingUser ? ` · <b class="cm-count-wait">${t('waitingYouShort', { n: d.counts.waitingUser })}</b>` : ''} · ${t('resolvedShort', { n: d.counts.resolved })}`
     : '';
   const allBtn = $('#cm-collapse-all');
   if (allBtn) {
     const vis = d && !d.error ? visibleComments() : [];
     const allCollapsed = vis.length > 0 && vis.every(isCollapsed);
     allBtn.hidden = vis.length < 2;
-    allBtn.textContent = allCollapsed ? '▾ Bentangkan semua' : '▸ Ciutkan semua';
-    allBtn.title = allCollapsed ? 'Tampilkan semua percakapan lengkap' : 'Ciutkan semua percakapan menjadi ringkasan satu baris';
+    allBtn.textContent = allCollapsed ? `▾ ${t('expandAll')}` : `▸ ${t('collapseAll')}`;
+    allBtn.title = allCollapsed ? t('expandAllTitle') : t('collapseAllTitle');
   }
   sendPins();
   if (html !== cm.lastHtml) {
@@ -1655,7 +1672,7 @@ function updateLatestBtn() {
   if (hidden) cm.latestNew = false;
   btn.hidden = hidden;
   btn.classList.toggle('new', !!cm.latestNew);
-  btn.querySelector('span').textContent = cm.latestNew ? 'Pesan baru' : 'Terbaru';
+  btn.querySelector('span').textContent = cm.latestNew ? t('cmNewMessage') : t('cmLatest');
 }
 
 function scrollToLatest(smooth = true) {
@@ -1685,10 +1702,10 @@ function startReply(cid) {
   const box = $('#cm-replying');
   if (!box) return;
   box.hidden = !cid;
-  box.querySelector('span').textContent = cid ? `Membalas ${cid}` : '';
+  box.querySelector('span').textContent = cid ? t('replyingTo', { id: cid }) : '';
   $('#cm-page-field').hidden = !!cid;
-  $('#cm-send').textContent = cid ? 'Balas' : 'Kirim';
-  $('#cm-text').placeholder = cid ? `Balasan untuk ${cid}…  (Ctrl+Enter untuk kirim)` : 'Tulis komentar untuk prototype ini…  (Ctrl+Enter untuk kirim)';
+  $('#cm-send').textContent = cid ? t('reply') : t('send');
+  $('#cm-text').placeholder = cid ? t('replyPlaceholder', { id: cid }) : t('cmPlaceholder');
   cm.lastHtml = ''; renderComments();
   $('#cm-text').focus();
 }
@@ -1699,15 +1716,15 @@ async function commentAction(kind, cid) {
   const base = `/api/prototypes/${enc(id)}/comments/${enc(cid)}`;
   try {
     if (kind === 'delete') {
-      const yes = await confirmDialog({ title: `Hapus komentar ${cid}?`, body: 'Komentar dan balasannya dihapus dari .prototyper/comments.json.', ok: 'Hapus' });
+      const yes = await confirmDialog({ title: t('deleteCommentTitle', { id: cid }), body: t('deleteCommentBody'), ok: t('delete') });
       if (!yes) return;
       await api('DELETE', base);
       if (cm.replyTo === cid) startReply(null);
       if (cm.editing === cid) cm.editing = null;
-      toast(`${cid} dihapus`);
+      toast(t('deletedToast', { id: cid }));
     } else {
       await api('POST', `${base}/${kind}`);
-      toast(kind === 'resolve' ? `${cid} ditandai selesai` : `${cid} dibuka lagi`);
+      toast(kind === 'resolve' ? t('resolvedToast', { id: cid }) : t('reopenedToast', { id: cid }));
     }
   } catch (err) {
     toast(err.message, true);
@@ -1727,12 +1744,12 @@ function startEdit(key) {
 async function deleteReply(cid, rid) {
   const id = cm.id;
   if (!id || !cid || !rid) return;
-  const yes = await confirmDialog({ title: `Hapus balasan ${rid}?`, body: `Balasan ini dihapus dari komentar ${cid}.`, ok: 'Hapus' });
+  const yes = await confirmDialog({ title: t('deleteReplyTitle', { id: rid }), body: t('deleteReplyBody', { id: cid }), ok: t('delete') });
   if (!yes) return;
   try {
     await api('DELETE', `/api/prototypes/${enc(id)}/comments/${enc(cid)}/replies/${enc(rid)}`);
     if (cm.editing === rid) cm.editing = null;
-    toast(`Balasan ${rid} dihapus`);
+    toast(t('replyDeletedToast', { id: rid }));
   } catch (err) {
     toast(err.message, true);
   }
@@ -1749,13 +1766,13 @@ document.addEventListener('submit', async (e) => {
   const m = rid ? c?.replies.find((x) => x.id === rid) : c;
   const text = f.querySelector('textarea').value.trim();
   if (!id || !m) return;
-  if (!text && !m.attachments?.length) return toast(`Teks ${rid ? 'balasan' : 'komentar'} tidak boleh kosong`, true);
+  if (!text && !m.attachments?.length) return toast(rid ? t('replyEmpty') : t('commentEmpty'), true);
   if (text === m.text) return startEdit(null);
   const b = f.querySelector('button[type="submit"]');
   b.disabled = true;
   try {
     await api('PATCH', `/api/prototypes/${enc(id)}/comments/${enc(cid)}${rid ? `/replies/${enc(rid)}` : ''}`, { text });
-    toast(`${rid ?? cid} diperbarui`);
+    toast(t('updatedToast', { id: rid ?? cid }));
     cm.editing = null;
     cm.lastHtml = '';
     await loadComments();
@@ -1789,7 +1806,7 @@ document.addEventListener('submit', async (e) => {
   try {
     const body = choices.length ? { answerTo: qid, choices, ...(text ? { text } : {}) } : { text };
     await api('POST', `/api/prototypes/${enc(id)}/comments/${enc(cid)}/replies`, body);
-    toast(choices.length ? `Jawaban untuk ${cid} terkirim` : `Pertanyaan balik untuk ${cid} terkirim`);
+    toast(choices.length ? t('answerSentToast', { id: cid }) : t('questionSentToast', { id: cid }));
     cm.lastHtml = ''; // paksa render ulang tanpa memulihkan isian form ini
     for (const i of $$('input', f)) i.checked = false;
     f.querySelector('textarea').value = '';
@@ -1810,7 +1827,7 @@ document.addEventListener('submit', async (e) => {
   e.preventDefault();
   const id = cm.id;
   const text = $('#cm-text').value.trim();
-  if (cm.files.some((f) => !f.path)) return toast('Tunggu gambar selesai diunggah', true);
+  if (cm.files.some((f) => !f.path)) return toast(t('waitUpload'), true);
   const attachments = cm.files.map((f) => f.path);
   if (!id || (!text && !attachments.length)) return $('#cm-text').focus();
   const extra = attachments.length ? { attachments } : {};
@@ -1853,7 +1870,7 @@ function renderFiles() {
   box.hidden = !cm.files.length;
   box.innerHTML = cm.files.map((f) => `<span class="cm-file${f.path ? '' : ' uploading'}">
       <img src="${esc(f.preview)}" alt="">
-      <button type="button" class="cm-file-x" data-act="cm-rm-file" data-k="${f.key}" title="Hapus lampiran">✕</button>
+      <button type="button" class="cm-file-x" data-act="cm-rm-file" data-k="${f.key}" title="${t('removeAttachment')}">✕</button>
     </span>`).join('');
 }
 
@@ -1874,7 +1891,7 @@ function removeFile(key) {
 const readDataUrl = (file) => new Promise((resolve, reject) => {
   const r = new FileReader();
   r.onload = () => resolve(r.result);
-  r.onerror = () => reject(r.error ?? new Error('Gagal membaca file'));
+  r.onerror = () => reject(r.error ?? new Error(t('readFileFailed')));
   r.readAsDataURL(file);
 });
 
@@ -1882,9 +1899,9 @@ async function addFiles(files) {
   const id = cm.id;
   if (!id || !EDIT) return;
   for (const file of files) {
-    if (!IMAGE_TYPES.includes(fileType(file))) { toast(`${file.name || 'File'}: hanya gambar PNG, JPG, GIF, WebP, atau SVG`, true); continue; }
-    if (file.size > MAX_FILE_MB * 1024 * 1024) { toast(`${file.name || 'Gambar'} terlalu besar (maks. ${MAX_FILE_MB} MB)`, true); continue; }
-    if (cm.files.length >= MAX_FILES) { toast(`Maksimal ${MAX_FILES} gambar per komentar`, true); break; }
+    if (!IMAGE_TYPES.includes(fileType(file))) { toast(t('fileNotImage', { name: file.name || t('fileGeneric') }), true); continue; }
+    if (file.size > MAX_FILE_MB * 1024 * 1024) { toast(t('fileTooLarge', { name: file.name || t('imageGeneric'), mb: MAX_FILE_MB }), true); continue; }
+    if (cm.files.length >= MAX_FILES) { toast(t('tooManyFiles', { n: MAX_FILES }), true); break; }
     const f = { key: ++fileSeq, preview: URL.createObjectURL(file), path: null };
     cm.files.push(f);
     renderFiles();
@@ -1894,7 +1911,7 @@ async function addFiles(files) {
       f.path = a.path;
       renderFiles();
     } catch (err) {
-      toast(`Gagal mengunggah gambar: ${err.message}`, true);
+      toast(t('uploadFailed', { error: err.message }), true);
       removeFile(f.key);
     }
   }
@@ -1930,7 +1947,7 @@ document.addEventListener('drop', (e) => {
   e.preventDefault();
   form.classList.remove('drop');
   const files = imagesOf(e.dataTransfer.files);
-  if (files.length) addFiles(files); else toast('Hanya gambar yang bisa dilampirkan', true);
+  if (files.length) addFiles(files); else toast(t('onlyImages'), true);
 });
 document.addEventListener('keydown', (e) => {
   if (e.target.id === 'cm-text' && e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -2011,14 +2028,14 @@ async function loadAgent() {
 function agentFinished(run) {
   const p = byId(cm.id);
   const name = agentName(run?.agent ?? 'claude');
-  if (run?.status === 'done') toast(run.summary ? `${name} selesai: ${run.summary.slice(0, 140)}${run.summary.length > 140 ? '…' : ''}` : `${name} selesai`);
-  else if (run?.status === 'stopped') toast(`${name} dihentikan`);
-  else toast(`${name} gagal: ${run?.error ?? 'lihat log agent'}`, true);
+  if (run?.status === 'done') toast(run.summary ? t('agentDoneSummary', { name, summary: `${run.summary.slice(0, 140)}${run.summary.length > 140 ? '…' : ''}` }) : t('agentDone', { name }));
+  else if (run?.status === 'stopped') toast(t('stoppedToast', { name }));
+  else toast(t('agentFailed', { name, error: run?.error ?? t('seeAgentLog') }), true);
   if (p && isDs(p) && run?.checkpoint?.changes?.length) {
     // Perubahan di desain sistem: perbarui status pemakai, lalu ingatkan untuk meninjau & menyebarkan.
     loadDesignSystems().then(() => {
       const stale = (ds.list?.find((x) => x.id === p.id)?.consumers ?? []).filter((c) => c.outdated);
-      if (stale.length) toast(`Desain sistem berubah. Tinjau katalog, lalu Sebarkan ke ${stale.length} prototype (${stale.map((c) => c.id).join(', ')}).`);
+      if (stale.length) toast(t('dsChangedToast', { n: stale.length, ids: stale.map((c) => c.id).join(', ') }));
       ag.lastHtml = ''; renderAgent(); render();
     });
   }
@@ -2032,7 +2049,7 @@ function agentFinished(run) {
 
 function ago(iso) {
   const s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
-  return s < 60 ? `${s} dtk lalu` : s < 3600 ? `${Math.round(s / 60)} mnt lalu` : `${Math.round(s / 3600)} jam lalu`;
+  return s < 60 ? t('agoSeconds', { n: s }) : s < 3600 ? t('agoMinutes', { n: Math.round(s / 60) }) : t('agoHours', { n: Math.round(s / 3600) });
 }
 
 function renderAgent() {
@@ -2041,44 +2058,44 @@ function renderAgent() {
   if (!bar) return;
   const st = ag.state;
   const cur = pickedAgent();
-  const gear = `<button type="button" class="icon-btn" data-act="agent-list" title="Agent lokal: cek agent yang tersedia">${ICON.gear}</button>`;
+  const gear = `<button type="button" class="icon-btn" data-act="agent-list" title="${t('agentGearTitle')}">${ICON.gear}</button>`;
   let html = '';
   if (st?.running) {
     const r = st.run;
-    html = `<span class="agent-dot"></span><b>${esc(agentName(r?.agent))} sedang bekerja…</b><span class="muted">${r?.commentIds?.length ? r.commentIds.join(', ') : 'semua komentar'}${r?.resumed ? ' · lanjut sesi' : ''} · ${ago(r.startedAt)}</span>${agentDsHtml(false)}
+    html = `<span class="agent-dot"></span><b>${t('agentWorking', { name: esc(agentName(r?.agent)) })}</b><span class="muted">${r?.commentIds?.length ? r.commentIds.join(', ') : t('allComments')}${r?.resumed ? ` · ${t('continuedSession')}` : ''} · ${ago(r.startedAt)}</span>${agentDsHtml(false)}
       <span class="spacer"></span>
-      <button type="button" class="btn sm ghost" data-act="agent-log-toggle">${ag.open ? 'Tutup log' : 'Log'}</button>
-      <button type="button" class="btn sm" data-act="agent-stop">Stop</button>`;
+      <button type="button" class="btn sm ghost" data-act="agent-log-toggle">${ag.open ? t('closeLog') : t('logTitle')}</button>
+      <button type="button" class="btn sm" data-act="agent-stop">${t('stop')}</button>`;
   } else if (ag.agents && !cur) {
-    html = `<span class="muted agent-na">${ICON.spark} Belum ada agent coding yang terdeteksi (Claude Code, Codex, Gemini CLI, Copilot CLI).</span>
-      <span class="spacer"></span><button type="button" class="btn sm" data-act="agent-list">Cek agent</button>`;
+    html = `<span class="muted agent-na">${ICON.spark} ${t('agentsNoneDetected')}</span>
+      <span class="spacer"></span><button type="button" class="btn sm" data-act="agent-list">${t('checkAgents')}</button>`;
   } else if (cur) {
     const waiting = cm.data?.counts ? cm.data.counts.open - cm.data.counts.waitingUser : 0;
     const r = st?.run;
     const av = availableAgents();
-    const lastTxt = r ? `${r.status === 'done' ? '✓ selesai' : r.status === 'stopped' ? 'dihentikan' : '✗ gagal'} (${esc(agentName(r.agent))}) ${ago(r.endedAt ?? r.startedAt)}` : '';
-    const menu = `<div class="agent-menu" id="agent-menu" role="listbox" aria-label="Pilih agent" ${ag.menuOpen ? '' : 'hidden'}>
-        <div class="agent-menu-title">Kerjakan dengan</div>
+    const lastTxt = r ? `${r.status === 'done' ? `✓ ${t('runDone')}` : r.status === 'stopped' ? t('runStopped') : `✗ ${t('runFailed')}`} (${esc(agentName(r.agent))}) ${ago(r.endedAt ?? r.startedAt)}` : '';
+    const menu = `<div class="agent-menu" id="agent-menu" role="listbox" aria-label="${t('pickAgent')}" ${ag.menuOpen ? '' : 'hidden'}>
+        <div class="agent-menu-title">${t('workWith')}</div>
         ${av.map((a) => `<button type="button" role="option" class="agent-opt" data-pick="${esc(a.id)}" aria-selected="${a.id === cur.id}">
           ${agentLogo(a.id)}
           <span class="agent-opt-t"><b>${esc(a.name)}</b><small>${esc(a.version ?? '')}</small></span>
-          ${a.support === 'tested' ? '<span class="agent-tested">teruji</span>' : '<span class="agent-exp">eksperimental</span>'}
+          ${a.support === 'tested' ? `<span class="agent-tested">${t('tested')}</span>` : `<span class="agent-exp">${t('experimental')}</span>`}
           <span class="agent-opt-check">${a.id === cur.id ? '✓' : ''}</span>
         </button>`).join('')}
-        <button type="button" class="agent-menu-foot" data-act="agent-list">${ICON.gear}Kelola agent lokal…</button>
+        <button type="button" class="agent-menu-foot" data-act="agent-list">${ICON.gear}${t('manageAgents')}</button>
       </div>`;
     html = `<div class="agent-split ${waiting ? '' : 'idle'}" style="--ac:${AGENT_COLOR[cur.id] ?? 'var(--accent)'}">
-        <button type="button" class="agent-split-main" data-act="agent-run" ${waiting ? '' : 'disabled'} title="${waiting ? `Jalankan ${esc(cur.name)} untuk ${waiting} komentar yang menunggu agent` : 'Tidak ada komentar yang menunggu agent'}">${ICON.spark}<span>Kerjakan</span></button>
-        <button type="button" class="agent-split-pick" data-act="agent-menu" aria-haspopup="listbox" aria-expanded="${!!ag.menuOpen}" title="Pilih agent">
+        <button type="button" class="agent-split-main" data-act="agent-run" ${waiting ? '' : 'disabled'} title="${waiting ? t('runAgentTitle', { name: esc(cur.name), n: waiting }) : t('noneWaitingAgentTitle')}">${ICON.spark}<span>${t('workOnIt')}</span></button>
+        <button type="button" class="agent-split-pick" data-act="agent-menu" aria-haspopup="listbox" aria-expanded="${!!ag.menuOpen}" title="${t('pickAgent')}">
           ${agentLogo(cur.id)}<span class="agent-split-name">${esc(cur.name)}</span>${ICON.chev}
         </button>
         ${menu}
       </div>
       ${resumeHtml(st, cur)}
-      <span class="muted">${waiting ? `${waiting} menunggu agent` : 'tidak ada yang menunggu agent'}${lastTxt ? ` · terakhir: ${lastTxt}` : ''}</span>${agentDsHtml(true)}
+      <span class="muted">${waiting ? t('waitingAgentCount', { n: waiting }) : t('noneWaitingAgent')}${lastTxt ? ` · ${t('lastRun', { last: lastTxt })}` : ''}</span>${agentDsHtml(true)}
       <span class="spacer"></span>
       ${undoHtml(r)}
-      ${r ? `<button type="button" class="btn sm ghost" data-act="agent-log-toggle">${ag.open ? 'Tutup log' : 'Log'}</button>` : ''}${gear}`;
+      ${r ? `<button type="button" class="btn sm ghost" data-act="agent-log-toggle">${ag.open ? t('closeLog') : t('logTitle')}</button>` : ''}${gear}`;
   }
   bar.hidden = !html;
   // Jangan render ulang saat menu terbuka (teks "x dtk lalu" berubah tiap polling) agar menu & fokus tidak hilang.
@@ -2098,9 +2115,9 @@ function agentDsHtml(withSync) {
   const users = ds.list?.find((x) => x.id === p.id)?.consumers ?? [];
   if (!users.length) return '';
   const stale = users.filter((c) => c.outdated);
-  const note = `<span class="agent-ds" title="Perubahan token/komponen sampai ke prototype pemakai setelah disebarkan: ${esc(users.map((c) => c.id).join(', '))}">◇ dipakai ${users.length} prototype</span>`;
+  const note = `<span class="agent-ds" title="${t('agentDsNoteTitle', { ids: esc(users.map((c) => c.id).join(', ')) })}">◇ ${t('dsUsedBy', { n: users.length })}</span>`;
   const sync = withSync && stale.length && LOCAL
-    ? ` <button type="button" class="btn sm" data-act="ds-sync" data-id="${esc(p.id)}" title="Tinjau katalog dulu, lalu salin ulang ke: ${esc(stale.map((c) => c.id).join(', '))}" ${ui.busy.has(`ds:${p.id}`) ? 'disabled' : ''}>${ICON.restart}Sebarkan ke ${stale.length}</button>` : '';
+    ? ` <button type="button" class="btn sm" data-act="ds-sync" data-id="${esc(p.id)}" title="${t('agentDsSyncTitle', { ids: esc(stale.map((c) => c.id).join(', ')) })}" ${ui.busy.has(`ds:${p.id}`) ? 'disabled' : ''}>${ICON.restart}${t('dsSyncTo', { n: stale.length })}</button>` : '';
   return ` ${note}${sync}`;
 }
 
@@ -2111,9 +2128,9 @@ function resumeHtml(st, cur) {
   const fresh = ag.fresh.has(cm.id);
   const s = rs.session;
   const title = fresh
-    ? 'Run berikutnya memulai sesi baru (agent tidak mengingat run sebelumnya). Klik untuk melanjutkan sesi.'
-    : `Run berikutnya melanjutkan sesi sebelumnya (${s.runs} run, terakhir ${ago(s.endedAt)}): agent ingat apa yang sudah dilihat & diubahnya. Klik untuk memulai sesi baru.`;
-  return `<button type="button" class="agent-resume${fresh ? ' fresh' : ''}" data-act="agent-resume" aria-pressed="${!fresh}" title="${esc(title)}">${fresh ? '✦ Sesi baru' : `↻ Lanjutkan sesi · ${s.runs} run`}</button>`;
+    ? t('resumeFreshTitle')
+    : t('resumeTitle', { runs: s.runs, ago: ago(s.endedAt) });
+  return `<button type="button" class="agent-resume${fresh ? ' fresh' : ''}" data-act="agent-resume" aria-pressed="${!fresh}" title="${esc(title)}">${fresh ? `✦ ${t('newSession')}` : `↻ ${t('continueSession')} · ${t('runCount', { n: s.runs })}`}</button>`;
 }
 
 async function runAgent(commentIds) {
@@ -2124,10 +2141,10 @@ async function runAgent(commentIds) {
   const users = p && isDs(p) ? (ds.list?.find((x) => x.id === id)?.consumers ?? []) : [];
   if (users.length && !ds.warned.has(id)) {
     const yes = await confirmDialog({
-      title: `${p.name} adalah desain sistem`,
-      body: `Perubahan token/komponen di sini nantinya berdampak ke ${users.length} prototype di bawah. Prototype pemakai tidak berubah sampai Anda menekan Sebarkan, jadi tinjau katalog dulu setelah agent selesai.`,
+      title: t('dsRunConfirmTitle', { name: p.name }),
+      body: t('dsRunConfirmBody', { n: users.length }),
       list: users.map((c) => `${c.name} (${c.id})`),
-      ok: 'Kerjakan',
+      ok: t('workOnIt'),
       tone: 'primary',
     });
     if (!yes) return;
@@ -2139,7 +2156,7 @@ async function runAgent(commentIds) {
     ag.fresh.delete(id);
     ag.state = { ...(ag.state ?? {}), running: true, run: st.run };
     ag.open = true;
-    toast(`${cur.name} mulai mengerjakan ${commentIds ? commentIds.join(', ') : 'komentar'}`);
+    toast(commentIds ? t('agentStartedIds', { name: cur.name, ids: commentIds.join(', ') }) : t('agentStarted', { name: cur.name }));
     cm.lastHtml = ''; renderComments();
   } catch (err) {
     toast(err.message, true);
@@ -2147,7 +2164,7 @@ async function runAgent(commentIds) {
   renderAgent();
 }
 
-const CHANGE_LABEL = { added: 'baru', modified: 'diubah', deleted: 'dihapus' };
+const CHANGE_LABEL = { added: t('changeAdded'), modified: t('changeModified'), deleted: t('changeDeleted') };
 const changeList = (changes) => changes.map((c) => `${c.path}  (${CHANGE_LABEL[c.status] ?? c.status})`);
 
 /** Tombol Batalkan untuk run terakhir yang mengubah file (checkpoint). */
@@ -2155,10 +2172,10 @@ function undoHtml(r) {
   const cp = r?.checkpoint;
   if (!cp?.changes?.length) return '';
   const n = cp.changes.length;
-  if (cp.undoneAt) return `<span class="muted agent-undone">perubahan ${n} file dibatalkan</span>`;
+  if (cp.undoneAt) return `<span class="muted agent-undone">${t('undoneNote', { n })}</span>`;
   if (!EDIT) return '';
   const tip = changeList(cp.changes.slice(0, 15)).join('\n') + (n > 15 ? `\n… +${n - 15}` : '');
-  return `<button type="button" class="btn sm ghost" data-act="agent-undo" title="${esc(`Kembalikan ${n} file ke keadaan sebelum agent bekerja:\n${tip}`)}">${ICON.undo}Batalkan (${n} file)</button>`;
+  return `<button type="button" class="btn sm ghost" data-act="agent-undo" title="${esc(`${t('undoTitle', { n })}\n${tip}`)}">${ICON.undo}${t('undoBtn', { n })}</button>`;
 }
 
 async function undoAgent() {
@@ -2167,10 +2184,10 @@ async function undoAgent() {
   const changes = r?.checkpoint?.changes ?? [];
   if (!id || !changes.length) return;
   const yes = await confirmDialog({
-    title: `Batalkan perubahan ${agentName(r.agent)}?`,
-    body: `${changes.length} file dikembalikan ke keadaan sebelum agent bekerja; file baru buatan agent dihapus. Komentar yang dikerjakan agent diberi balasan bahwa perubahannya dibatalkan.`,
+    title: t('undoConfirmTitle', { name: agentName(r.agent) }),
+    body: t('undoConfirmBody', { n: changes.length }),
     list: changeList(changes),
-    ok: 'Batalkan perubahan',
+    ok: t('undoChanges'),
   });
   if (!yes) return;
   const send = (force) => api('POST', `/api/prototypes/${enc(id)}/agent/undo`, force ? { force: true } : undefined);
@@ -2181,15 +2198,15 @@ async function undoAgent() {
     } catch (err) {
       if (err.code !== 'CONFLICT' || !err.details?.length) throw err;
       const again = await confirmDialog({
-        title: 'File sudah diubah lagi',
-        body: 'File berikut sudah berubah setelah agent selesai (mungkin Anda edit). Membatalkan tetap akan menimpa perubahan itu.',
+        title: t('undoConflictTitle'),
+        body: t('undoConflictBody'),
         list: err.details,
-        ok: 'Timpa & batalkan',
+        ok: t('undoConflictOk'),
       });
       if (!again) return;
       res = await send(true);
     }
-    toast(`Perubahan dibatalkan: ${res.restored.length} file dikembalikan${res.removed.length ? `, ${res.removed.length} file baru dihapus` : ''}${res.comments?.length ? ` · dicatat di ${res.comments.join(', ')}` : ''}`);
+    toast(t('undoneToast', { n: res.restored.length }) + (res.removed.length ? t('undoneRemoved', { n: res.removed.length }) : '') + (res.comments?.length ? t('undoneNoted', { ids: res.comments.join(', ') }) : ''));
     cm.lastHtml = '';
     loadComments();
     const p = byId(id);
@@ -2217,7 +2234,7 @@ function openAgentsDialog() {
 }
 function renderAgentsDialog() {
   const list = $('#agents-list');
-  if (!ag.agents) { list.innerHTML = '<p class="muted">Memeriksa…</p>'; return; }
+  if (!ag.agents) { list.innerHTML = `<p class="muted">${t('checking')}</p>`; return; }
   const cur = pickedAgent();
   list.innerHTML = ag.agents.map((a) => `
     <div class="agent-row ${a.available ? 'ok' : 'na'}">
@@ -2225,22 +2242,22 @@ function renderAgentsDialog() {
         ${agentLogo(a.id)}
         <b>${esc(a.name)}</b>
         <span class="agent-st">${a.available ? '✓' : ''}</span>
-        ${a.support === 'tested' ? '<span class="agent-tested">teruji</span>' : '<span class="agent-exp">eksperimental</span>'}
-        ${cur?.id === a.id ? '<span class="agent-cur">dipakai</span>' : ''}
+        ${a.support === 'tested' ? `<span class="agent-tested">${t('tested')}</span>` : `<span class="agent-exp">${t('experimental')}</span>`}
+        ${cur?.id === a.id ? `<span class="agent-cur">${t('inUse')}</span>` : ''}
         <span class="spacer"></span>
-        ${a.available && EDIT && cur?.id !== a.id ? `<button type="button" class="btn sm ghost" data-pick-agent="${esc(a.id)}">Pakai</button>` : ''}
+        ${a.available && EDIT && cur?.id !== a.id ? `<button type="button" class="btn sm ghost" data-pick-agent="${esc(a.id)}">${t('use')}</button>` : ''}
       </div>
       <div class="agent-row-body">
-        ${a.available ? `<span>${esc(a.version ?? '')}</span>` : `<span>${esc(a.error ?? 'tidak tersedia')}</span>`}
+        ${a.available ? `<span>${esc(a.version ?? '')}</span>` : `<span>${esc(a.error ?? t('unavailable'))}</span>`}
         ${a.path ? `<code>${esc(a.path)}</code>` : ''}
-        ${a.available ? `<span class="muted">Izin: ${esc(a.permissions)}</span>` : `<span class="muted">Cara install: ${esc(a.install)}</span>`}
+        ${a.available ? `<span class="muted">${t('permissions', { p: esc(a.permissions) })}</span>` : `<span class="muted">${t('howToInstall', { how: esc(a.install) })}</span>`}
       </div>
     </div>`).join('');
 }
 $('#agents-refresh').addEventListener('click', async (e) => {
   const b = e.currentTarget;
   b.disabled = true;
-  $('#agents-list').innerHTML = '<p class="muted">Memeriksa ulang…</p>';
+  $('#agents-list').innerHTML = `<p class="muted">${t('rechecking')}</p>`;
   ag.agents = null;
   await loadAgents(true);
   b.disabled = false;
@@ -2313,8 +2330,8 @@ function patchBar() { delete last['#d-bar-btns']; renderMain(); updateFabs(); }
 
 function anchorLabel(a) {
   if (a.quote) return `“${a.quote.length > 60 ? `${a.quote.slice(0, 60)}…` : a.quote}”`;
-  const t = a.text ? ` · ${a.text.length > 40 ? `${a.text.slice(0, 40)}…` : a.text}` : '';
-  return `${a.tag || 'elemen'}${t}`;
+  const txt = a.text ? ` · ${a.text.length > 40 ? `${a.text.slice(0, 40)}…` : a.text}` : '';
+  return `${a.tag || t('element')}${txt}`;
 }
 
 function setAnchor(anchor, page) {
@@ -2335,8 +2352,8 @@ function togglePick() {
   if (!embed.origin) {
     const p = byId(ui.selected);
     return toast(p?.type === 'static'
-      ? 'Pratinjau belum siap untuk komentar elemen. Coba muat ulang pratinjau.'
-      : 'Komentar elemen baru tersedia untuk prototype static. Untuk prototype ini, tulis komentar per halaman di panel Komentar.', true);
+      ? t('pickNotReady')
+      : t('pickStaticOnly'), true);
   }
   embed.mode = !embed.mode;
   sendEmbed('prototyper:mode', { on: embed.mode });
@@ -2354,8 +2371,8 @@ function sendPins() {
 function focusAnchor(cid) {
   const c = cm.data?.comments?.find((x) => x.id === cid);
   if (!c?.anchor) return;
-  if (!embed.origin) return toast('Jalankan prototype dan tampilkan pratinjau untuk melihat elemennya.', true);
-  if (embed.page !== null && c.page !== embed.page) return toast(`Komentar ini ada di halaman ${c.page} (pratinjau sedang di ${embed.page}).`, true);
+  if (!embed.origin) return toast(t('focusNeedPreview'), true);
+  if (embed.page !== null && c.page !== embed.page) return toast(t('focusOtherPage', { page: c.page, current: embed.page }), true);
   sendEmbed('prototyper:focus', { selector: c.anchor.selector });
 }
 
@@ -2382,7 +2399,7 @@ window.addEventListener('message', (e) => {
     case 'prototyper:ready':
       embed.origin = e.origin;
       embed.page = typeof d.page === 'string' ? d.page : '/';
-      sendEmbed('prototyper:hello');
+      sendEmbed('prototyper:hello', { lang: getLocale() });
       if (embed.mode) sendEmbed('prototyper:mode', { on: true });
       updateFabs();
       patchBar();
@@ -2407,7 +2424,7 @@ window.addEventListener('message', (e) => {
       focusComment(String(d.id || ''));
       break;
     case 'prototyper:focus-missing':
-      toast('Elemen tidak ditemukan lagi di halaman — mungkin sudah diubah atau dihapus.', true);
+      toast(t('focusMissing'), true);
       break;
   }
 });
@@ -2434,29 +2451,29 @@ function dsRowHtml(p) {
     ? ` <button type="button" class="btn sm ghost ds-btn" data-act="${act}" data-id="${esc(p.id)}" title="${esc(title)}" ${dis}>${icon}${label}</button>` : '';
   if (d?.source) {
     const info = ds.list?.find((x) => x.id === p.id);
-    if (!info) return '<span class="type-tag ds">desain sistem</span>';
+    if (!info) return `<span class="type-tag ds">${t('dsTag')}</span>`;
     const stale = info.consumers.filter((c) => c.outdated).length;
     const users = info.consumers.length
-      ? `dipakai ${info.consumers.length} prototype${stale ? ` · <span class="ds-stale">${stale} perlu sinkron</span>` : ''}`
-      : '<span class="muted">belum dipakai prototype lain</span>';
-    const missing = info.missing.length ? `<br><span class="ds-stale">File tidak ditemukan: ${esc(info.missing.join(', '))}</span>` : '';
-    return `<span class="type-tag ds">desain sistem</span> ${users}${info.consumers.length ? b('ds-sync', 'Sebarkan', `Salin ulang token & komponen ke semua prototype pemakai (prototyper ds sync ${p.id})`, ICON.restart) : ''}${missing}`;
+      ? `${t('dsUsedBy', { n: info.consumers.length })}${stale ? ` · <span class="ds-stale">${t('dsNeedSyncCount', { n: stale })}</span>` : ''}`
+      : `<span class="muted">${t('dsUnused')}</span>`;
+    const missing = info.missing.length ? `<br><span class="ds-stale">${t('dsFilesMissing', { files: esc(info.missing.join(', ')) })}</span>` : '';
+    return `<span class="type-tag ds">${t('dsTag')}</span> ${users}${info.consumers.length ? b('ds-sync', t('dsSyncBtn'), t('dsSyncAllTitle', { id: p.id }), ICON.restart) : ''}${missing}`;
   }
   if (d?.use) {
     const info = ds.list?.find((x) => x.id === d.use);
     const c = info?.consumers.find((x) => x.id === p.id);
     const name = info
-      ? `<button type="button" class="ds-link" data-act="select" data-id="${esc(d.use)}" title="Buka desain sistem">${esc(info.name)}</button>`
-      : `<code>${esc(d.use)}</code>${ds.list ? ' <span class="ds-stale">tidak terdaftar</span>' : ''}`;
-    const state = c ? (c.outdated ? ' · <span class="ds-stale">perlu sinkron</span>' : ' · <span class="muted">terbaru</span>') : '';
-    return `${name} <span class="mono muted">${esc(d.dir ?? 'design-system')}/</span>${state}${c ? b('ds-sync', 'Sinkronkan', `Salin ulang file desain sistem ke prototype ini (prototyper ds sync ${p.id})`, ICON.restart) : ''}${b('ds-use', 'Ubah…', 'Ganti desain sistem atau pakai milik sendiri')}${b('ds-detach', 'Lepas', 'Berhenti memakai desain sistem (file salinan dibiarkan)')}`;
+      ? `<button type="button" class="ds-link" data-act="select" data-id="${esc(d.use)}" title="${t('dsOpen')}">${esc(info.name)}</button>`
+      : `<code>${esc(d.use)}</code>${ds.list ? ` <span class="ds-stale">${t('dsNotRegistered')}</span>` : ''}`;
+    const state = c ? (c.outdated ? ` · <span class="ds-stale">${t('dsNeedsSync')}</span>` : ` · <span class="muted">${t('dsUpToDate')}</span>`) : '';
+    return `${name} <span class="mono muted">${esc(d.dir ?? 'design-system')}/</span>${state}${c ? b('ds-sync', t('syncInstr'), t('dsSyncOneTitle', { id: p.id }), ICON.restart) : ''}${b('ds-use', t('dsChange'), t('dsChangeSharedTitle'))}${b('ds-detach', t('dsDetach'), t('dsDetachSharedTitle'))}`;
   }
   if (d?.local) {
     const info = ds.locals?.find((x) => x.id === p.id);
     const paths = info?.paths ?? d.local.map((x) => ({ path: x, exists: true }));
-    return `<span class="muted">sendiri:</span> ${paths.map((x) => `<span class="mono">${esc(x.path)}</span>${x.exists ? '' : ' <span class="ds-stale" title="Belum ada di folder prototype">tidak ditemukan</span>'}`).join(', ')}${b('ds-use', 'Ubah…', 'Ubah lokasi atau pakai desain sistem bersama')}${b('ds-detach', 'Lepas', 'Berhenti mencatat lokasi desain sistem (file tidak disentuh)')}`;
+    return `<span class="muted">${t('dsOwnLabel')}</span> ${paths.map((x) => `<span class="mono">${esc(x.path)}</span>${x.exists ? '' : ` <span class="ds-stale" title="${t('dsPathMissingTitle')}">${t('notFound')}</span>`}`).join(', ')}${b('ds-use', t('dsChange'), t('dsChangeLocalTitle'))}${b('ds-detach', t('dsDetach'), t('dsDetachLocalTitle'))}`;
   }
-  return `<span class="muted">—</span>${p.valid ? b('ds-use', 'Atur…', 'Pakai desain sistem bersama, atau catat lokasi desain sistem milik prototype ini') : ''}`;
+  return `<span class="muted">—</span>${p.valid ? b('ds-use', t('dsSetUp'), t('dsSetUpTitle')) : ''}`;
 }
 async function dsAction(p, fn) {
   const key = `ds:${p.id}`;
@@ -2474,25 +2491,25 @@ function dsSync(p) {
     const { results } = await api('POST', `/api/prototypes/${enc(p.id)}/design-system/sync`);
     const failed = results.filter((r) => r.error);
     const changed = results.filter((r) => r.files.some((f) => f.action === 'created' || f.action === 'updated'));
-    if (failed.length) toast(`Gagal sinkron: ${failed.map((r) => `${r.id} (${r.error})`).join(', ')}`, true);
-    else if (!results.length) toast('Belum ada prototype yang memakai desain sistem ini');
-    else toast(changed.length ? `Desain sistem disinkronkan ke: ${changed.map((r) => r.id).join(', ')}` : 'Semua salinan sudah terbaru');
+    if (failed.length) toast(t('dsSyncFailed', { list: failed.map((r) => `${r.id} (${r.error})`).join(', ') }), true);
+    else if (!results.length) toast(t('dsNoConsumers'));
+    else toast(changed.length ? t('dsSyncedTo', { ids: changed.map((r) => r.id).join(', ') }) : t('dsAllCopiesUpToDate'));
   });
 }
 async function dsDetach(p) {
   const d = p.manifest?.designSystem ?? {};
   const dir = d.dir ?? 'design-system';
   const ok = await confirmDialog({
-    title: `Lepas desain sistem dari ${p.name}?`,
+    title: t('dsDetachConfirmTitle', { name: p.name }),
     body: d.local
-      ? `Lokasi desain sistem sendiri tidak lagi dicatat di prototyper.json dan AGENTS.md. File-nya tidak disentuh.`
-      : `"${d.use}" dihapus dari prototyper.json dan aturannya dari AGENTS.md. Folder ${dir}/ dan tautan CSS-nya dibiarkan agar tampilan tidak berubah; hapus manual bila tidak dipakai.`,
-    ok: 'Lepas',
+      ? t('dsDetachConfirmLocal')
+      : t('dsDetachConfirmShared', { id: d.use, dir }),
+    ok: t('dsDetach'),
   });
   if (!ok) return;
   return dsAction(p, async () => {
     await api('DELETE', `/api/prototypes/${enc(p.id)}/design-system`);
-    toast(d.local ? `Lokasi desain sistem ${p.name} tidak lagi dicatat` : `${p.name} tidak lagi memakai "${d.use}"`);
+    toast(d.local ? t('dsDetachedLocal', { name: p.name }) : t('dsDetachedShared', { name: p.name, id: d.use }));
   });
 }
 async function openDsDialog(p) {
@@ -2503,7 +2520,7 @@ async function openDsDialog(p) {
   ds.dlgFor = p.id;
   $('#ds-form').reset();
   $('#ds-err').hidden = true;
-  $('#ds-sub').textContent = `Untuk ${p.name}. Bisa diubah atau dilepas lagi kapan saja.`;
+  $('#ds-sub').textContent = t('dsDialogSub', { name: p.name });
   $('#ds-pick').innerHTML = opts.map((d) => `<option value="${esc(d.id)}">${esc(d.name)} (${esc(d.id)})</option>`).join('');
   if (cur.use && opts.some((d) => d.id === cur.use)) $('#ds-pick').value = cur.use;
   $('#ds-dir').value = cur.use && cur.dir ? cur.dir : '';
@@ -2525,7 +2542,7 @@ function renderDsCands() {
   const c = ds.cands ?? [];
   const on = new Set(dsPaths());
   $('#ds-cands').innerHTML = c.length
-    ? `<span class="lbl">Terdeteksi di folder prototype — klik untuk menambah:</span>${c.map((x) => `<button type="button" class="ds-cand" data-path="${esc(x)}" aria-pressed="${on.has(x)}">${esc(x)}</button>`).join('')}`
+    ? `<span class="lbl">${t('dsCandidates')}</span>${c.map((x) => `<button type="button" class="ds-cand" data-path="${esc(x)}" aria-pressed="${on.has(x)}">${esc(x)}</button>`).join('')}`
     : '';
 }
 function setDsMode(m) {
@@ -2558,18 +2575,18 @@ $('#ds-form').addEventListener('submit', async (e) => {
   try {
     if (ds.mode === 'local') {
       const paths = dsPaths();
-      if (!paths.length) throw new Error('Isi minimal satu lokasi file/folder desain sistem.');
+      if (!paths.length) throw new Error(t('dsNeedPath'));
       const r = await api('PUT', `/api/prototypes/${enc(p.id)}/design-system`, { local: paths });
       $('#dlg-ds').close();
-      toast(r.missing.length ? `Dicatat. Belum ada di folder: ${r.missing.join(', ')}` : `${p.name} memakai desain sistem sendiri (${r.local.join(', ')})`, r.missing.length > 0);
+      toast(r.missing.length ? t('dsLocalMissing', { files: r.missing.join(', ') }) : t('dsLocalSet', { name: p.name, paths: r.local.join(', ') }), r.missing.length > 0);
     } else {
       const body = { id: $('#ds-pick').value };
       const dir = $('#ds-dir').value.trim();
       if (dir) body.dir = dir;
       const r = await api('PUT', `/api/prototypes/${enc(p.id)}/design-system`, body);
       $('#dlg-ds').close();
-      if (r.link.action === 'skipped' && r.link.note) toast(`Desain sistem dipasang. ${r.link.note}`, true);
-      else toast(`${p.name} memakai "${r.designSystem}" (${r.dir}/)`);
+      if (r.link.action === 'skipped' && r.link.note) toast(t('dsInstalledNote', { note: r.link.note }), true);
+      else toast(t('dsUsing', { name: p.name, id: r.designSystem, dir: r.dir }));
     }
     await loadDesignSystems();
     refresh(true);
@@ -2602,10 +2619,10 @@ function exportSize() {
   if (sz) return { ...sz, mobile: true, label: `${DEVICES[ui.device].label} ${ui.landscape ? 'landscape' : 'portrait'}` };
   const f = $('#d-view iframe');
   const w = f?.offsetWidth || DESKTOP_W, h = f?.offsetHeight || 800;
-  return { w: Math.max(DESKTOP_MIN, w), h: Math.max(480, h), mobile: false, label: 'Desktop' };
+  return { w: Math.max(DESKTOP_MIN, w), h: Math.max(480, h), mobile: false, label: DEVICES.desktop.label };
 }
 function openExport(p) {
-  if (!p || p.status !== 'running') return toast('Jalankan prototype dulu untuk mengekspor.', true);
+  if (!p || p.status !== 'running') return toast(t('exportNeedRunning'), true);
   ex.id = p.id;
   $('#ex-page').value = embed.page ?? cm.pages[p.id] ?? '/';
   $('#ex-err').hidden = true;
@@ -2620,22 +2637,22 @@ function applyExport() {
   const area = exArea();
   const a4 = pdf && ex.paper === 'a4';
   const k = pdf ? 1 : Number(ex.scale);
-  const result = a4 ? 'kertas A4'
-    : area === 'full' ? `${sz.w * k} px × setinggi halaman`
+  const result = a4 ? t('exResultA4')
+    : area === 'full' ? t('exResultFull', { w: sz.w * k })
     : `${sz.w * k}×${sz.h * k} px`;
-  $('#ex-sub').textContent = `${p?.name ?? ''} · ${sz.label} ${sz.w}×${sz.h} → hasil ${result}. Ubah ukuran/orientasi lewat tombol perangkat di pratinjau.`;
+  $('#ex-sub').textContent = t('exSub', { name: p?.name ?? '', label: sz.label, size: `${sz.w}×${sz.h}`, result });
   seg('#ex-format', ex.format); seg('#ex-area', area); seg('#ex-scale', ex.scale); seg('#ex-paper', ex.paper);
   $('#ex-scale-row').hidden = pdf;
   $('#ex-paper-row').hidden = !pdf;
   $('#ex-area-row').hidden = a4;
   $('#ex-copy').hidden = ex.format !== 'png' || !canCopyImage();
   $('#ex-hint').textContent = [
-    pdf && ex.paper === 'a4' ? 'A4 memakai gaya cetak halaman (@media print) dan bisa terbagi beberapa lembar.' : '',
-    p?.type === 'command' && embed.page === null ? 'Untuk prototype command, isi path halaman yang ingin diekspor.' : '',
-    'Tema, gaya, dan status login ikut seperti di pratinjau; isian form atau dialog yang sedang terbuka tidak ikut.',
+    pdf && ex.paper === 'a4' ? t('exHintA4') : '',
+    p?.type === 'command' && embed.page === null ? t('exHintCommand') : '',
+    t('exHintState'),
   ].filter(Boolean).join(' ');
   for (const b of ['#ex-go', '#ex-copy']) $(b).disabled = ex.busy;
-  $('#ex-go').textContent = ex.busy ? 'Mengekspor…' : 'Unduh';
+  $('#ex-go').textContent = ex.busy ? t('exporting') : t('download');
 }
 $('#ex-area').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-val]');
@@ -2661,8 +2678,8 @@ function previewSnapshot() {
   if (!embed.origin) return Promise.resolve(null);
   const req = ++snapSeq;
   return new Promise((resolve) => {
-    const t = setTimeout(() => { snapWaits.delete(req); resolve(null); }, 1000);
-    snapWaits.set(req, (d) => { clearTimeout(t); resolve(d); });
+    const timer = setTimeout(() => { snapWaits.delete(req); resolve(null); }, 1000);
+    snapWaits.set(req, (d) => { clearTimeout(timer); resolve(d); });
     sendEmbed('prototyper:snapshot', { req });
   });
 }
@@ -2708,12 +2725,12 @@ async function runExport(copy) {
     const r = await fetchExport();
     if (copy) {
       await navigator.clipboard.write([new ClipboardItem({ 'image/png': r.blob })]);
-      toast('Gambar disalin; tempel dengan Ctrl+V');
+      toast(t('imageCopied'));
     } else {
       saveBlob(r.blob, r.name);
-      toast(`Diunduh: ${r.name}`);
+      toast(t('downloaded', { name: r.name }));
     }
-    if (r.truncated) toast('Halaman terlalu panjang; bagian bawah dipotong.', true);
+    if (r.truncated) toast(t('exTruncated'), true);
     $('#dlg-export').close();
   } catch (err) {
     $('#ex-err').textContent = err.message;
@@ -2734,7 +2751,7 @@ $$('#dlg-ds [data-close]').forEach((b) => b.addEventListener('click', () => $('#
 async function pickFromOs(btn, kind, { title, initial, multiple } = {}) {
   if (!LOCAL) { toast(RO_TITLE, true); return null; }
   if (btn) btn.setAttribute('aria-busy', 'true');
-  const t = setTimeout(() => toast('Dialog pilih sudah dibuka — bila tidak terlihat, cek taskbar (mungkin di belakang jendela browser).'), 2500);
+  const timer = setTimeout(() => toast(t('pickerOpened')), 2500);
   try {
     const r = await api('POST', '/api/pick', { kind, ...(title ? { title } : {}), ...(initial ? { initial } : {}), ...(multiple ? { multiple: true } : {}) });
     return r.cancelled ? null : r.paths;
@@ -2742,7 +2759,7 @@ async function pickFromOs(btn, kind, { title, initial, multiple } = {}) {
     toast(err.message, true);
     return null;
   } finally {
-    clearTimeout(t);
+    clearTimeout(timer);
     if (btn) btn.removeAttribute('aria-busy');
   }
 }
@@ -2761,7 +2778,7 @@ function relInside(base, abs) {
 
 $('#add-browse').addEventListener('click', async (e) => {
   const cur = $('#add-path').value.trim();
-  const paths = await pickFromOs(e.currentTarget, 'folder', { title: 'Pilih folder prototype', ...(cur ? { initial: cur } : {}) });
+  const paths = await pickFromOs(e.currentTarget, 'folder', { title: t('pickPrototypeFolder'), ...(cur ? { initial: cur } : {}) });
   if (!paths?.length) return;
   $('#add-path').value = paths[0];
   $('#add-form').requestSubmit(); // langsung periksa folder (langkah berikutnya)
@@ -2769,7 +2786,7 @@ $('#add-browse').addEventListener('click', async (e) => {
 
 // Dialog Baru: folder yang dipilih = folder induk; prototype dibuat di <induk>/<id>.
 $('#new-browse').addEventListener('click', async (e) => {
-  const paths = await pickFromOs(e.currentTarget, 'folder', { title: 'Pilih folder induk — prototype dibuat di subfolder bernama id', ...(nwParent() ? { initial: nwParent() } : {}) });
+  const paths = await pickFromOs(e.currentTarget, 'folder', { title: t('pickParentFolder'), ...(nwParent() ? { initial: nwParent() } : {}) });
   if (!paths?.length) return;
   nw.parent = paths[0];
   newDirFromParent();
@@ -2786,7 +2803,7 @@ $('#new-dir').addEventListener('input', () => { nw.parent = null; }); // diketik
 async function dsAddLocal(btn, kind) {
   const p = byId(ds.dlgFor);
   if (!p) return;
-  const paths = await pickFromOs(btn, kind, { title: kind === 'folder' ? 'Pilih folder desain sistem' : 'Pilih file desain sistem', initial: p.path, multiple: kind === 'file' });
+  const paths = await pickFromOs(btn, kind, { title: kind === 'folder' ? t('pickDsFolder') : t('pickDsFile'), initial: p.path, multiple: kind === 'file' });
   if (!paths?.length) return;
   const rels = paths.map((x) => relInside(p.path, x));
   const outside = paths.filter((_, i) => !rels[i]);
@@ -2796,17 +2813,17 @@ async function dsAddLocal(btn, kind) {
     $('#ds-paths').value = [...cur, ...add.filter((x) => !cur.includes(x))].join('\n');
     renderDsCands();
   }
-  if (outside.length) toast(`Harus di dalam folder prototype (${p.path}): ${outside.join(', ')}`, true);
+  if (outside.length) toast(t('mustBeInsideList', { path: p.path, list: outside.join(', ') }), true);
 }
 $('#ds-add-file').addEventListener('click', (e) => dsAddLocal(e.currentTarget, 'file'));
 $('#ds-add-folder').addEventListener('click', (e) => dsAddLocal(e.currentTarget, 'folder'));
 $('#ds-dir-browse').addEventListener('click', async (e) => {
   const p = byId(ds.dlgFor);
   if (!p) return;
-  const paths = await pickFromOs(e.currentTarget, 'folder', { title: 'Pilih folder salinan desain sistem (di dalam folder prototype)', initial: p.path });
+  const paths = await pickFromOs(e.currentTarget, 'folder', { title: t('pickDsCopyFolder'), initial: p.path });
   if (!paths?.length) return;
   const rel = relInside(p.path, paths[0]);
-  if (!rel) return toast(rel === '' ? 'Pilih subfolder di dalam folder prototype, bukan folder prototype itu sendiri.' : `Harus di dalam folder prototype (${p.path}).`, true);
+  if (!rel) return toast(rel === '' ? t('pickSubfolder') : t('mustBeInside', { path: p.path }), true);
   $('#ds-dir').value = rel;
 });
 
@@ -2830,15 +2847,15 @@ function openNew(template = 'static') {
 function fillNewDs() {
   const sel = $('#new-ds');
   const cur = sel.value;
-  sel.innerHTML = '<option value="">Tanpa desain sistem</option>' + (ds.list ?? []).map((d) => `<option value="${esc(d.id)}">${esc(d.name)} (${esc(d.id)})</option>`).join('');
+  sel.innerHTML = `<option value="">${t('noDesignSystem')}</option>` + (ds.list ?? []).map((d) => `<option value="${esc(d.id)}">${esc(d.name)} (${esc(d.id)})</option>`).join('');
   sel.value = (ds.list ?? []).some((d) => d.id === cur) ? cur : '';
 }
-function setTemplate(t) {
-  nw.template = t;
-  for (const b of $$('#new-tpl button')) b.setAttribute('aria-pressed', String(b.dataset.val === t));
-  $('#new-html-row').hidden = t !== 'static';
-  $('#new-install-row').hidden = !t.startsWith('vite');
-  $('#new-ds-row').hidden = t === 'design-system' || !ds.list?.length;
+function setTemplate(tpl) {
+  nw.template = tpl;
+  for (const b of $$('#new-tpl button')) b.setAttribute('aria-pressed', String(b.dataset.val === tpl));
+  $('#new-html-row').hidden = tpl !== 'static';
+  $('#new-install-row').hidden = !tpl.startsWith('vite');
+  $('#new-ds-row').hidden = tpl === 'design-system' || !ds.list?.length;
   newHint();
 }
 function newHint() {
@@ -2847,10 +2864,10 @@ function newHint() {
   const sep = base.includes('\\') ? '\\' : '/';
   $('#new-dir').placeholder = base ? `${base}${sep}${id}` : '';
   $('#new-hint').textContent = nw.template === 'design-system'
-    ? 'Dibuat tokens.css (token), components.css (komponen), dan katalog index.html. Prototype lain bisa memakainya lewat pilihan Desain sistem saat dibuat, atau tombol Pakai di panel Detail.'
+    ? t('newHintDs')
     : nw.template === 'static'
-      ? 'Tanpa impor HTML, dibuat contoh index.html + style.css + app.js.'
-      : 'Dijalankan dengan npm run dev (Vite, HMR). npm install bisa memakan waktu sekitar satu menit.';
+      ? t('newHintStatic')
+      : t('newHintVite');
 }
 function showNewErr(message, details = []) {
   const el = $('#new-err');
@@ -2881,13 +2898,13 @@ $('#new-form').addEventListener('submit', async (e) => {
   const label = go.textContent;
   try {
     if (file) body.html = await file.text();
-    if (body.install) go.textContent = 'Membuat & npm install…';
+    if (body.install) go.textContent = t('creatingInstall');
     const r = await api('POST', '/api/prototypes/new', body);
     $('#dlg-new').close();
     ui.selected = r.id;
-    if (r.install && !r.install.ok) toast(`"${r.id}" dibuat, tetapi npm install gagal (kode ${r.install.exitCode}). Lihat log.`, true);
-    else if (r.designSystem?.link?.action === 'skipped' && r.designSystem.link.note) toast(`"${r.id}" dibuat. ${r.designSystem.link.note}`, true);
-    else toast(`"${r.id}" dibuat di ${r.path}`);
+    if (r.install && !r.install.ok) toast(t('createdInstallFailed', { id: r.id, code: r.install.exitCode }), true);
+    else if (r.designSystem?.link?.action === 'skipped' && r.designSystem.link.note) toast(t('createdNote', { id: r.id, note: r.designSystem.link.note }), true);
+    else toast(t('createdAt', { id: r.id, path: r.path }));
     if (r.designSystem || r.template === 'design-system') await loadDesignSystems();
     refresh(true);
   } catch (err) {
@@ -2904,39 +2921,42 @@ let cmdItems = [];
 let cmdSel = 0;
 function commands() {
   const out = [];
+  const GEN = t('cmdGroupGeneral');
+  const VIEW = t('cmdGroupView');
   if (LOCAL) {
-    out.push({ ic: '⌂', label: 'Beranda', grp: 'Umum', run: () => select('') });
-    out.push({ ic: '+', label: 'Buat prototype baru', grp: 'Umum', run: () => openNew() });
-    out.push({ ic: '◇', label: 'Buat desain sistem baru', grp: 'Umum', run: () => openNew('design-system') });
-    out.push({ ic: '⇲', label: 'Daftarkan folder yang sudah ada', grp: 'Umum', run: () => openAdd() });
+    out.push({ ic: '⌂', label: t('home'), grp: GEN, run: () => select('') });
+    out.push({ ic: '+', label: t('cmdNewPrototype'), grp: GEN, run: () => openNew() });
+    out.push({ ic: '◇', label: t('cmdNewDs'), grp: GEN, run: () => openNew('design-system') });
+    out.push({ ic: '⇲', label: t('cmdRegister'), grp: GEN, run: () => openAdd() });
   }
   for (const p of list) {
-    out.push({ ic: '→', label: `Buka ${p.name}`, grp: p.id, run: () => select(p.id) });
-    if (LOCAL && !p.valid) out.push({ ic: '!', label: `Perbaiki manifest ${p.name}`, grp: p.id, run: () => openManifestEditor(p) });
-    if (LOCAL && p.manifest?.designSystem) out.push({ ic: '◇', label: p.manifest.designSystem.source ? `Sebarkan desain sistem ${p.name} ke pemakai` : `Sinkronkan desain sistem ${p.name}`, grp: p.id, run: () => dsSync(p) });
+    out.push({ ic: '→', label: t('cmdOpen', { name: p.name }), grp: p.id, run: () => select(p.id) });
+    if (LOCAL && !p.valid) out.push({ ic: '!', label: t('cmdFixManifest', { name: p.name }), grp: p.id, run: () => openManifestEditor(p) });
+    if (LOCAL && p.manifest?.designSystem) out.push({ ic: '◇', label: p.manifest.designSystem.source ? t('cmdDsPush', { name: p.name }) : t('cmdDsSync', { name: p.name }), grp: p.id, run: () => dsSync(p) });
     if (EDIT && p.valid) {
       if (isActive(p)) {
-        out.push({ ic: '■', label: `Stop ${p.name}`, grp: p.id, run: () => run('stop', p) });
-        out.push({ ic: '↻', label: `Restart ${p.name}`, grp: p.id, run: () => run('restart', p) });
-      } else out.push({ ic: '▶', label: `Start ${p.name}`, grp: p.id, run: () => run('start', p) });
+        out.push({ ic: '■', label: t('cmdStop', { name: p.name }), grp: p.id, run: () => run('stop', p) });
+        out.push({ ic: '↻', label: t('cmdRestart', { name: p.name }), grp: p.id, run: () => run('restart', p) });
+      } else out.push({ ic: '▶', label: t('cmdStart', { name: p.name }), grp: p.id, run: () => run('start', p) });
     }
-    if (openUrl(p)) out.push({ ic: '↗', label: `Buka ${p.name} di tab baru`, grp: p.id, run: () => window.open(openUrl(p), '_blank', 'noopener') });
+    if (openUrl(p)) out.push({ ic: '↗', label: t('cmdOpenTab', { name: p.name }), grp: p.id, run: () => window.open(openUrl(p), '_blank', 'noopener') });
   }
-  out.push({ ic: '◐', label: 'Tema: otomatis / terang / gelap', grp: 'Tampilan', run: () => $('#btn-theme').click() });
-  out.push({ ic: '⇤', label: ui.sidePinned ? 'Sidebar: sembunyi otomatis' : 'Sidebar: sematkan', grp: 'Tampilan', run: () => setSidePinned(!ui.sidePinned) });
-  out.push({ ic: '⇥', label: ui.panelHidden ? 'Panel kanan: tampilkan' : 'Panel kanan: sembunyikan', grp: 'Tampilan', run: () => setPanelHidden(!ui.panelHidden) });
-  if (LOCAL) out.push({ ic: '⏻', label: 'Matikan Prototyper', grp: 'Umum', run: () => confirmShutdown() });
-  out.push({ ic: '⇡', label: upd.info?.available ? `Pasang pembaruan Prototyper ${upd.info.latest}` : 'Periksa pembaruan Prototyper', grp: 'Umum', run: () => { openUpdateDialog(); if (!upd.info?.available) loadUpdate(true); } });
-  out.push({ ic: '✦', label: 'Agent lokal: cek agent yang tersedia', grp: 'Umum', run: () => openAgentsDialog() });
-  if (LOCAL) out.push({ ic: '▯', label: 'Hubungkan HP: edit dari perangkat lain lewat jaringan', grp: 'Umum', run: () => openPhoneDialog() });
-  if (LOCAL && list.length) out.push({ ic: '↻', label: 'Sinkronkan petunjuk agent (semua prototype)', grp: 'Umum', run: () => syncAllInstructions() });
+  out.push({ ic: '◐', label: t('cmdTheme'), grp: VIEW, run: () => $('#btn-theme').click() });
+  out.push({ ic: '文', label: t('cmdLanguage', { current: langLabel() }), grp: VIEW, run: () => openLangDialog() });
+  out.push({ ic: '⇤', label: ui.sidePinned ? t('cmdSideAuto') : t('cmdSidePin'), grp: VIEW, run: () => setSidePinned(!ui.sidePinned) });
+  out.push({ ic: '⇥', label: ui.panelHidden ? t('cmdPanelShow') : t('cmdPanelHide'), grp: VIEW, run: () => setPanelHidden(!ui.panelHidden) });
+  if (LOCAL) out.push({ ic: '⏻', label: t('shutdownTitle'), grp: GEN, run: () => confirmShutdown() });
+  out.push({ ic: '⇡', label: upd.info?.available ? t('cmdInstallUpdate', { v: upd.info.latest }) : t('cmdCheckUpdate'), grp: GEN, run: () => { openUpdateDialog(); if (!upd.info?.available) loadUpdate(true); } });
+  out.push({ ic: '✦', label: t('agentGearTitle'), grp: GEN, run: () => openAgentsDialog() });
+  if (LOCAL) out.push({ ic: '▯', label: t('phoneTitle'), grp: GEN, run: () => openPhoneDialog() });
+  if (LOCAL && list.length) out.push({ ic: '↻', label: t('cmdSyncAllInstr'), grp: GEN, run: () => syncAllInstructions() });
   for (const [k, d] of Object.entries(DEVICES)) {
-    if (k !== ui.device) out.push({ ic: '▭', label: `Pratinjau: ${d.label}${d.w ? ` (${d.w}×${d.h})` : ''}`, grp: 'Tampilan', run: () => setDevice(k) });
+    if (k !== ui.device) out.push({ ic: '▭', label: t('cmdPreviewDevice', { label: `${d.label}${d.w ? ` (${d.w}×${d.h})` : ''}` }), grp: VIEW, run: () => setDevice(k) });
   }
-  if (deviceSize()) out.push({ ic: '⟳', label: `Pratinjau: putar ke ${ui.landscape ? 'portrait' : 'landscape'}`, grp: 'Tampilan', run: () => setLandscape(!ui.landscape) });
+  if (deviceSize()) out.push({ ic: '⟳', label: t(ui.landscape ? 'cmdRotatePortrait' : 'cmdRotateLandscape'), grp: VIEW, run: () => setLandscape(!ui.landscape) });
   const sel = byId(ui.selected);
-  if (sel?.status === 'running' && openUrl(sel)) out.push({ ic: '⤓', label: `Ekspor halaman ${sel.name} (PNG / JPG / PDF)`, grp: sel.id, run: () => openExport(sel) });
-  out.push({ ic: '▢', label: ui.preview ? 'Sembunyikan pratinjau' : 'Tampilkan pratinjau', grp: 'Tampilan', run: togglePreview });
+  if (sel?.status === 'running' && openUrl(sel)) out.push({ ic: '⤓', label: t('cmdExport', { name: sel.name }), grp: sel.id, run: () => openExport(sel) });
+  out.push({ ic: '▢', label: ui.preview ? t('hidePreview') : t('showPreview'), grp: VIEW, run: togglePreview });
   return out;
 }
 function openPalette() {
@@ -2953,7 +2973,7 @@ function renderPalette() {
   cmdSel = Math.min(cmdSel, Math.max(0, cmdItems.length - 1));
   $('#cmd-list').innerHTML = cmdItems.length
     ? cmdItems.map((c, i) => `<li role="option" data-i="${i}" aria-selected="${i === cmdSel}"><span class="ic">${c.ic}</span>${esc(c.label)}<span class="grp">${esc(c.grp)}</span></li>`).join('')
-    : '<li class="none">Tidak ada perintah yang cocok</li>';
+    : `<li class="none">${t('cmdNone')}</li>`;
   $('#cmd-list [aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
 }
 function execCmd(i) { const c = cmdItems[i]; if (!c) return; $('#dlg-cmd').close(); c.run(); }
@@ -2990,7 +3010,7 @@ $('#pair-form').addEventListener('submit', async (e) => {
   b.disabled = true;
   try {
     await api('POST', '/api/devices/pair', { code });
-    b.textContent = 'Terhubung ✓ Memuat…';
+    b.textContent = t('pairConnected');
     // replace() ke URL yang hanya beda hash tidak memuat ulang halaman, jadi reload eksplisit.
     history.replaceState(null, '', `/${location.hash}`);
     location.reload();
@@ -3027,7 +3047,7 @@ async function loadDevices() {
     // Kode habis terpakai + perangkat baru muncul = pairing berhasil.
     if (ph.pairing && !r.pairing) {
       ph.paired = r.devices.find((d) => !known.has(d.id)) ?? null;
-      if (!ph.paired && ph.pairing.expiresAt > Date.now() + 1500) ph.err = 'Kode dibatalkan karena terlalu sering salah ketik. Buat kode baru.';
+      if (!ph.paired && ph.pairing.expiresAt > Date.now() + 1500) ph.err = t('pairCodeCanceled');
       if (ph.paired || ph.err) ph.pairing = null;
     }
     ph.devices = r.devices;
@@ -3050,27 +3070,27 @@ function renderPhone() {
   const p = ph.pairing;
   let body;
   if (daemonLan !== 'all') {
-    body = `<div class="callout warn">Web UI belum terbuka ke jaringan. Nyalakan dari tray: <b>Mode LAN → Web UI + prototype</b>, atau jalankan <code>prototyper shutdown</code> lalu <code>prototyper serve --lan</code>.</div>`;
+    body = `<div class="callout warn">${t('phoneLanOff')}</div>`;
   } else if (ph.paired) {
-    body = `<div class="callout info">✓ <b>${esc(ph.paired.name)}</b> terhubung. Bisa langsung dipakai di HP itu.</div>
-      <div><button type="button" class="btn" data-ph="new">Hubungkan perangkat lain</button></div>`;
+    body = `<div class="callout info">✓ ${t('phonePaired', { name: `<b>${esc(ph.paired.name)}</b>` })}</div>
+      <div><button type="button" class="btn" data-ph="new">${t('phonePairAnother')}</button></div>`;
   } else if (ph.err) {
-    body = `<div class="callout err">${esc(ph.err)}</div><div><button type="button" class="btn" data-ph="new">Coba lagi</button></div>`;
+    body = `<div class="callout err">${esc(ph.err)}</div><div><button type="button" class="btn" data-ph="new">${t('tryAgain')}</button></div>`;
   } else if (!p) {
-    body = '<p class="muted">Membuat kode…</p>';
+    body = `<p class="muted">${t('phoneCreatingCode')}</p>`;
   } else {
     const left = Math.max(0, Math.round((p.expiresAt - Date.now()) / 1000));
-    const t = p.targets[ph.sel] ?? p.targets[0];
+    const tg = p.targets[ph.sel] ?? p.targets[0];
     body = left === 0
-      ? `<div class="callout warn">Kode kedaluwarsa.</div><div><button type="button" class="btn primary" data-ph="new">Buat kode baru</button></div>`
+      ? `<div class="callout warn">${t('phoneCodeExpired')}</div><div><button type="button" class="btn primary" data-ph="new">${t('phoneNewCode')}</button></div>`
       : `<div class="phone-pair">
-          <div class="phone-qr">${t.qr}</div>
+          <div class="phone-qr">${tg.qr}</div>
           <div class="phone-info">
-            <p>Pindai QR dengan kamera HP (HP harus di Wi-Fi yang sama), atau buka alamat ini lalu ketik kodenya:</p>
-            <code class="phone-url">${esc(t.url.replace(/\/pair\?.*$/, ''))}</code>
-            <div class="phone-code" aria-label="Kode pairing">${esc(p.code.slice(0, 3))} ${esc(p.code.slice(3))}</div>
-            <p class="muted">Berlaku ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} lagi · sekali pakai</p>
-            ${p.targets.length > 1 ? `<p class="muted">Tidak bisa dibuka? Coba alamat lain:</p>
+            <p>${t('phoneScan')}</p>
+            <code class="phone-url">${esc(tg.url.replace(/\/pair\?.*$/, ''))}</code>
+            <div class="phone-code" aria-label="${t('pairCodeLabel')}">${esc(p.code.slice(0, 3))} ${esc(p.code.slice(3))}</div>
+            <p class="muted">${t('phoneValidFor', { time: `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` })}</p>
+            ${p.targets.length > 1 ? `<p class="muted">${t('phoneOtherAddr')}</p>
               <div class="seg phone-addrs">${p.targets.map((x, i) => `<button type="button" data-ph-addr="${i}" aria-pressed="${i === ph.sel}">${esc(new URL(x.url).hostname)}</button>`).join('')}</div>` : ''}
           </div>
         </div>`;
@@ -3078,34 +3098,34 @@ function renderPhone() {
   patchEl($('#phone-body'), body);
   patchEl($('#phone-devices'), ph.devices.length
     ? ph.devices.map((d) => ph.renaming === d.id
-      ? `<form class="phone-dev" data-ph-rename-form="${esc(d.id)}"><input name="name" maxlength="60" value="${esc(d.name)}" aria-label="Nama perangkat" required>
-          <button type="submit" class="btn sm primary">Simpan</button><button type="button" class="btn sm ghost" data-ph="cancel-rename">Batal</button></form>`
-      : `<div class="phone-dev"><span><b>${esc(d.name)}</b><small class="muted">terpasang ${fmtTime(d.createdAt)} · terakhir aktif ${fmtTime(d.lastSeenAt)}</small></span>
-        <button type="button" class="btn sm ghost" data-ph-rename="${esc(d.id)}" title="Nama ini tampil sebagai penulis komentar dari perangkat tersebut">Ganti nama</button>
-        <button type="button" class="btn sm ghost danger" data-ph-revoke="${esc(d.id)}">Cabut</button></div>`).join('')
-    : '<p class="muted">Belum ada.</p>');
+      ? `<form class="phone-dev" data-ph-rename-form="${esc(d.id)}"><input name="name" maxlength="60" value="${esc(d.name)}" aria-label="${t('deviceName')}" required>
+          <button type="submit" class="btn sm primary">${t('save')}</button><button type="button" class="btn sm ghost" data-ph="cancel-rename">${t('cancel')}</button></form>`
+      : `<div class="phone-dev"><span><b>${esc(d.name)}</b><small class="muted">${t('deviceMeta', { paired: fmtTime(d.createdAt), seen: fmtTime(d.lastSeenAt) })}</small></span>
+        <button type="button" class="btn sm ghost" data-ph-rename="${esc(d.id)}" title="${t('renameTitle')}">${t('rename')}</button>
+        <button type="button" class="btn sm ghost danger" data-ph-revoke="${esc(d.id)}">${t('revoke')}</button></div>`).join('')
+    : `<p class="muted">${t('noneYet')}</p>`);
 }
 function patchEl(el, html) { if (el.dataset.html !== html) { el.dataset.html = html; el.innerHTML = html; } }
 $('#dlg-phone').addEventListener('click', async (e) => {
-  const t = e.target.closest('[data-ph],[data-ph-addr],[data-ph-revoke],[data-ph-rename],[data-close]');
-  if (!t) return;
-  if (t.matches('[data-close]')) return $('#dlg-phone').close();
-  if (t.dataset.ph === 'new') return newPairing();
-  if (t.dataset.ph === 'cancel-rename') { ph.renaming = null; return renderPhone(); }
-  if (t.dataset.phRename) {
-    ph.renaming = t.dataset.phRename;
+  const el = e.target.closest('[data-ph],[data-ph-addr],[data-ph-revoke],[data-ph-rename],[data-close]');
+  if (!el) return;
+  if (el.matches('[data-close]')) return $('#dlg-phone').close();
+  if (el.dataset.ph === 'new') return newPairing();
+  if (el.dataset.ph === 'cancel-rename') { ph.renaming = null; return renderPhone(); }
+  if (el.dataset.phRename) {
+    ph.renaming = el.dataset.phRename;
     renderPhone();
     const input = $('#phone-devices input[name="name"]');
     input?.focus();
     input?.select();
     return;
   }
-  if (t.dataset.phAddr) { ph.sel = Number(t.dataset.phAddr); return renderPhone(); }
-  if (t.dataset.phRevoke) {
-    const d = ph.devices.find((x) => x.id === t.dataset.phRevoke);
-    const yes = await confirmDialog({ title: `Cabut ${d?.name ?? 'perangkat'}?`, body: 'Perangkat ini tidak bisa lagi membuka atau mengubah apa pun di Prototyper sampai dipasangkan ulang.', ok: 'Cabut' });
+  if (el.dataset.phAddr) { ph.sel = Number(el.dataset.phAddr); return renderPhone(); }
+  if (el.dataset.phRevoke) {
+    const d = ph.devices.find((x) => x.id === el.dataset.phRevoke);
+    const yes = await confirmDialog({ title: t('revokeTitle', { name: d?.name ?? t('deviceGeneric') }), body: t('revokeBody'), ok: t('revoke') });
     if (!yes) return;
-    try { await api('DELETE', `/api/devices/${enc(t.dataset.phRevoke)}`); toast('Akses perangkat dicabut'); } catch (err) { toast(err.message, true); }
+    try { await api('DELETE', `/api/devices/${enc(el.dataset.phRevoke)}`); toast(t('revokedToast')); } catch (err) { toast(err.message, true); }
     await loadDevices();
     renderPhone();
   }
@@ -3118,7 +3138,7 @@ $('#dlg-phone').addEventListener('submit', async (e) => {
   if (!name) return;
   try {
     await api('PATCH', `/api/devices/${enc(f.dataset.phRenameForm)}`, { name });
-    toast('Nama perangkat diganti');
+    toast(t('renamedToast'));
     ph.renaming = null;
     await loadDevices();
   } catch (err) { toast(err.message, true); }
@@ -3138,22 +3158,79 @@ $('#dlg-phone').addEventListener('close', () => {
 });
 $('#btn-phone').addEventListener('click', () => openPhoneDialog());
 
+// ---------- Bahasa ----------
+// Pengaturan daemon (/api/health → lang) berlaku untuk semua browser; `auto` = bahasa browser.
+// Hanya komputer ini yang boleh mengubah; PROTOTYPER_LANG mengunci pengaturan.
+const lang = { setting: 'auto', fromEnv: false, saving: false };
+const LANG_CHOICES = () => ['auto', ...LOCALES];
+const langName = (v) => (v === 'auto' ? t('langAuto') : LOCALE_INFO[v]?.name ?? v);
+function langLabel() {
+  return lang.setting === 'auto' ? `${t('langAuto')} — ${LOCALE_INFO[getLocale()].name}` : langName(lang.setting);
+}
+/** Terapkan bahasa hasil pengaturan; bila berubah, muat ulang halaman (setLocale sudah menyimpan pilihan, jadi tidak berulang). */
+function applyLang(setting) {
+  lang.setting = setting ?? 'auto';
+  if (setLocale(resolveLocale(lang.setting))) { location.reload(); return true; }
+  applyLangBtn();
+  return false;
+}
+function applyLangBtn() {
+  const b = $('#btn-lang');
+  if (!b.innerHTML) b.innerHTML = ICON.lang;
+  const label = t('langTitle', { current: langLabel() });
+  b.title = label;
+  b.setAttribute('aria-label', label);
+}
+function openLangDialog() {
+  renderLangDialog();
+  const d = $('#dlg-lang');
+  if (!d.open) d.showModal();
+}
+function renderLangDialog() {
+  const locked = lang.fromEnv;
+  const ro = !LOCAL || locked;
+  const note = locked ? `<div class="callout info">${t('langLocked', { value: esc(lang.setting) })}</div>`
+    : !LOCAL ? `<div class="callout warn">${RO_TITLE}.</div>` : '';
+  $('#lang-list').innerHTML = `${LANG_CHOICES().map((v) => `<label class="check lang-opt"${ro ? ` title="${esc(locked ? t('langLockedShort') : RO_TITLE)}"` : ''}>
+      <input type="radio" name="lang" value="${esc(v)}"${v === lang.setting ? ' checked' : ''}${ro || lang.saving ? ' disabled' : ''}>
+      <span>${esc(langName(v))}${v === 'auto' ? ` <small class="muted">(${esc(LOCALE_INFO[resolveLocale('auto')].name)})</small>` : ''}</span></label>`).join('')}${note}`;
+}
+$('#lang-list').addEventListener('change', async (e) => {
+  const v = e.target.closest('input[name="lang"]')?.value;
+  if (!v || !LOCAL || lang.fromEnv) return;
+  lang.saving = true; renderLangDialog();
+  try {
+    const r = await api('PUT', '/api/settings', { lang: v });
+    lang.fromEnv = !!r.lang?.fromEnv;
+    if (applyLang(r.lang?.setting ?? v)) return;
+    toast(t('langSaved', { name: langName(lang.setting) }));
+  } catch (err) {
+    toast(err.message, true);
+  } finally {
+    lang.saving = false;
+    if ($('#dlg-lang').open) renderLangDialog();
+  }
+});
+$$('#dlg-lang [data-close]').forEach((b) => b.addEventListener('click', () => $('#dlg-lang').close()));
+$('#btn-lang').addEventListener('click', () => openLangDialog());
+
 // ---------- Mulai ----------
 applyTheme();
+applyLangBtn();
 applySide();
 applyPanel();
 render();
 api('GET', '/api/health')
   .then((h) => {
+    lang.fromEnv = !!h.lang?.fromEnv;
+    if (applyLang(h.lang?.setting ?? 'auto')) return; // bahasa berubah: halaman dimuat ulang
     nw.workspace = h.workspace ?? ''; nw.dsWorkspace = h.dsWorkspace ?? ''; wn.version = h.version;
     const lanMode = h.lanMode ?? (h.lan ? 'all' : 'off');
     daemonLan = lanMode;
     if (setAccess(h.access ?? (LOCAL_HOST ? 'local' : 'none'))) refresh(true);
     if (ACCESS === 'none') return showPairScreen();
-    $('#meta').textContent = `v${h.version}${lanMode === 'all' ? ' · LAN' : lanMode === 'prototypes' ? ' · LAN (prototype)' : ''}${ACCESS === 'device' ? ` · ${h.device ?? 'HP'}` : ''}`;
-    $('#meta').title = ACCESS === 'device'
-      ? 'Perangkat ini terpasang: bisa berkomentar, menjalankan agent, dan start/stop. Operasi lain hanya dari komputer.'
-      : 'Yang baru di versi ini';
+    $('#meta').textContent = `v${h.version}${lanMode === 'all' ? ' · LAN' : lanMode === 'prototypes' ? ` · ${t('metaLanPrototypes')}` : ''}${ACCESS === 'device' ? ` · ${h.device ?? t('phoneShort')}` : ''}`;
+    $('#meta').title = ACCESS === 'device' ? t('metaDeviceTitle') : t('metaWhatsNewTitle');
     wnMark();
     render();
   })

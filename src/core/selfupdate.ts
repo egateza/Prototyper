@@ -10,6 +10,32 @@ import {
   type UpdateCheck,
   type UpdateKind,
 } from './update.js';
+import { defineMessages } from './i18n.js';
+
+const t = defineMessages({
+  id: {
+    hintSource: 'Jalankan "git pull" lalu "npm install" di repo Prototyper.',
+    hintPackage: 'Unduh paket npm/portable versi baru dari halaman rilis lalu pasang ulang.',
+    hintSea: 'Unduh berkas rilis untuk OS ini dari halaman rilis.',
+    checkFailed: 'Gagal memeriksa pembaruan',
+    downloading: 'Mengunduh {name}…',
+    stoppingDaemon: 'Menghentikan daemon…',
+    closingTray: 'Menutup tray…',
+    installing: 'Memasang {version}…',
+    installFailed: 'Gagal memasang pembaruan: {message}',
+  },
+  en: {
+    hintSource: 'Run "git pull" and then "npm install" in the Prototyper repo.',
+    hintPackage: 'Download the new npm/portable package from the releases page and reinstall.',
+    hintSea: 'Download the release file for this OS from the releases page.',
+    checkFailed: 'Could not check for updates',
+    downloading: 'Downloading {name}…',
+    stoppingDaemon: 'Stopping the daemon…',
+    closingTray: 'Closing the tray…',
+    installing: 'Installing {version}…',
+    installFailed: 'Could not install the update: {message}',
+  },
+});
 
 /**
  * Pemeriksaan & pemasangan pembaruan untuk CLI (`prototyper update`) dan Web UI (`/api/update`).
@@ -36,12 +62,12 @@ export async function checkForUpdate(repo: string, current: string, ctx: Install
 export function manualHint(mode: AppMode): string {
   switch (mode) {
     case 'source':
-      return 'Jalankan "git pull" lalu "npm install" di repo Prototyper.';
+      return t('hintSource');
     case 'dist':
     case 'bundle':
-      return 'Unduh paket npm/portable versi baru dari halaman rilis lalu pasang ulang.';
+      return t('hintPackage');
     case 'sea':
-      return 'Unduh berkas rilis untuk OS ini dari halaman rilis.';
+      return t('hintSea');
   }
 }
 
@@ -115,7 +141,7 @@ export class UpdateChecker {
   /** Pemeriksaan terbaru yang berhasil (untuk memasang). */
   async fresh(): Promise<UpdateCheck> {
     await this.run(this.o.version());
-    if (!this.last?.check) throw new AppError('INTERNAL', this.last?.error ?? 'Gagal memeriksa pembaruan');
+    if (!this.last?.check) throw new AppError('INTERNAL', this.last?.error ?? t('checkFailed'));
     return this.last.check;
   }
 
@@ -199,7 +225,7 @@ export async function runSelfUpdate(d: SelfUpdateDeps, opts: { install: boolean 
   if (!c.asset || !c.checksums) return { ...base, kind: null, status: 'manual' };
   if (!opts.install) return { ...base, status: 'available' };
 
-  d.log(`Mengunduh ${c.asset.name}…`);
+  d.log(t('downloading', { name: c.asset.name }));
   const file = await d.download(c, d.onProgress ?? (() => undefined));
 
   const snap = await d.daemon();
@@ -207,11 +233,11 @@ export async function runSelfUpdate(d: SelfUpdateDeps, opts: { install: boolean 
   const tray = d.trayPid();
   // daemon dulu (prototype berhenti dengan rapi), baru tray: taskkill /T pada tray ikut mematikan anaknya
   if (snap) {
-    d.log('Menghentikan daemon…');
+    d.log(t('stoppingDaemon'));
     await d.shutdownDaemon();
   }
   if (tray) {
-    d.log('Menutup tray…');
+    d.log(t('closingTray'));
     d.killTray(tray);
   }
 
@@ -227,12 +253,12 @@ export async function runSelfUpdate(d: SelfUpdateDeps, opts: { install: boolean 
     return null;
   };
 
-  d.log(`Memasang ${c.latest.version}…`);
+  d.log(t('installing', { version: c.latest.version }));
   try {
     await d.install(file, c, restore);
   } catch (err) {
     await bringBack().catch(() => undefined);
-    throw new AppError('INTERNAL', `Gagal memasang pembaruan: ${errorMessage(err)}`);
+    throw new AppError('INTERNAL', t('installFailed', { message: errorMessage(err) }));
   }
   const restarted = c.kind === 'msi' ? 'installer' : await bringBack();
   return { ...base, status: 'installed', restarted, restore };

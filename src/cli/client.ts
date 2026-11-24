@@ -6,9 +6,32 @@ import { lanArgs, type Config } from '../core/config.js';
 import { AppError, errorMessage, type ErrorBody, type ErrorCode } from '../core/errors.js';
 import { samePath } from '../core/fsutil.js';
 import type { LogLine } from '../core/logs.js';
+import { defineMessages, getLocale } from '../core/i18n.js';
 import type { HealthResponse } from '../server/routes/health.js';
 
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+const t = defineMessages({
+  id: {
+    startTimeout: 'Daemon gagal dinyalakan dalam 15 detik. Cek log: {log}',
+    homeMismatch: 'Peringatan: daemon di port {port} memakai data {daemonHome}, bukan {home}',
+    noCliPath: 'Tidak bisa menentukan lokasi CLI untuk menyalakan daemon',
+    started: 'Daemon dinyalakan di background (log: {log})',
+    unreachableAt: 'Tidak bisa menghubungi daemon di {base}: {error}',
+    unreachable: 'Tidak bisa menghubungi daemon: {error}',
+  },
+  en: {
+    startTimeout: 'The daemon failed to start within 15 seconds. Check the log: {log}',
+    homeMismatch: 'Warning: the daemon on port {port} uses data {daemonHome}, not {home}',
+    noCliPath: 'Cannot determine the CLI location to start the daemon',
+    started: 'Daemon started in the background (log: {log})',
+    unreachableAt: 'Cannot reach the daemon at {base}: {error}',
+    unreachable: 'Cannot reach the daemon: {error}',
+  },
+});
+
+/** Bahasa CLI dikirim agar pesan error daemon (pengaturan `auto`) memakai bahasa yang sama. */
+const langHeaders = (): Record<string, string> => ({ 'accept-language': getLocale() });
 
 /** Klien HTTP ke daemon Prototyper; bisa menyalakan daemon otomatis. */
 export class DaemonClient {
@@ -43,14 +66,12 @@ export class DaemonClient {
       const h2 = await this.health();
       if (h2) return h2;
     }
-    throw new AppError('DAEMON_UNAVAILABLE', `Daemon gagal dinyalakan dalam 15 detik. Cek log: ${logFile}`);
+    throw new AppError('DAEMON_UNAVAILABLE', t('startTimeout', { log: logFile }));
   }
 
   private warnHomeMismatch(h: HealthResponse): void {
     if (h.home && !samePath(h.home, this.config.home)) {
-      process.stderr.write(
-        `Peringatan: daemon di port ${this.config.port} memakai data ${h.home}, bukan ${this.config.home}\n`,
-      );
+      process.stderr.write(`${t('homeMismatch', { port: this.config.port, daemonHome: h.home, home: this.config.home })}\n`);
     }
   }
 
@@ -64,7 +85,7 @@ export class DaemonClient {
     const logFile = this.logFile;
     const out = openSync(logFile, 'a');
     const entry = process.argv[1];
-    if (APP_MODE !== 'sea' && !entry) throw new AppError('INTERNAL', 'Tidak bisa menentukan lokasi CLI untuk menyalakan daemon');
+    if (APP_MODE !== 'sea' && !entry) throw new AppError('INTERNAL', t('noCliPath'));
     const args = [
       // biner tunggal: execPath sudah = CLI; selain itu ikut membawa loader tsx saat dijalankan dari source
       ...(APP_MODE === 'sea' ? [] : [...process.execArgv, entry as string]),
@@ -82,7 +103,7 @@ export class DaemonClient {
       env: process.env,
     });
     child.unref();
-    process.stderr.write(`Daemon dinyalakan di background (log: ${logFile})\n`);
+    process.stderr.write(`${t('started', { log: logFile })}\n`);
     return logFile;
   }
 
@@ -91,10 +112,11 @@ export class DaemonClient {
     try {
       res = await fetch(this.base + urlPath, {
         method,
-        ...(body !== undefined ? { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {}),
+        headers: body !== undefined ? { ...langHeaders(), 'content-type': 'application/json' } : langHeaders(),
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
       });
     } catch (err) {
-      throw new AppError('DAEMON_UNAVAILABLE', `Tidak bisa menghubungi daemon di ${this.base}: ${errorMessage(err)}`);
+      throw new AppError('DAEMON_UNAVAILABLE', t('unreachableAt', { base: this.base, error: errorMessage(err) }));
     }
     const text = await res.text();
     let data: unknown = null;
@@ -114,9 +136,9 @@ export class DaemonClient {
   async download(urlPath: string): Promise<{ data: Buffer; headers: Headers }> {
     let res: Response;
     try {
-      res = await fetch(this.base + urlPath);
+      res = await fetch(this.base + urlPath, { headers: langHeaders() });
     } catch (err) {
-      throw new AppError('DAEMON_UNAVAILABLE', `Tidak bisa menghubungi daemon di ${this.base}: ${errorMessage(err)}`);
+      throw new AppError('DAEMON_UNAVAILABLE', t('unreachableAt', { base: this.base, error: errorMessage(err) }));
     }
     if (!res.ok) {
       const e = ((await res.json().catch(() => null)) as ErrorBody | null)?.error;
@@ -129,9 +151,9 @@ export class DaemonClient {
   async followLogs(id: string, tail: number, onLine: (l: LogLine) => void): Promise<void> {
     let res: Response;
     try {
-      res = await fetch(`${this.base}/api/prototypes/${encodeURIComponent(id)}/logs/stream?tail=${tail}`);
+      res = await fetch(`${this.base}/api/prototypes/${encodeURIComponent(id)}/logs/stream?tail=${tail}`, { headers: langHeaders() });
     } catch (err) {
-      throw new AppError('DAEMON_UNAVAILABLE', `Tidak bisa menghubungi daemon: ${errorMessage(err)}`);
+      throw new AppError('DAEMON_UNAVAILABLE', t('unreachable', { error: errorMessage(err) }));
     }
     if (!res.ok || !res.body) {
       const e = ((await res.json().catch(() => null)) as ErrorBody | null)?.error;

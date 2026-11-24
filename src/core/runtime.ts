@@ -12,6 +12,65 @@ import type { CommandConfig, StaticConfig } from './manifest.js';
 import { allocatePort, isPortFree, probeHosts, probePort } from './ports.js';
 import type { ResolvedPrototype } from './registry.js';
 import type { StateStore } from './state.js';
+import { defineMessages, getProcessLocale, type MessageParams } from './i18n.js';
+
+const t = defineMessages({
+  id: {
+    manifestInvalid: 'Prototype "{id}" tidak valid: {error}',
+    manifestUnreadable: 'manifest tidak terbaca',
+    noInstall: 'Prototype "{id}" tidak punya command.install',
+    startFailed: 'Gagal menjalankan "{id}": {error}. Lihat log: prototyper logs {id}',
+    notFound404: '404 - tidak ditemukan',
+    // Baris log & status proses (bahasa proses, bukan bahasa peminta: log dibaca bersama)
+    logLanOpened: 'akses LAN dibuka: restart',
+    logLanClosed: 'akses LAN ditutup: restart',
+    logInstallFailed: 'install gagal: {message}',
+    logInstallDone: 'install selesai (exit {code})',
+    logStart: 'start ({type}) di port {port}',
+    logStartLan: 'start ({type}) di port {port} (terbuka ke LAN)',
+    logFailed: 'gagal: {error}',
+    staticRootMissing: 'folder static.root tidak ditemukan: {path}',
+    logChanged: 'berubah',
+    logLiveReloadStopped: 'live-reload berhenti: {message}',
+    logReady: 'siap: {url}',
+    cwdMissing: 'folder command.cwd tidak ditemukan: {path}',
+    spawnFailed: 'gagal spawn: {message}',
+    processExited: 'proses keluar (exit {code}{signal})',
+    beforeReady: '{desc} sebelum siap',
+    exitedBeforeReady: 'proses berhenti sebelum siap',
+    notReadyIn: 'tidak siap dalam {sec} detik',
+    portNotListening: 'peringatan: port {port} belum menerima koneksi. Pastikan perintah memakai {placeholder} atau env {env}.',
+    portStillUsed: 'peringatan: port {port} masih dipakai setelah stop; mungkin ada proses anak yang tersisa',
+  },
+  en: {
+    manifestInvalid: 'Prototype "{id}" is invalid: {error}',
+    manifestUnreadable: 'manifest could not be read',
+    noInstall: 'Prototype "{id}" has no command.install',
+    startFailed: 'Could not start "{id}": {error}. See the logs: prototyper logs {id}',
+    notFound404: '404 - not found',
+    logLanOpened: 'LAN access opened: restart',
+    logLanClosed: 'LAN access closed: restart',
+    logInstallFailed: 'install failed: {message}',
+    logInstallDone: 'install finished (exit {code})',
+    logStart: 'start ({type}) on port {port}',
+    logStartLan: 'start ({type}) on port {port} (open to LAN)',
+    logFailed: 'failed: {error}',
+    staticRootMissing: 'static.root folder not found: {path}',
+    logChanged: 'changed',
+    logLiveReloadStopped: 'live-reload stopped: {message}',
+    logReady: 'ready: {url}',
+    cwdMissing: 'command.cwd folder not found: {path}',
+    spawnFailed: 'spawn failed: {message}',
+    processExited: 'process exited (exit {code}{signal})',
+    beforeReady: '{desc} before it was ready',
+    exitedBeforeReady: 'process stopped before it was ready',
+    notReadyIn: 'not ready within {sec} seconds',
+    portNotListening: 'warning: port {port} is not accepting connections yet. Make sure the command uses {placeholder} or the {env} env variable.',
+    portStillUsed: 'warning: port {port} is still in use after stop; child processes may be left over',
+  },
+});
+/** Teks log/status proses: bahasa proses (log & status dibaca bersama oleh semua peminta). */
+const lt = (key: Parameters<typeof t>[0], params?: MessageParams) => t.in(getProcessLocale(), key, params);
 
 const IS_WIN = process.platform === 'win32';
 
@@ -131,7 +190,7 @@ export class Runtime {
       await this.state.setLanExposed(p.id, on);
       const run = this.runs.get(p.id);
       if (run && ACTIVE.has(run.status) && run.host !== this.hostFor(p.id)) {
-        (await this.logs(p.id)).system(on ? 'akses LAN dibuka: restart' : 'akses LAN ditutup: restart');
+        (await this.logs(p.id)).system(lt(on ? 'logLanOpened' : 'logLanClosed'));
         await this.doStop(p.id);
         return this.doStart(p);
       }
@@ -190,9 +249,9 @@ export class Runtime {
   install(p: ResolvedPrototype): Promise<{ exitCode: number | null }> {
     return this.exclusive(p.id, async () => {
       const m = p.manifest;
-      if (!m) throw new AppError('INVALID_MANIFEST', `Prototype "${p.id}" tidak valid: ${p.error ?? ''}`);
+      if (!m) throw new AppError('INVALID_MANIFEST', t('manifestInvalid', { id: p.id, error: p.error ?? '' }));
       if (m.type !== 'command' || !m.command.install) {
-        throw new AppError('BAD_REQUEST', `Prototype "${p.id}" tidak punya command.install`);
+        throw new AppError('BAD_REQUEST', t('noInstall', { id: p.id }));
       }
       const logs = await this.logs(p.id);
       const cwd = path.resolve(p.path, m.command.cwd);
@@ -209,12 +268,12 @@ export class Runtime {
       const exitCode = await new Promise<number | null>((resolve) => {
         child.once('exit', (code) => resolve(code));
         child.once('error', (err) => {
-          logs.system(`install gagal: ${err.message}`);
+          logs.system(lt('logInstallFailed', { message: err.message }));
           resolve(null);
         });
       });
       logs.flush();
-      logs.system(`install selesai (exit ${exitCode ?? '-'})`);
+      logs.system(lt('logInstallDone', { code: exitCode ?? '-' }));
       return { exitCode };
     });
   }
@@ -237,7 +296,7 @@ export class Runtime {
 
   private async doStart(p: ResolvedPrototype): Promise<RunInfo> {
     const m = p.manifest;
-    if (!m) throw new AppError('INVALID_MANIFEST', `Prototype "${p.id}" tidak valid: ${p.error ?? 'manifest tidak terbaca'}`);
+    if (!m) throw new AppError('INVALID_MANIFEST', t('manifestInvalid', { id: p.id, error: p.error ?? t('manifestUnreadable') }));
     const existing = this.runs.get(p.id);
     if (existing && ACTIVE.has(existing.status)) return this.info(p.id);
 
@@ -252,7 +311,7 @@ export class Runtime {
     const logs = await this.logs(p.id);
     const run: Run = { id: p.id, status: 'starting', port, host, startedAt: new Date().toISOString(), exitCode: null, error: null };
     this.runs.set(p.id, run);
-    logs.system(`start (${m.type}) di port ${port}${host === LAN_HOST ? ' (terbuka ke LAN)' : ''}`);
+    logs.system(lt(host === LAN_HOST ? 'logStartLan' : 'logStart', { type: m.type, port }));
 
     try {
       if (m.type === 'static') await this.startStatic(run, p.path, m.static, logs);
@@ -260,15 +319,15 @@ export class Runtime {
     } catch (err) {
       run.status = 'failed';
       run.error = errorMessage(err);
-      logs.system(`gagal: ${run.error}`);
-      throw new AppError('START_FAILED', `Gagal menjalankan "${p.id}": ${run.error}. Lihat log: prototyper logs ${p.id}`);
+      logs.system(lt('logFailed', { error: run.error }));
+      throw new AppError('START_FAILED', t('startFailed', { id: p.id, error: run.error }));
     }
     return this.info(p.id);
   }
 
   private async startStatic(run: Run, dir: string, cfg: StaticConfig, logs: LogStore): Promise<void> {
     const root = path.resolve(dir, cfg.root);
-    if (!(await isDirectory(root))) throw new Error(`folder static.root tidak ditemukan: ${root}`);
+    if (!(await isDirectory(root))) throw new Error(lt('staticRootMissing', { path: root }));
     const server = Fastify({ logger: false, forceCloseConnections: true });
     try {
       // Data Prototyper di folder prototype (.prototyper/, mis. komentar) tidak ikut disajikan.
@@ -280,7 +339,7 @@ export class Runtime {
           /* biarkan apa adanya */
         }
         if (pathname.split(/[\\/]/).some((seg) => seg.toLowerCase() === '.prototyper')) {
-          return reply.code(404).type('text/plain; charset=utf-8').send('404 - tidak ditemukan');
+          return reply.code(404).type('text/plain; charset=utf-8').send(t('notFound404'));
         }
       });
       const liveReload = cfg.inject && cfg.liveReload;
@@ -301,9 +360,9 @@ export class Runtime {
         const lr = new LiveReload(root, {
           onBroadcast: (kind, files) => {
             const list = files.length > 3 ? `${files.slice(0, 3).join(', ')}, +${files.length - 3}` : files.join(', ');
-            logs.system(`live-reload${kind === 'css' ? ' (css)' : ''}: ${list || 'berubah'}`);
+            logs.system(`live-reload${kind === 'css' ? ' (css)' : ''}: ${list || lt('logChanged')}`);
           },
-          onError: (msg) => logs.system(`live-reload berhenti: ${msg}`),
+          onError: (msg) => logs.system(lt('logLiveReloadStopped', { message: msg })),
         });
         server.get(LIVERELOAD_PATH, (req, reply) => {
           reply.hijack();
@@ -325,7 +384,7 @@ export class Runtime {
       server.setNotFoundHandler((req, reply) => {
         const pathname = req.url.split('?')[0] ?? '';
         if (cfg.spa && req.method === 'GET' && !path.extname(pathname)) return reply.sendFile(cfg.index);
-        return reply.code(404).type('text/plain; charset=utf-8').send('404 - tidak ditemukan');
+        return reply.code(404).type('text/plain; charset=utf-8').send(t('notFound404'));
       });
       server.addHook('onResponse', async (req, reply) => {
         logs.write('stdout', `${req.method} ${req.url} ${reply.statusCode}\n`);
@@ -337,12 +396,12 @@ export class Runtime {
     }
     run.server = server;
     run.status = 'running';
-    logs.system(`siap: http://localhost:${run.port}`);
+    logs.system(lt('logReady', { url: `http://localhost:${run.port}` }));
   }
 
   private async startCommand(run: Run, dir: string, cfg: CommandConfig, logs: LogStore): Promise<void> {
     const cwd = path.resolve(dir, cfg.cwd);
-    if (!(await isDirectory(cwd))) throw new Error(`folder command.cwd tidak ditemukan: ${cwd}`);
+    if (!(await isDirectory(cwd))) throw new Error(lt('cwdMissing', { path: cwd }));
     const host = run.host;
     const cmd = cfg.run.replaceAll('{port}', String(run.port)).replaceAll('{host}', host);
     const env: NodeJS.ProcessEnv = {
@@ -375,13 +434,13 @@ export class Runtime {
         void this.state.setProcess(run.id, undefined);
         run.exitCode = code;
         const desc = err
-          ? `gagal spawn: ${err.message}`
-          : `proses keluar (exit ${code ?? '-'}${signal ? `, signal ${signal}` : ''})`;
+          ? lt('spawnFailed', { message: err.message })
+          : lt('processExited', { code: code ?? '-', signal: signal ? `, signal ${signal}` : '' });
         logs.system(desc);
         if (run.status === 'stopping') run.status = 'stopped';
         else if (run.status === 'starting') {
           run.status = 'failed';
-          run.error ??= `${desc} sebelum siap`;
+          run.error ??= lt('beforeReady', { desc });
         } else if (run.status === 'running') {
           run.status = 'crashed';
           run.error = desc;
@@ -396,9 +455,9 @@ export class Runtime {
     if (child.pid !== undefined) await this.state.setProcess(run.id, { pid: child.pid, startedAt: run.startedAt });
     const result = await ready;
 
-    if (result === 'exited') throw new Error(run.error ?? 'proses berhenti sebelum siap');
+    if (result === 'exited') throw new Error(run.error ?? lt('exitedBeforeReady'));
     if (result === 'timeout') {
-      const msg = `tidak siap dalam ${cfg.readyTimeoutSec} detik`;
+      const msg = lt('notReadyIn', { sec: cfg.readyTimeoutSec });
       run.status = 'stopping';
       await killTree(child, run.exited);
       await this.waitPortReleased(run, 3000);
@@ -408,11 +467,9 @@ export class Runtime {
     }
     run.status = 'running';
     if (cfg.readyPattern && !(await probePort(run.port))) {
-      logs.system(
-        `peringatan: port ${run.port} belum menerima koneksi. Pastikan perintah memakai {port} atau env ${cfg.portEnv}.`,
-      );
+      logs.system(lt('portNotListening', { port: run.port, placeholder: '{port}', env: cfg.portEnv }));
     }
-    logs.system(`siap: http://localhost:${run.port}`);
+    logs.system(lt('logReady', { url: `http://localhost:${run.port}` }));
   }
 
   private waitReady(run: Run, cfg: CommandConfig, logs: LogStore): Promise<'ready' | 'exited' | 'timeout'> {
@@ -470,7 +527,7 @@ export class Runtime {
       await killTree(run.child, run.exited);
       // Proses cucu (mis. node di bawah npm/cmd) bisa melepas port sedikit lebih lambat.
       if (!(await this.waitPortReleased(run, 5000))) {
-        logs.system(`peringatan: port ${run.port} masih dipakai setelah stop; mungkin ada proses anak yang tersisa`);
+        logs.system(lt('portStillUsed', { port: run.port }));
       }
     }
     run.status = 'stopped';

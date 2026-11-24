@@ -24,6 +24,22 @@ import type { DeviceStore } from '../../core/devices.js';
 import type { AgentRunner } from '../../core/agent.js';
 import { AppError } from '../../core/errors.js';
 import type { Registry } from '../../core/registry.js';
+import { defineMessages } from '../../core/i18n.js';
+
+const t = defineMessages({
+  id: {
+    badStatus: 'status harus open, resolved, atau all',
+    badWaiting: 'waiting harus user atau agent',
+    attachmentNotFound: 'Lampiran tidak ditemukan',
+    attachmentNamedNotFound: 'Lampiran "{name}" tidak ditemukan',
+  },
+  en: {
+    badStatus: 'status must be open, resolved, or all',
+    badWaiting: 'waiting must be user or agent',
+    attachmentNotFound: 'Attachment not found',
+    attachmentNamedNotFound: 'Attachment "{name}" not found',
+  },
+});
 
 type Params = { Params: { id: string } };
 type CParams = { Params: { id: string; cid: string } };
@@ -40,7 +56,7 @@ const flag = (v: unknown) => v === '1' || v === 'true';
 function parseStatus(v: unknown): 'open' | 'resolved' | 'all' {
   if (v === undefined || v === '') return 'all';
   if (v === 'open' || v === 'resolved' || v === 'all') return v;
-  throw new AppError('BAD_REQUEST', 'status harus open, resolved, atau all');
+  throw new AppError('BAD_REQUEST', t('badStatus'));
 }
 
 /**
@@ -76,7 +92,7 @@ export const commentRoutes: FastifyPluginAsync<{ registry: Registry; agent?: Age
     async (req): Promise<CommentsResponse> => {
       const p = await registry.require(req.params.id);
       const w = req.query.waiting;
-      if (w !== undefined && w !== 'user' && w !== 'agent') throw new AppError('BAD_REQUEST', 'waiting harus user atau agent');
+      if (w !== undefined && w !== 'user' && w !== 'agent') throw new AppError('BAD_REQUEST', t('badWaiting'));
       const comments = await listComments(p.path, {
         status: parseStatus(req.query.status),
         ...(req.query.page !== undefined ? { page: req.query.page } : {}),
@@ -130,10 +146,10 @@ export const commentRoutes: FastifyPluginAsync<{ registry: Registry; agent?: Age
 
   app.get<{ Params: { id: string; name: string } }>('/prototypes/:id/attachments/:name', async (req, reply) => {
     const name = attachmentName(req.params.name);
-    if (!name) throw new AppError('NOT_FOUND', 'Lampiran tidak ditemukan');
+    if (!name) throw new AppError('NOT_FOUND', t('attachmentNotFound'));
     const file = attachmentFile(await dirOf(req.params.id), name);
     const st = await fs.stat(file).catch(() => null);
-    if (!st?.isFile()) throw new AppError('NOT_FOUND', `Lampiran "${name}" tidak ditemukan`);
+    if (!st?.isFile()) throw new AppError('NOT_FOUND', t('attachmentNamedNotFound', { name }));
     // Nama = hash isi, jadi isi tidak pernah berubah.
     reply.header('Content-Type', attachmentType(name)).header('Content-Length', st.size)
       .header('Cache-Control', 'private, max-age=31536000, immutable').header('X-Content-Type-Options', 'nosniff');

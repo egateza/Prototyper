@@ -2,6 +2,23 @@ import { spawn } from 'node:child_process';
 import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { AppError } from './errors.js';
+import { defineMessages } from './i18n.js';
+
+const t = defineMessages({
+  id: {
+    changedAgain: '{n} file sudah berubah lagi setelah agent selesai. Batalkan tetap akan menimpa perubahan itu.',
+    gitMissing: 'git tidak ditemukan; pasang Git agar checkpoint bisa dibuat',
+    gitFailed: 'git gagal: {message}',
+    gitCommandFailed: 'git {command} gagal (exit {code}): {stderr}',
+  },
+  en: {
+    changedAgain: (p) =>
+      `${p.n === 1 ? '1 file has' : `${p.n} files have`} changed again after the agent finished. Undoing changes will still overwrite those edits.`,
+    gitMissing: 'git was not found; install Git so checkpoints can be created',
+    gitFailed: 'git failed: {message}',
+    gitCommandFailed: 'git {command} failed (exit {code}): {stderr}',
+  },
+});
 
 /**
  * Checkpoint folder prototype sebelum/sesudah run agent, agar perubahan agent bisa dibatalkan.
@@ -118,7 +135,7 @@ export class Checkpoints {
       const touched = new Set(changes.map((c) => c.path));
       const edited = (await this.diff(id, workTree, after, now)).filter((c) => touched.has(c.path)).map((c) => c.path);
       if (edited.length) {
-        throw new AppError('CONFLICT', `${edited.length} file sudah berubah lagi setelah agent selesai. Batalkan tetap akan menimpa perubahan itu.`, edited);
+        throw new AppError('CONFLICT', t('changedAgain', { n: edited.length }), edited);
       }
     }
     return this.exclusive(id, async () => {
@@ -185,13 +202,13 @@ export class Checkpoints {
       child.once('error', (err) => {
         clearTimeout(timer);
         const missing = (err as NodeJS.ErrnoException).code === 'ENOENT';
-        reject(new AppError('BAD_REQUEST', missing ? 'git tidak ditemukan; pasang Git agar checkpoint bisa dibuat' : `git gagal: ${err.message}`));
+        reject(new AppError('BAD_REQUEST', missing ? t('gitMissing') : t('gitFailed', { message: err.message })));
       });
       child.once('close', (code) => {
         clearTimeout(timer);
         const c = code ?? -1;
         if ((o.ok ?? [0]).includes(c)) resolve({ code: c, stdout, stderr });
-        else reject(new AppError('INTERNAL', `git ${args.find((a) => !a.startsWith('-')) ?? ''} gagal (exit ${c}): ${stderr.trim().slice(0, 300)}`));
+        else reject(new AppError('INTERNAL', t('gitCommandFailed', { command: args.find((a) => !a.startsWith('-')) ?? '', code: c, stderr: stderr.trim().slice(0, 300) })));
       });
       // git bisa keluar sebelum stdin habis ditulis (EPIPE); hasilnya tetap dinilai dari exit code di 'close'
       child.stdin.on('error', () => {});

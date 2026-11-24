@@ -460,6 +460,9 @@ dialog.small p { margin: 0; }
 .agent-undone { font-style: italic; }
 .cf-list { margin: 0 0 14px; padding: 8px 10px 8px 26px; max-height: 220px; overflow: auto; border: 1px solid var(--border); border-radius: var(--r); font: 12px/1.6 var(--mono); }
 .cf-list[hidden] { display: none; }
+.lang-list { display: grid; gap: 10px; margin: 14px 0; }
+.lang-opt { cursor: pointer; font-size: 14px; color: var(--fg); }
+.lang-opt:has(input:disabled) { cursor: default; opacity: .7; }
 .agent-bar .btn svg, .agent-one svg { width: 13px; height: 13px; margin-right: 4px; }
 .agent-na { display: inline-flex; align-items: center; gap: 6px; }
 .agent-na svg { width: 13px; height: 13px; }

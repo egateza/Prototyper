@@ -3,13 +3,15 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { LanMode } from '../src/core/config.js';
+import { getLocale, setLocale, type Locale } from '../src/core/i18n.js';
 import { rankLanAddresses } from '../src/core/net.js';
 import { STOPPED_INFO } from '../src/core/runtime.js';
 import type { UpdateCheck } from '../src/core/update.js';
 import type { PrototypeView } from '../src/core/views.js';
-import { TrayController, WHATSNEW_HASH, type DaemonApi, type TrayDeps } from '../src/tray/controller.js';
+import { TrayController, WHATSNEW_HASH, type DaemonApi, type LangInfo, type TrayDeps } from '../src/tray/controller.js';
 import { asciiJson, parseHostLine, TrayHost, type HostEvent, type IconState, type TrayHostLike } from '../src/tray/host.js';
-import { parseAppsTheme, readAppsTheme, runningTrayPid, trayArgs, trayFiles } from '../src/tray/index.js';
+import { languageControl, parseAppsTheme, readAppsTheme, runningTrayPid, trayArgs, trayFiles } from '../src/tray/index.js';
+import { readSettings } from '../src/core/settings.js';
 import { iconState, lanCopyText, lanNote, lanUrl, statusNotices, type TrayState, type UpdateState } from '../src/tray/menu.js';
 import { glyphRuns, MENU_THEME, MENU_W, menuLayout, POPUP_W, LIST_PAGE, popupLayout, type Popup, type PopupItem } from '../src/tray/popup.js';
 import { testConfig, tmpDir } from './helpers.js';
@@ -44,7 +46,7 @@ const upd = (o: Partial<UpdateState> = {}): UpdateState => ({
 });
 
 const state = (o: Partial<TrayState> = {}): TrayState => ({
-  url: 'http://localhost:4000', daemonUp: true, daemonBusy: null, prototypes: [], listLimit: 5, listBusy: null, startup: false, notifications: true, lanMode: 'off', lanScope: 'all', lanAddrs: [], theme: 'dark', update: upd(), ...o,
+  url: 'http://localhost:4000', daemonUp: true, daemonBusy: null, prototypes: [], listLimit: 5, listBusy: null, startup: false, notifications: true, lanMode: 'off', lanScope: 'all', lanAddrs: [], theme: 'dark', update: upd(), lang: { setting: 'auto', fromEnv: false }, langOpen: false, ...o,
 });
 
 type Hit = Extract<PopupItem, { k: 'hit' }>;
@@ -145,11 +147,12 @@ describe('menu tray', () => {
   it('menu klik kanan: urutan & teks sama dengan menu konteks prototype, menutup setelah dipilih', () => {
     const m = menuLayout(state({ startup: true }));
     expect(m.w).toBe(MENU_W);
-    expect(hitIds(m)).toEqual(['open', 'startAll', 'stopAll', 'pause', 'startup', 'lan', 'notif', 'update', 'whatsnew', 'quit']);
+    expect(hitIds(m)).toEqual(['open', 'startAll', 'stopAll', 'pause', 'startup', 'lan', 'notif', 'langMenu', 'update', 'whatsnew', 'quit']);
     expect(texts(m)).toEqual(expect.arrayContaining(['🌐 Buka Prototyper di browser', '⏸ Jeda daemon', 'Tampilkan notifikasi', '⟳ Periksa pembaruan…', '✨ Yang baru di 0.1.0', 'Keluar']));
     expect(menuRow(m, 'startup')!.checked).toBe(true);
     expect(menuRow(menuLayout(state({ startup: false })), 'startup')!.checked).toBe(false);
-    expect(m.items.filter((i): i is Hit => i.k === 'hit').every((i) => i.close)).toBe(true);
+    // semua menutup menu, kecuali Bahasa yang membuka pilihannya
+    expect(m.items.filter((i): i is Hit => i.k === 'hit' && i.id !== 'langMenu').every((i) => i.close)).toBe(true);
     expect(hitIds(menuLayout(state({ startup: null })))).not.toContain('startup');
     // tema mengikuti Windows: latar dari .ctx-menu terang/gelap
     expect(menuLayout(state({ theme: 'light' })).bg).toBe(MENU_THEME.light.bg);
@@ -358,8 +361,10 @@ class FakeApi implements DaemonApi {
   calls: string[] = [];
   failStart = new Set<string>();
   failEnsure = false;
+  locale: Locale | undefined = undefined;
   async status() {
-    return this.up ? { prototypes: this.views.map((v) => ({ ...v })), lanMode: this.lanMode } : null;
+    if (!this.up) return null;
+    return { prototypes: this.views.map((v) => ({ ...v })), lanMode: this.lanMode, ...(this.locale ? { locale: this.locale } : {}) };
   }
   async action(id: string, action: 'start' | 'stop' | 'restart') {
     this.calls.push(`${action}:${id}`);
@@ -433,6 +438,7 @@ function setup(o: Partial<TrayDeps> = {}) {
 const controllers: TrayController[] = [];
 afterEach(() => {
   for (const c of controllers.splice(0)) c.dispose();
+  setLocale('id');
 });
 
 describe('TrayController', () => {
@@ -442,6 +448,50 @@ describe('TrayController', () => {
     expect(t.api.calls).toEqual(['ensure']);
     expect(JSON.stringify(t.host.popup)).toContain('Aktif · 0 dari 2 berjalan');
     expect(t.host.icon).toMatchObject({ badge: 0, paused: false });
+  });
+
+  it('bahasa mengikuti daemon: Inggris saat daemon melaporkan en, kembali ke Indonesia; daemon mati = bahasa terakhir', async () => {
+    const t = setup();
+    t.api.locale = 'en';
+    await t.c.start();
+    expect(getLocale()).toBe('en');
+    expect(texts(t.host.popup!)).toContain('Active · 0 of 2 running');
+    expect(texts(t.host.popup!)).toContain('🌐  Open Prototyper');
+    expect(menuRow(t.host.menu!, 'quit')!.label).toBe('Quit');
+    expect(menuRow(t.host.menu!, 'pause')!.label).toBe('⏸ Pause daemon');
+    expect(t.host.icon!.tooltip).toBe('Prototyper — 0 prototypes running');
+    await t.c.click('p:start:kasir');
+    await t.c.poll();
+    expect(t.host.balloons.at(-1)).toEqual(['KASIR', 'Running at localhost:4100']);
+    expect(JSON.stringify(t.host.popup)).toContain('Running · :4100');
+
+    t.api.locale = 'id';
+    await t.c.poll();
+    expect(getLocale()).toBe('id');
+    expect(texts(t.host.popup!)).toContain('Aktif · 1 dari 2 berjalan');
+    expect(menuRow(t.host.menu!, 'quit')!.label).toBe('Keluar');
+
+    // daemon lama (tanpa lang) / daemon mati: bahasa terakhir dipakai
+    t.api.locale = 'en';
+    await t.c.poll();
+    t.api.up = false;
+    await t.c.poll();
+    expect(getLocale()).toBe('en');
+    expect(texts(t.host.popup!)).toContain('Daemon paused');
+    expect(t.host.icon!.tooltip).toBe('Prototyper — daemon paused');
+  });
+
+  it('teks Inggris: menu pembaruan, notifikasi, dan persen unduhan', async () => {
+    setLocale('en');
+    expect(menuLayout(state({ update: upd({ status: 'downloading', latest: '0.2.0', progress: 0.5 }) })).items.some((i) => i.k === 'text' && i.runs.map((r) => r.text).join('') === '⬇ Downloading… 50%')).toBe(true);
+    expect(texts(popupLayout(state({ update: upd({ status: 'available', latest: '0.2.0' }) })))).toContain('Update 0.2.0 available');
+    expect(statusNotices([view('a')], [{ ...view('a', 'failed'), error: 'boom' }])).toEqual([{ title: 'A', text: 'Failed to start: boom' }]);
+    expect(lanNote(state({ lanMode: 'prototypes', lanAddrs: ['192.168.1.5'] }))).toBe('192.168.1.5 · start a prototype first');
+    const t = setup();
+    t.api.locale = 'en';
+    await t.c.start();
+    await t.c.click('stopAll');
+    expect(t.host.balloons.at(-1)).toEqual(['Prototyper', 'All prototypes stopped.']);
   });
 
   it('menjalankan/menghentikan prototype dari menu dan memberi notifikasi', async () => {
@@ -811,5 +861,73 @@ describe('proses tray', () => {
 
   it('icon tray ada di folder aplikasi', () => {
     expect(existsSync(path.resolve('assets', 'tray'))).toBe(true);
+  });
+});
+
+describe('pengaturan bahasa di tray', () => {
+  it('menu: baris Bahasa membuka pilihan tanpa menutup menu; pilihan dikunci PROTOTYPER_LANG', () => {
+    const closed = menuLayout(state());
+    expect(menuRow(closed, 'langMenu')?.label).toBe('Bahasa: Otomatis (ikut Windows)');
+    expect(hitOf(closed, 'langMenu')?.close).toBe(false);
+    expect(hitIds(closed).filter((id) => id.startsWith('lang:'))).toEqual([]);
+
+    const open = menuLayout(state({ langOpen: true, lang: { setting: 'en', fromEnv: false } }));
+    expect(hitIds(open).filter((id) => id.startsWith('lang:'))).toEqual(['lang:auto', 'lang:id', 'lang:en']);
+    expect(menuRow(open, 'lang:en')).toMatchObject({ label: 'English', checked: true });
+    expect(menuRow(open, 'lang:id')).toMatchObject({ label: 'Bahasa Indonesia', checked: false });
+    expect(hitOf(open, 'lang:id')?.close).toBe(true);
+
+    const locked = menuLayout(state({ langOpen: true, lang: { setting: 'id', fromEnv: true } }));
+    expect(hitIds(locked).filter((id) => id.startsWith('lang:'))).toEqual([]);
+  });
+
+  it('memilih bahasa: tray langsung berganti dan pengaturan disimpan lewat daemon', async () => {
+    const sets: Array<[string, boolean]> = [];
+    let info: LangInfo = { setting: 'auto', locale: 'id', fromEnv: false };
+    const t = setup({
+      language: {
+        get: () => info,
+        set: async (setting, daemonUp) => {
+          sets.push([setting, daemonUp]);
+          info = { setting, locale: setting === 'auto' ? 'id' : setting, fromEnv: false };
+          return info;
+        },
+      },
+    });
+    await t.c.start();
+    await t.c.click('langMenu');
+    t.c.render();
+    expect(hitIds(t.host.menu!)).toContain('lang:en');
+    await t.c.click('lang:en');
+    t.c.render();
+    expect(sets).toEqual([['en', true]]);
+    expect(getLocale()).toBe('en');
+    expect(menuRow(t.host.menu!, 'langMenu')?.label).toBe('Language: English');
+    expect(hitIds(t.host.menu!)).not.toContain('lang:en'); // pilihan tertutup lagi
+    expect(t.host.balloons.at(-1)).toEqual(['Language', 'Language changed to English.']);
+  });
+
+  it('dikunci PROTOTYPER_LANG: tidak menyimpan, memberi tahu', async () => {
+    const sets: string[] = [];
+    const t = setup({
+      language: { get: () => ({ setting: 'id', locale: 'id', fromEnv: true }), set: async (s) => (sets.push(s), { setting: s, locale: 'en', fromEnv: true }) },
+    });
+    await t.c.start();
+    await t.c.click('lang:en');
+    expect(sets).toEqual([]);
+    expect(t.host.balloons.at(-1)?.[1]).toContain('PROTOTYPER_LANG=id');
+  });
+
+  it('languageControl tanpa daemon menulis settings.json', async () => {
+    const saved = process.env.PROTOTYPER_LANG;
+    delete process.env.PROTOTYPER_LANG;
+    try {
+      const config = testConfig();
+      const r = await languageControl(config).set('en', false);
+      expect(r).toEqual({ setting: 'en', locale: 'en', fromEnv: false });
+      expect(readSettings(config.home).lang).toBe('en');
+    } finally {
+      process.env.PROTOTYPER_LANG = saved;
+    }
   });
 });

@@ -1,5 +1,22 @@
 import path from 'node:path';
 import { readJsonFile, samePath, writeJsonAtomic } from './fsutil.js';
+import { defineMessages } from './i18n.js';
+
+/** Alasan sesi tidak dilanjutkan (ditampilkan di Web UI & log run; bahasa peminta). */
+const t = defineMessages({
+  id: {
+    disabled: 'dimatikan (PROTOTYPER_AGENT_RESUME_HOURS=0)',
+    undone: 'perubahan run terakhir dibatalkan',
+    moved: 'folder prototype berpindah',
+    tooOld: 'sesi terakhir lebih dari {hours} jam lalu',
+  },
+  en: {
+    disabled: 'turned off (PROTOTYPER_AGENT_RESUME_HOURS=0)',
+    undone: 'changes from the last run were undone',
+    moved: 'the prototype folder was moved',
+    tooOld: (p) => (p.hours === 1 ? 'the last session was more than 1 hour ago' : `the last session was more than ${p.hours} hours ago`),
+  },
+});
 
 /**
  * Sesi agent terakhir per prototype, agar run berikutnya bisa melanjutkan percakapan yang sama
@@ -35,13 +52,13 @@ export function resumeState(
 ): ResumeState {
   const no = (reason: string | null): ResumeState => ({ resumable: false, session: s ?? null, reason });
   if (!want.supported) return no(null);
-  if (want.hours <= 0) return no('dimatikan (PROTOTYPER_AGENT_RESUME_HOURS=0)');
+  if (want.hours <= 0) return no(t('disabled'));
   if (!s) return no(null);
   if (s.agent !== want.agent) return no(null);
-  if (s.undoneAt) return no('perubahan run terakhir dibatalkan');
-  if (!samePath(s.cwd, want.cwd)) return no('folder prototype berpindah');
+  if (s.undoneAt) return no(t('undone'));
+  if (!samePath(s.cwd, want.cwd)) return no(t('moved'));
   const age = (want.now ?? Date.now()) - Date.parse(s.endedAt);
-  if (!(age <= want.hours * 3_600_000)) return no(`sesi terakhir lebih dari ${want.hours} jam lalu`);
+  if (!(age <= want.hours * 3_600_000)) return no(t('tooOld', { hours: want.hours }));
   return { resumable: true, session: s, reason: null };
 }
 

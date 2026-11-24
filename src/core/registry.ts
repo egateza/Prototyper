@@ -2,6 +2,30 @@ import path from 'node:path';
 import { AppError, errorMessage } from './errors.js';
 import { isDirectory, readJsonFile, samePath, writeJsonAtomic } from './fsutil.js';
 import { loadManifest, type Manifest } from './manifest.js';
+import { defineMessages } from './i18n.js';
+
+const t = defineMessages({
+  id: {
+    corruptWithError: 'Registry rusak ({file}): {message}',
+    corrupt: 'Registry rusak ({file})',
+    notRegisteredHint: 'Prototype "{id}" tidak terdaftar. Lihat daftar: prototyper list',
+    idTaken: 'id "{id}" sudah dipakai oleh {path}',
+    folderRegistered: 'Folder ini sudah terdaftar sebagai "{id}"',
+    folderNotFound: 'Folder tidak ditemukan: {path}',
+    notRegistered: 'Prototype "{id}" tidak terdaftar',
+    manifestIdTaken: 'id "{id}" di manifest sudah dipakai prototype lain',
+  },
+  en: {
+    corruptWithError: 'The registry is corrupt ({file}): {message}',
+    corrupt: 'The registry is corrupt ({file})',
+    notRegisteredHint: 'Prototype "{id}" is not registered. See the list: prototyper list',
+    idTaken: 'id "{id}" is already used by {path}',
+    folderRegistered: 'This folder is already registered as "{id}"',
+    folderNotFound: 'Folder not found: {path}',
+    notRegistered: 'Prototype "{id}" is not registered',
+    manifestIdTaken: 'id "{id}" in the manifest is already used by another prototype',
+  },
+});
 
 export interface RegistryEntry {
   id: string;
@@ -37,10 +61,10 @@ export class Registry {
     try {
       data = await readJsonFile<RegistryFile>(this.file);
     } catch (err) {
-      throw new AppError('INTERNAL', `Registry rusak (${this.file}): ${errorMessage(err)}`);
+      throw new AppError('INTERNAL', t('corruptWithError', { file: this.file, message: errorMessage(err) }));
     }
     if (!data) return { version: 1, prototypes: [] };
-    if (!Array.isArray(data.prototypes)) throw new AppError('INTERNAL', `Registry rusak (${this.file})`);
+    if (!Array.isArray(data.prototypes)) throw new AppError('INTERNAL', t('corrupt', { file: this.file }));
     return data;
   }
 
@@ -49,7 +73,7 @@ export class Registry {
   }
 
   private async resolveEntry(e: RegistryEntry): Promise<ResolvedPrototype> {
-    if (!(await isDirectory(e.path))) return { ...e, manifest: null, error: `Folder tidak ditemukan: ${e.path}` };
+    if (!(await isDirectory(e.path))) return { ...e, manifest: null, error: t('folderNotFound', { path: e.path }) };
     try {
       return { ...e, manifest: await loadManifest(e.path), error: null };
     } catch (err) {
@@ -66,7 +90,7 @@ export class Registry {
       if (!entry || !r.manifest || r.manifest.id === entry.id) return;
       const newId = r.manifest.id;
       if (data.prototypes.some((o) => o !== entry && o.id === newId)) {
-        r.error = `id "${newId}" di manifest sudah dipakai prototype lain`;
+        r.error = t('manifestIdTaken', { id: newId });
         r.manifest = null;
         return;
       }
@@ -84,7 +108,7 @@ export class Registry {
 
   async require(id: string): Promise<ResolvedPrototype> {
     const p = await this.get(id);
-    if (!p) throw new AppError('NOT_FOUND', `Prototype "${id}" tidak terdaftar. Lihat daftar: prototyper list`);
+    if (!p) throw new AppError('NOT_FOUND', t('notRegisteredHint', { id }));
     return p;
   }
 
@@ -97,19 +121,19 @@ export class Registry {
   async assertIdFree(id: string, dir: string): Promise<void> {
     const abs = path.resolve(dir);
     const other = (await this.read()).prototypes.find((e) => e.id === id && !samePath(e.path, abs));
-    if (other) throw new AppError('CONFLICT', `id "${id}" sudah dipakai oleh ${other.path}`);
+    if (other) throw new AppError('CONFLICT', t('idTaken', { id, path: other.path }));
   }
 
   private checkConflicts(data: RegistryFile, abs: string, id: string): void {
     const samePathEntry = data.prototypes.find((e) => samePath(e.path, abs));
-    if (samePathEntry) throw new AppError('CONFLICT', `Folder ini sudah terdaftar sebagai "${samePathEntry.id}"`);
+    if (samePathEntry) throw new AppError('CONFLICT', t('folderRegistered', { id: samePathEntry.id }));
     const sameId = data.prototypes.find((e) => e.id === id);
-    if (sameId) throw new AppError('CONFLICT', `id "${id}" sudah dipakai oleh ${sameId.path}`);
+    if (sameId) throw new AppError('CONFLICT', t('idTaken', { id, path: sameId.path }));
   }
 
   async add(dir: string): Promise<ResolvedPrototype> {
     const abs = path.resolve(dir);
-    if (!(await isDirectory(abs))) throw new AppError('BAD_REQUEST', `Folder tidak ditemukan: ${abs}`);
+    if (!(await isDirectory(abs))) throw new AppError('BAD_REQUEST', t('folderNotFound', { path: abs }));
     const manifest = await loadManifest(abs);
     const data = await this.read();
     this.checkConflicts(data, abs, manifest.id);
@@ -123,7 +147,7 @@ export class Registry {
     const data = await this.read();
     const idx = data.prototypes.findIndex((e) => e.id === id);
     const entry = data.prototypes[idx];
-    if (idx < 0 || !entry) throw new AppError('NOT_FOUND', `Prototype "${id}" tidak terdaftar`);
+    if (idx < 0 || !entry) throw new AppError('NOT_FOUND', t('notRegistered', { id }));
     data.prototypes.splice(idx, 1);
     await this.write(data);
     return entry;

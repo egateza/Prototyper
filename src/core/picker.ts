@@ -1,6 +1,32 @@
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { AppError } from './errors.js';
+import { defineMessages } from './i18n.js';
+
+const t = defineMessages({
+  id: {
+    pickFolder: 'Pilih folder',
+    pickFile: 'Pilih file',
+    badKind: 'kind harus "folder" atau "file"',
+    busy: 'Dialog pilih file/folder sedang terbuka. Selesaikan dulu (mungkin tertutup jendela lain).',
+    failedFolder: 'Dialog pilih folder gagal dibuka ({cmd}, exit {code}): {stderr}',
+    failedFile: 'Dialog pilih file gagal dibuka ({cmd}, exit {code}): {stderr}',
+    noMessage: 'tanpa pesan',
+    needZenity: 'Dialog pilih file/folder butuh zenity atau kdialog. Pasang salah satunya, atau ketik path-nya.',
+    unavailable: 'Dialog pilih file/folder tidak tersedia di sistem ini. Ketik path-nya.',
+  },
+  en: {
+    pickFolder: 'Choose folder',
+    pickFile: 'Choose file',
+    badKind: 'kind must be "folder" or "file"',
+    busy: 'A file/folder dialog is already open. Finish it first (it may be hidden behind another window).',
+    failedFolder: 'The folder dialog could not be opened ({cmd}, exit {code}): {stderr}',
+    failedFile: 'The file dialog could not be opened ({cmd}, exit {code}): {stderr}',
+    noMessage: 'no message',
+    needZenity: 'The file/folder dialog needs zenity or kdialog. Install one of them, or type the path.',
+    unavailable: 'The file/folder dialog is not available on this system. Type the path.',
+  },
+});
 
 /**
  * Dialog pilih file/folder bawaan OS, dibuka oleh daemon (berjalan di komputer yang sama dengan
@@ -136,7 +162,7 @@ const asStr = (s: string) => `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"
 
 /** Perintah yang dicoba berurutan untuk platform ini (Linux: zenity lalu kdialog). */
 export function pickerCommands(platform: NodeJS.Platform, o: PickOptions): PickerCommand[] {
-  const title = o.title ?? (o.kind === 'folder' ? 'Pilih folder' : 'Pilih file');
+  const title = o.title ?? (o.kind === 'folder' ? t('pickFolder') : t('pickFile'));
   const multi = o.kind === 'file' && !!o.multiple;
   if (platform === 'win32') {
     return [{
@@ -208,8 +234,8 @@ export async function pickPath(
   o: PickOptions,
   deps: { platform?: NodeJS.Platform; run?: Runner } = {},
 ): Promise<PickResult> {
-  if (o.kind !== 'folder' && o.kind !== 'file') throw new AppError('BAD_REQUEST', 'kind harus "folder" atau "file"');
-  if (busy) throw new AppError('CONFLICT', 'Dialog pilih file/folder sedang terbuka. Selesaikan dulu (mungkin tertutup jendela lain).');
+  if (o.kind !== 'folder' && o.kind !== 'file') throw new AppError('BAD_REQUEST', t('badKind'));
+  if (busy) throw new AppError('CONFLICT', t('busy'));
   const platform = deps.platform ?? process.platform;
   const run = deps.run ?? defaultRunner;
   busy = true;
@@ -220,7 +246,7 @@ export async function pickPath(
       if (r.missing) continue;
       if (r.code !== null && c.cancelCodes.includes(r.code)) return { paths: [], cancelled: true };
       if (r.code !== 0) {
-        throw new AppError('INTERNAL', `Dialog pilih ${o.kind === 'folder' ? 'folder' : 'file'} gagal dibuka (${c.cmd}, exit ${r.code ?? '-'}): ${r.stderr.trim().split(/\r?\n/).slice(-3).join(' ') || 'tanpa pesan'}`);
+        throw new AppError('INTERNAL', t(o.kind === 'folder' ? 'failedFolder' : 'failedFile', { cmd: c.cmd, code: r.code ?? '-', stderr: r.stderr.trim().split(/\r?\n/).slice(-3).join(' ') || t('noMessage') }));
       }
       const resolve = platform === 'win32' ? path.win32.resolve : path.posix.resolve;
       const paths = r.stdout.split(/\r?\n/).map((x) => x.trim()).filter(Boolean).map((x) => resolve(x));
@@ -229,8 +255,8 @@ export async function pickPath(
     throw new AppError(
       'NOT_IMPLEMENTED',
       platform === 'linux'
-        ? 'Dialog pilih file/folder butuh zenity atau kdialog. Pasang salah satunya, atau ketik path-nya.'
-        : 'Dialog pilih file/folder tidak tersedia di sistem ini. Ketik path-nya.',
+        ? t('needZenity')
+        : t('unavailable'),
     );
   } finally {
     busy = false;

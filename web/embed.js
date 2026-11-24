@@ -2,7 +2,7 @@
 // Diam kecuali halaman dibuka di pratinjau Web UI Prototyper (iframe). Komunikasi lewat postMessage:
 //   halaman → UI : prototyper:ready {page}, prototyper:page {page}, prototyper:pick {anchor, page},
 //                  prototyper:mode-off, prototyper:pin-click {id}
-//   UI → halaman : prototyper:hello, prototyper:mode {on}, prototyper:pins {pins}, prototyper:focus {selector},
+//   UI → halaman : prototyper:hello {lang?}, prototyper:mode {on}, prototyper:pins {pins}, prototyper:focus {selector},
 //                  prototyper:clear, prototyper:snapshot {req}
 //   halaman → UI : prototyper:snapshot {req, scheme, html, body, storage, session} (keadaan untuk ekspor)
 //
@@ -15,6 +15,39 @@
   const self = document.currentScript;
   if (self && self.hasAttribute('data-livereload')) liveReload(new URL('/__prototyper/livereload', self.src));
   if (window.parent === window) return;
+
+  // ---------- Bahasa ----------
+  // Kamus teks yang terlihat; Web UI mengirim bahasanya lewat prototyper:hello {lang}. Sebelum itu dipakai
+  // bahasa browser. Blok di antara penanda dibaca oleh test/embed.test.ts (kunci tiap bahasa harus sama).
+  // i18n:start
+  const MESSAGES = {
+    id: {
+      hintTouch: 'Ketuk elemen atau blok teks untuk dikomentari',
+      hintPointer: 'Klik elemen atau blok teks untuk dikomentari · Esc untuk batal',
+    },
+    en: {
+      hintTouch: 'Tap an element or text block to comment on it',
+      hintPointer: 'Click an element or text block to comment on it · Esc to cancel',
+    },
+  };
+  // i18n:end
+  const supported = (tag) => {
+    const base = String(tag || '').toLowerCase().split(/[-_]/)[0];
+    return Object.prototype.hasOwnProperty.call(MESSAGES, base) ? base : null;
+  };
+  const fallback = () => (MESSAGES.en ? 'en' : MESSAGES.id ? 'id' : Object.keys(MESSAGES)[0]);
+  let lang = (() => {
+    const list = (navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language]);
+    for (const l of list) { const s = supported(l); if (s) return s; }
+    return fallback();
+  })();
+  const tr = (key) => (MESSAGES[lang] && MESSAGES[lang][key]) || (MESSAGES.en && MESSAGES.en[key]) || (MESSAGES.id && MESSAGES.id[key]) || key;
+  function setLang(next) {
+    const l = supported(next) || fallback();
+    if (l === lang) return;
+    lang = l;
+    applyTexts();
+  }
 
   const P = '__pt-';
   let parentOrigin = null; // diisi saat UI mengirim hello
@@ -47,9 +80,11 @@
   pickedBox.className = `${P}box ${P}picked`;
   const hint = document.createElement('div');
   hint.className = `${P}hint`;
-  hint.textContent = window.matchMedia?.('(pointer: coarse)').matches
-    ? 'Ketuk elemen atau blok teks untuk dikomentari'
-    : 'Klik elemen atau blok teks untuk dikomentari · Esc untuk batal';
+  // Teks overlay diperbarui lagi bila bahasa berubah (hello bisa datang setelah elemen dirender).
+  function applyTexts() {
+    hint.textContent = tr(window.matchMedia?.('(pointer: coarse)').matches ? 'hintTouch' : 'hintPointer');
+  }
+  applyTexts();
   hint.style.display = 'none';
   const pinLayer = document.createElement('div');
   const ours = (el) => !!el && (el === box || el === pickedBox || el === hint || pinLayer.contains(el));
@@ -220,7 +255,7 @@
     if (e.source !== window.parent) return;
     const d = e.data;
     if (!d || typeof d.type !== 'string' || !d.type.startsWith('prototyper:')) return;
-    if (d.type === 'prototyper:hello') { parentOrigin = e.origin; post('prototyper:page', { page: pagePath() }); return; }
+    if (d.type === 'prototyper:hello') { parentOrigin = e.origin; if (d.lang) setLang(d.lang); post('prototyper:page', { page: pagePath() }); return; }
     if (e.origin !== parentOrigin) return;
     switch (d.type) {
       case 'prototyper:mode': setMode(!!d.on); break;

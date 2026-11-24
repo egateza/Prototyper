@@ -1,9 +1,10 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { MARK_END, MARK_START, prototyperSection, shimCommand, syncAgentFiles, upsertBlock } from '../src/core/agentfiles.js';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { describeAgentFiles, MARK_END, MARK_START, prototyperSection, shimCommand, syncAgentFiles, upsertBlock } from '../src/core/agentfiles.js';
 import { autoSyncAgentFiles, describeAutoSync } from '../src/core/autosync.js';
+import { setLocale, withLocale } from '../src/core/i18n.js';
 import { parseManifest, type Manifest } from '../src/core/manifest.js';
 import { Registry } from '../src/core/registry.js';
 import { buildApp } from '../src/server/app.js';
@@ -187,5 +188,70 @@ describe('sinkron otomatis petunjuk agent', () => {
     expect(existsSync(path.join(config.home, 'bin', 'prototyper.cmd'))).toBe(true);
     expect(describeAutoSync(r)).toEqual(['Petunjuk agent diperbarui: auto-a']);
     expect(describeAutoSync(await autoSyncAgentFiles(config, registry))).toEqual([]);
+  });
+});
+
+describe('petunjuk agent multibahasa', () => {
+  afterEach(() => setLocale('id'));
+
+  it('bagian Prototyper dalam bahasa Inggris setara dengan versi Indonesia', () => {
+    const home = tmpDir('prototyper-home-');
+    const m = staticManifest('pos-sembako', { designSystem: { use: 'sembako-ds' } });
+    const en = prototyperSection(m, home, 'en');
+    const id = prototyperSection(m, home, 'id');
+    expect(en.startsWith(`${MARK_START}\n## Prototyper\n`)).toBe(true);
+    expect(en.endsWith(MARK_END)).toBe(true);
+    expect(en).toContain('### Comments from the user');
+    expect(en).toContain('### Design system');
+    expect(en).toContain('**Do not close comments**');
+    expect(en).toContain('Write comment replies and questions in English.');
+    expect(en).toContain(`"${shimCommand(home)}" <command>`);
+    expect(en).not.toMatch(/Komentar|pengguna|Jangan/);
+    expect(id).toContain('### Komentar dari pengguna');
+    // Perintah yang sama, jumlah baris sama.
+    const cmds = (s: string) => [...s.matchAll(/`(prototyper [^`<"]+)/g)].map((x) => x[1]?.trim());
+    expect(cmds(en)).toEqual(cmds(id));
+    expect(en.split('\n')).toHaveLength(id.split('\n').length);
+  });
+
+  it('bahasa default = bahasa proses (pengaturan), bukan bahasa request', async () => {
+    const dir = tmpDir();
+    await withLocale('en', () => syncAgentFiles(dir, staticManifest()));
+    expect(read(dir, 'AGENTS.md')).toContain('### Komentar dari pengguna');
+    setLocale('en');
+    const r = await syncAgentFiles(dir, staticManifest());
+    expect(r.map((x) => x.action)).toEqual(['updated', 'unchanged']);
+    expect(read(dir, 'AGENTS.md')).toContain('### Comments from the user');
+    expect(read(dir, 'CLAUDE.md').trim()).toBe('@AGENTS.md');
+  });
+
+  it('ganti bahasa id → en → id menulis ulang bagian yang sama tanpa menggandakannya', async () => {
+    const config = testConfig();
+    const registry = new Registry(config.home);
+    const a = makePrototype({ id: 'lang-a', name: 'A', type: 'static' }, { 'index.html': 'x' });
+    await registry.add(a);
+    writeFileSync(path.join(a, 'AGENTS.md'), '# Catatan saya\n\nJangan pakai framework.\n');
+    await syncAgentFiles(a, (await registry.get('lang-a'))!.manifest!, { home: config.home });
+    const idText = read(a, 'AGENTS.md');
+    expect(idText).toContain('### Komentar dari pengguna');
+
+    // Daemon: pengaturan diganti → autoSyncAgentFiles di dalam withLocale(<bahasa baru>).
+    const toEn = await withLocale('en', () => autoSyncAgentFiles(config, registry));
+    expect(toEn.results[0]?.files).toEqual([{ file: 'AGENTS.md', action: 'updated' }]);
+    const enText = read(a, 'AGENTS.md');
+    expect(enText).toContain('### Comments from the user');
+    expect(enText).not.toContain('### Komentar dari pengguna');
+    expect(enText.split(MARK_START)).toHaveLength(2);
+    expect(enText.startsWith('# Catatan saya\n\nJangan pakai framework.\n\n')).toBe(true);
+    expect(withLocale('en', () => describeAutoSync(toEn))).toEqual(['Agent instructions updated: lang-a']);
+    expect((await withLocale('en', () => autoSyncAgentFiles(config, registry))).results[0]?.files[0]?.action).toBe('unchanged');
+
+    await withLocale('id', () => autoSyncAgentFiles(config, registry));
+    expect(read(a, 'AGENTS.md')).toBe(idText);
+  });
+
+  it('describeAgentFiles mengikuti bahasa peminta', () => {
+    expect(withLocale('en', () => describeAgentFiles([{ file: 'AGENTS.md', action: 'unchanged' }]))).toEqual(['AGENTS.md already up to date']);
+    expect(describeAgentFiles([{ file: 'AGENTS.md', action: 'created' }])).toEqual(['AGENTS.md dibuat']);
   });
 });

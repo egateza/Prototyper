@@ -3,6 +3,24 @@ import { isIP } from 'node:net';
 import type { FastifyRequest } from 'fastify';
 import { DEVICE_COOKIE, readCookie, type DeviceStore, type DeviceView } from '../core/devices.js';
 import { AppError } from '../core/errors.js';
+import { defineMessages } from '../core/i18n.js';
+
+const t = defineMessages({
+  id: {
+    unknownHost: 'Host "{host}" tidak dikenal. Tambahkan ke PROTOTYPER_ALLOWED_HOSTS bila memang dipakai.',
+    crossOrigin: 'Request dari halaman lain ditolak',
+    noOrigin: 'Request tanpa header Origin ditolak',
+    notPaired: 'Perangkat ini belum dipasangkan. Buka "Hubungkan HP" di Prototyper pada komputer, lalu pindai QR atau masukkan kodenya.',
+    localOnly: 'Operasi ini hanya bisa dilakukan dari komputer tempat Prototyper berjalan',
+  },
+  en: {
+    unknownHost: 'Unknown host "{host}". Add it to PROTOTYPER_ALLOWED_HOSTS if you really use it.',
+    crossOrigin: 'Requests from other pages are rejected',
+    noOrigin: 'Requests without an Origin header are rejected',
+    notPaired: 'This device is not paired yet. Open "Connect phone" in Prototyper on the computer, then scan the QR code or enter the code.',
+    localOnly: 'This operation is only available on the computer where Prototyper is running',
+  },
+});
 
 /**
  * Siapa yang mengirim request:
@@ -98,23 +116,23 @@ export function accessHook(devices: DeviceStore, allowedHosts: readonly string[]
     if (!isApi && url !== '/pair') return; // Web UI statis
 
     if (!hostAllowed(req.headers.host, allowedHosts)) {
-      throw new AppError('FORBIDDEN', `Host "${hostName(req.headers.host)}" tidak dikenal. Tambahkan ke PROTOTYPER_ALLOWED_HOSTS bila memang dipakai.`);
+      throw new AppError('FORBIDDEN', t('unknownHost', { host: hostName(req.headers.host) }));
     }
     const origin = req.headers.origin;
     if (!SAFE.has(req.method)) {
       if (origin !== undefined && !originMatches(origin, req.headers.host)) {
-        throw new AppError('FORBIDDEN', 'Request dari halaman lain ditolak');
+        throw new AppError('FORBIDDEN', t('crossOrigin'));
       }
       // Dari perangkat lain browser selalu mengirim Origin pada request non-GET.
-      if (!local && origin === undefined) throw new AppError('FORBIDDEN', 'Request tanpa header Origin ditolak');
+      if (!local && origin === undefined) throw new AppError('FORBIDDEN', t('noOrigin'));
     }
 
     if (req.access === 'local' || PUBLIC_API.has(route) || url === '/pair') return;
     if (req.access === 'none') {
-      throw new AppError('UNAUTHORIZED', 'Perangkat ini belum dipasangkan. Buka "Hubungkan HP" di Prototyper pada komputer, lalu pindai QR atau masukkan kodenya.');
+      throw new AppError('UNAUTHORIZED', t('notPaired'));
     }
     if (!SAFE.has(req.method) && !DEVICE_WRITES.has(route)) {
-      throw new AppError('FORBIDDEN', 'Operasi ini hanya bisa dilakukan dari komputer tempat Prototyper berjalan');
+      throw new AppError('FORBIDDEN', t('localOnly'));
     }
   };
 }

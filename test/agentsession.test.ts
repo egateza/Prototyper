@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { agentPrompt } from '../src/core/agent.js';
 import { resumeState, SessionStore, SESSIONS_FILE, type AgentSession } from '../src/core/agentsession.js';
 import { addComment } from '../src/core/comments.js';
+import { withLocale } from '../src/core/i18n.js';
 import type { ResolvedPrototype } from '../src/core/registry.js';
 import { buildApp } from '../src/server/app.js';
 import { makePrototype, testConfig, tmpDir } from './helpers.js';
@@ -42,6 +43,16 @@ describe('resumeState', () => {
     expect(resumeState(s, { ...want, cwd: path.resolve('/proto/b') }).reason).toMatch(/berpindah/);
     expect(resumeState(s, { ...want, hours: 1 }).reason).toMatch(/lebih dari 1 jam/);
     expect(resumeState(s, { ...want, hours: 0 }).reason).toMatch(/dimatikan/);
+  });
+
+  it('alasan dalam bahasa peminta (Inggris)', () => {
+    withLocale('en', () => {
+      expect(resumeState({ ...s, undoneAt: '2026-11-16T10:05:00Z' }, want).reason).toBe('changes from the last run were undone');
+      expect(resumeState(s, { ...want, cwd: path.resolve('/proto/b') }).reason).toBe('the prototype folder was moved');
+      expect(resumeState(s, { ...want, hours: 1 }).reason).toBe('the last session was more than 1 hour ago');
+      expect(resumeState(s, { ...want, hours: 0.5 }).reason).toBe('the last session was more than 0.5 hours ago');
+      expect(resumeState(s, { ...want, hours: 0 }).reason).toBe('turned off (PROTOTYPER_AGENT_RESUME_HOURS=0)');
+    });
   });
 });
 

@@ -1,7 +1,8 @@
 import type { LanMode } from '../core/config.js';
-import type { RunStatus } from '../core/runtime.js';
+import type { LangSetting } from '../core/i18n.js';
 import type { PrototypeView } from '../core/views.js';
 import type { IconState } from './host.js';
+import { t } from './messages.js';
 
 /** State tray + turunan sederhana (ikon, notifikasi). Popup klik kiri & menu klik kanan digambar dari popup.ts. */
 
@@ -45,16 +46,12 @@ export interface TrayState {
   update: UpdateState;
   /** Tema aplikasi Windows; menu klik kanan mengikutinya (seperti prototype mengikuti prefers-color-scheme). */
   theme: 'light' | 'dark';
+  /** Pengaturan bahasa (`fromEnv`: dikunci PROTOTYPER_LANG, tidak bisa diganti dari tray). */
+  lang: { setting: LangSetting; fromEnv: boolean };
+  /** Pilihan bahasa di menu klik kanan sedang dibuka. */
+  langOpen: boolean;
 }
 
-export const STATUS_LABEL: Record<RunStatus, string> = {
-  stopped: 'Berhenti',
-  starting: 'Memulai…',
-  running: 'Berjalan',
-  stopping: 'Menghentikan…',
-  crashed: 'Berhenti tak terduga',
-  failed: 'Gagal',
-};
 
 /** URL Web UI dari perangkat lain (alamat LAN pertama), atau null bila Web UI tidak terbuka ke LAN / tanpa jaringan. */
 export function lanUrl(s: Pick<TrayState, 'url' | 'lanMode' | 'lanAddrs'>): string | null {
@@ -81,23 +78,23 @@ export function lanCopyText(s: Pick<TrayState, 'url' | 'lanMode' | 'lanAddrs' | 
 
 /** Baris keterangan di bawah toggle Mode LAN. */
 export function lanNote(s: Pick<TrayState, 'url' | 'lanMode' | 'lanAddrs' | 'prototypes' | 'daemonUp'>): string {
-  if (!s.daemonUp) return 'Aktif saat daemon dilanjutkan';
+  if (!s.daemonUp) return t('lanNoteResume');
   const addr = s.lanAddrs[0];
-  if (!addr) return 'Tidak ada jaringan';
+  if (!addr) return t('lanNoteNoNetwork');
   if (s.lanMode === 'all') return lanUrl(s)!.replace(/^http:\/\//, '');
   const running = runningOnPort(s);
   if (running.length === 1) return `${addr}:${running[0]!.port}`;
-  return running.length ? `${addr} · ${running.length} prototype` : `${addr} · jalankan prototype dulu`;
+  return running.length ? t('lanNoteRunning', { addr, n: running.length }) : t('lanNoteStartFirst', { addr });
 }
 
 export const isLive = (p: PrototypeView) => p.status === 'running' || p.status === 'starting';
 
 export function summary(s: TrayState): string {
-  if (s.daemonBusy === 'starting') return 'Menyalakan daemon…';
-  if (s.daemonBusy === 'stopping') return 'Menghentikan daemon…';
-  if (!s.daemonUp) return 'Daemon dijeda';
+  if (s.daemonBusy === 'starting') return t('daemonStarting');
+  if (s.daemonBusy === 'stopping') return t('daemonStopping');
+  if (!s.daemonUp) return t('daemonPaused');
   const running = s.prototypes.filter((p) => p.status === 'running').length;
-  return `Daemon aktif · ${running} dari ${s.prototypes.length} prototype berjalan`;
+  return t('summaryActive', { running, total: s.prototypes.length });
 }
 
 export function iconState(s: TrayState): IconState {
@@ -107,7 +104,7 @@ export function iconState(s: TrayState): IconState {
     badge: s.daemonUp ? running : 0,
     dot: updateReady,
     paused: !s.daemonUp,
-    tooltip: `Prototyper — ${s.daemonUp ? `${running} prototype berjalan${s.lanMode === 'all' ? ' · LAN' : s.lanMode === 'prototypes' ? ' · LAN prototype' : ''}` : 'daemon dijeda'}${updateReady ? ' · ada pembaruan' : ''}`,
+    tooltip: `Prototyper — ${s.daemonUp ? `${t('tooltipRunning', { n: running })}${s.lanMode === 'all' ? t('tooltipLanAll') : s.lanMode === 'prototypes' ? t('tooltipLanPrototypes') : ''}` : t('tooltipPaused')}${updateReady ? t('tooltipUpdate') : ''}`,
   };
 }
 
@@ -123,9 +120,10 @@ export function statusNotices(prev: PrototypeView[], next: PrototypeView[]): Not
   for (const p of next) {
     const was = before.get(p.id);
     if (was === undefined || was === p.status) continue;
-    if (p.status === 'running') out.push({ title: p.name, text: `Berjalan di ${p.url?.replace(/^https?:\/\//, '') ?? `port ${p.port}`}` });
-    else if (p.status === 'crashed' || p.status === 'failed') {
-      out.push({ title: p.name, text: `${p.status === 'failed' ? 'Gagal dijalankan' : 'Berhenti tak terduga'}${p.error ? `: ${p.error}` : ''}`.slice(0, 200) });
+    if (p.status === 'running') {
+      out.push({ title: p.name, text: t('noticeRunningAt', { where: p.url?.replace(/^https?:\/\//, '') ?? t('noticePort', { port: p.port }) }) });
+    } else if (p.status === 'crashed' || p.status === 'failed') {
+      out.push({ title: p.name, text: `${t(p.status === 'failed' ? 'noticeFailed' : 'noticeCrashed')}${p.error ? `: ${p.error}` : ''}`.slice(0, 200) });
     }
   }
   return out;

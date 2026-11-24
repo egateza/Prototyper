@@ -1,6 +1,8 @@
 import type { FastifyPluginAsync } from 'fastify';
 import type { LanMode } from '../../core/config.js';
 import type { Access } from '../access.js';
+import type { LangSetting, Locale } from '../../core/i18n.js';
+import type { LangState } from '../../core/settings.js';
 
 export interface HealthResponse {
   status: 'ok';
@@ -20,6 +22,11 @@ export interface HealthResponse {
   access?: Access;
   /** Nama perangkat terpasang (bila access = `device`). */
   device?: string;
+  /**
+   * Bahasa (tidak ada di daemon < 0.5). `setting`: pengaturan pengguna; `locale`: bahasa daemon/OS
+   * (dipakai tray); `requestLocale`: bahasa respons untuk peminta ini (auto → Accept-Language).
+   */
+  lang?: { setting: LangSetting; locale: Locale; requestLocale: Locale; fromEnv: boolean };
 }
 
 /** Mode LAN daemon; daemon lama hanya mengirim `lan` (true = `--lan` = semua). */
@@ -27,7 +34,7 @@ export function healthLanMode(h: Pick<HealthResponse, 'lan' | 'lanMode'>): LanMo
   return h.lanMode ?? (h.lan ? 'all' : 'off');
 }
 
-export const healthRoutes: FastifyPluginAsync<{ startedAt: number; lanMode: LanMode; home: string; workspace: string; dsWorkspace: string; version: () => string }> = async (
+export const healthRoutes: FastifyPluginAsync<{ startedAt: number; lanMode: LanMode; home: string; workspace: string; dsWorkspace: string; version: () => string; lang: () => LangState }> = async (
   app,
   opts,
 ) => {
@@ -45,6 +52,7 @@ export const healthRoutes: FastifyPluginAsync<{ startedAt: number; lanMode: LanM
       dsWorkspace: known ? opts.dsWorkspace : '',
       access: req.access,
       ...(req.device ? { device: req.device.name } : {}),
+      lang: { ...opts.lang(), requestLocale: req.locale },
     };
   });
 };

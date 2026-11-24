@@ -1,5 +1,17 @@
 import { execFile } from 'node:child_process';
 import { AppError, errorMessage } from './errors.js';
+import { defineMessages } from './i18n.js';
+
+const t = defineMessages({
+  id: {
+    enableFailed: 'Gagal mengaktifkan jalankan saat startup: {message}',
+    disableFailed: 'Gagal menonaktifkan jalankan saat startup: {message}',
+  },
+  en: {
+    enableFailed: 'Could not turn on run at startup: {message}',
+    disableFailed: 'Could not turn off run at startup: {message}',
+  },
+});
 
 /**
  * "Jalankan saat startup" untuk tray di Windows: nilai `Prototyper` di
@@ -54,7 +66,7 @@ export class StartupEntry {
       : await this.reg(['delete', RUN_KEY, '/v', RUN_VALUE, '/f']);
     // menghapus nilai yang memang tidak ada bukan kegagalan
     if (r.code !== 0 && (enabled || (await this.get()) !== null)) {
-      throw new AppError('INTERNAL', `Gagal ${enabled ? 'mengaktifkan' : 'menonaktifkan'} jalankan saat startup: ${r.stderr.trim()}`);
+      throw new AppError('INTERNAL', t(enabled ? 'enableFailed' : 'disableFailed', { message: r.stderr.trim() }));
     }
   }
 }

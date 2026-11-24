@@ -4,6 +4,62 @@ import os from 'node:os';
 import path from 'node:path';
 import { AppError, errorMessage } from './errors.js';
 import { killTree } from './runtime.js';
+import { defineMessages } from './i18n.js';
+
+const tr = defineMessages({
+  id: {
+    stateMustBeObject: 'state.{label} harus objek',
+    stateAttrNotAllowed: 'state.{label}: atribut "{attr}" tidak diizinkan',
+    stateTooLarge: 'state terlalu besar',
+    stateMustBeJson: 'state harus JSON',
+    stateRootMustBeObject: 'state harus objek',
+    stateStringsOnly: 'state.{label} hanya berisi string',
+    stateStorageTooLarge: 'state.storage/session terlalu besar',
+    mustBeNumber: '{label} harus berupa angka',
+    badFormat: 'format harus png, jpg, atau pdf',
+    pathMustStartWithSlash: 'path halaman harus diawali "/", mis. /kasir',
+    pathMustBeInPrototype: 'path halaman harus berada di prototype ini',
+    badPaper: 'paper harus screen atau a4',
+    badScheme: 'scheme harus light atau dark',
+    browserDisconnected: 'Koneksi ke browser terputus',
+    browserNotResponding: 'Browser tidak merespons',
+    browserConnectFailed: 'Gagal terhubung ke browser',
+    browserNotReady: 'Browser tidak siap dalam waktu yang ditentukan',
+    browserExited: 'Browser berhenti (exit {code}){tail}',
+    noBrowser:
+      'Ekspor butuh Microsoft Edge, Google Chrome, atau Chromium di komputer ini. Pasang salah satunya, atau isi env PROTOTYPER_BROWSER dengan path browser.',
+    browserLaunchFailed: 'Gagal menjalankan browser untuk ekspor ({bin}): {message}',
+    exportTimeout: 'Ekspor melebihi batas waktu. Coba lagi, atau periksa apakah halaman terus memuat.',
+    exportFailed: 'Ekspor gagal: {message}',
+    pageOpenFailed: 'Halaman tidak bisa dibuka ({error}). Pastikan prototype berjalan.',
+  },
+  en: {
+    stateMustBeObject: 'state.{label} must be an object',
+    stateAttrNotAllowed: 'state.{label}: attribute "{attr}" is not allowed',
+    stateTooLarge: 'state is too large',
+    stateMustBeJson: 'state must be JSON',
+    stateRootMustBeObject: 'state must be an object',
+    stateStringsOnly: 'state.{label} may only contain strings',
+    stateStorageTooLarge: 'state.storage/session is too large',
+    mustBeNumber: '{label} must be a number',
+    badFormat: 'format must be png, jpg, or pdf',
+    pathMustStartWithSlash: 'page path must start with "/", e.g. /checkout',
+    pathMustBeInPrototype: 'page path must be inside this prototype',
+    badPaper: 'paper must be screen or a4',
+    badScheme: 'scheme must be light or dark',
+    browserDisconnected: 'Connection to the browser was lost',
+    browserNotResponding: 'The browser is not responding',
+    browserConnectFailed: 'Could not connect to the browser',
+    browserNotReady: 'The browser was not ready in time',
+    browserExited: 'The browser stopped (exit {code}){tail}',
+    noBrowser:
+      'Export needs Microsoft Edge, Google Chrome, or Chromium on this computer. Install one of them, or set the PROTOTYPER_BROWSER env variable to the browser path.',
+    browserLaunchFailed: 'Could not start the browser for export ({bin}): {message}',
+    exportTimeout: 'Export took too long. Try again, or check whether the page keeps loading.',
+    exportFailed: 'Export failed: {message}',
+    pageOpenFailed: 'The page could not be opened ({error}). Make sure the prototype is running.',
+  },
+});
 
 /**
  * Ekspor halaman prototype ke PDF / PNG / JPG. Halaman dirender ulang oleh browser Chromium
@@ -131,10 +187,10 @@ const MAX_STORAGE = 8_000;
 
 function attrs(v: unknown, label: string): RootAttrs | undefined {
   if (v === undefined || v === null) return undefined;
-  if (typeof v !== 'object' || Array.isArray(v)) throw new AppError('BAD_REQUEST', `state.${label} harus objek`);
+  if (typeof v !== 'object' || Array.isArray(v)) throw new AppError('BAD_REQUEST', tr('stateMustBeObject', { label }));
   const out: RootAttrs = {};
   for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
-    if (!ATTR_NAME.test(k) || typeof x !== 'string' || x.length > 2000) throw new AppError('BAD_REQUEST', `state.${label}: atribut "${k}" tidak diizinkan`);
+    if (!ATTR_NAME.test(k) || typeof x !== 'string' || x.length > 2000) throw new AppError('BAD_REQUEST', tr('stateAttrNotAllowed', { label, attr: k }));
     out[k] = x;
   }
   return out;
@@ -143,14 +199,14 @@ function attrs(v: unknown, label: string): RootAttrs | undefined {
 /** Validasi PageState dari query (JSON). Hanya class/style/data-* dan localStorage string berukuran kecil. */
 export function parsePageState(raw: string | undefined): PageState | null {
   if (raw === undefined || raw === '') return null;
-  if (raw.length > MAX_STATE_JSON) throw new AppError('BAD_REQUEST', 'state terlalu besar');
+  if (raw.length > MAX_STATE_JSON) throw new AppError('BAD_REQUEST', tr('stateTooLarge'));
   let v: unknown;
   try {
     v = JSON.parse(raw);
   } catch {
-    throw new AppError('BAD_REQUEST', 'state harus JSON');
+    throw new AppError('BAD_REQUEST', tr('stateMustBeJson'));
   }
-  if (!v || typeof v !== 'object' || Array.isArray(v)) throw new AppError('BAD_REQUEST', 'state harus objek');
+  if (!v || typeof v !== 'object' || Array.isArray(v)) throw new AppError('BAD_REQUEST', tr('stateRootMustBeObject'));
   const o = v as Record<string, unknown>;
   const state: PageState = {};
   const html = attrs(o.html, 'html');
@@ -161,23 +217,23 @@ export function parsePageState(raw: string | undefined): PageState | null {
   for (const key of ['storage', 'session'] as const) {
     const v = o[key];
     if (v === undefined || v === null) continue;
-    if (typeof v !== 'object' || Array.isArray(v)) throw new AppError('BAD_REQUEST', `state.${key} harus objek`);
+    if (typeof v !== 'object' || Array.isArray(v)) throw new AppError('BAD_REQUEST', tr('stateMustBeObject', { label: key }));
     const st: Record<string, string> = {};
     for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
-      if (typeof x !== 'string') throw new AppError('BAD_REQUEST', `state.${key} hanya berisi string`);
+      if (typeof x !== 'string') throw new AppError('BAD_REQUEST', tr('stateStringsOnly', { label: key }));
       size += k.length + x.length;
       st[k] = x;
     }
     state[key] = st;
   }
-  if (size > MAX_STORAGE) throw new AppError('BAD_REQUEST', 'state.storage/session terlalu besar');
+  if (size > MAX_STORAGE) throw new AppError('BAD_REQUEST', tr('stateStorageTooLarge'));
   return state;
 }
 
 function num(v: string | undefined, def: number, min: number, max: number, label: string): number {
   if (v === undefined || v === '') return def;
   const n = Number(v);
-  if (!Number.isFinite(n)) throw new AppError('BAD_REQUEST', `${label} harus berupa angka`);
+  if (!Number.isFinite(n)) throw new AppError('BAD_REQUEST', tr('mustBeNumber', { label }));
   return Math.max(min, Math.min(max, Math.round(n)));
 }
 
@@ -190,18 +246,18 @@ const bool = (v: string | undefined, def: boolean) => (v === undefined || v === 
 export function parseExportQuery(base: string, q: ExportQuery): CaptureRequest & { page: string } {
   const raw = (q.format ?? 'png').toLowerCase();
   const format = (raw === 'jpg' ? 'jpeg' : raw) as ExportFormat;
-  if (!(format in EXPORT_MIME)) throw new AppError('BAD_REQUEST', 'format harus png, jpg, atau pdf');
+  if (!(format in EXPORT_MIME)) throw new AppError('BAD_REQUEST', tr('badFormat'));
   const page = (q.path ?? '/').trim() || '/';
   if (!page.startsWith('/') || page.startsWith('//') || page.startsWith('/\\')) {
-    throw new AppError('BAD_REQUEST', 'path halaman harus diawali "/", mis. /kasir');
+    throw new AppError('BAD_REQUEST', tr('pathMustStartWithSlash'));
   }
   const origin = new URL(base).origin;
   const url = new URL(page, origin);
-  if (url.origin !== origin) throw new AppError('BAD_REQUEST', 'path halaman harus berada di prototype ini');
+  if (url.origin !== origin) throw new AppError('BAD_REQUEST', tr('pathMustBeInPrototype'));
   const paper = (q.paper ?? 'screen') as PdfPaper;
-  if (paper !== 'screen' && paper !== 'a4') throw new AppError('BAD_REQUEST', 'paper harus screen atau a4');
+  if (paper !== 'screen' && paper !== 'a4') throw new AppError('BAD_REQUEST', tr('badPaper'));
   const scheme = q.scheme || null;
-  if (scheme !== null && scheme !== 'light' && scheme !== 'dark') throw new AppError('BAD_REQUEST', 'scheme harus light atau dark');
+  if (scheme !== null && scheme !== 'light' && scheme !== 'dark') throw new AppError('BAD_REQUEST', tr('badScheme'));
   return {
     page,
     url: url.href,
@@ -260,7 +316,7 @@ class Cdp {
       }
     });
     ws.addEventListener('close', () => {
-      this.closed = new Error('Koneksi ke browser terputus');
+      this.closed = new Error(tr('browserDisconnected'));
       for (const p of this.pending.values()) p.reject(this.closed);
       this.pending.clear();
     });
@@ -271,7 +327,7 @@ class Cdp {
       const ws = new WebSocket(url);
       const t = setTimeout(() => {
         ws.close();
-        reject(new Error('Browser tidak merespons'));
+        reject(new Error(tr('browserNotResponding')));
       }, timeoutMs);
       ws.addEventListener('open', () => {
         clearTimeout(t);
@@ -279,7 +335,7 @@ class Cdp {
       });
       ws.addEventListener('error', () => {
         clearTimeout(t);
-        reject(new Error('Gagal terhubung ke browser'));
+        reject(new Error(tr('browserConnectFailed')));
       });
     });
   }
@@ -350,7 +406,7 @@ function launch(bin: string, userDataDir: string, timeoutMs: number): Promise<{ 
     let buf = '';
     const t = setTimeout(() => {
       void killTree(child, exited);
-      reject(new Error('Browser tidak siap dalam waktu yang ditentukan'));
+      reject(new Error(tr('browserNotReady')));
     }, timeoutMs);
     child.once('error', (err) => {
       clearTimeout(t);
@@ -358,7 +414,7 @@ function launch(bin: string, userDataDir: string, timeoutMs: number): Promise<{ 
     });
     child.once('exit', (code) => {
       clearTimeout(t);
-      reject(new Error(`Browser berhenti (exit ${code})${buf.trim() ? `: ${buf.trim().split('\n').slice(-3).join(' ')}` : ''}`));
+      reject(new Error(tr('browserExited', { code, tail: buf.trim() ? `: ${buf.trim().split('\n').slice(-3).join(' ')}` : '' })));
     });
     child.stderr?.setEncoding('utf8');
     child.stderr?.on('data', (s: string) => {
@@ -443,10 +499,7 @@ export function createCapturer(opts: CapturerOptions = {}): Capturer {
 async function captureOnce(req: CaptureRequest, opts: CapturerOptions): Promise<CaptureResult> {
   const bin = opts.browser === undefined ? findBrowser() : opts.browser;
   if (!bin) {
-    throw new AppError(
-      'NOT_IMPLEMENTED',
-      'Ekspor butuh Microsoft Edge, Google Chrome, atau Chromium di komputer ini. Pasang salah satunya, atau isi env PROTOTYPER_BROWSER dengan path browser.',
-    );
+    throw new AppError('NOT_IMPLEMENTED', tr('noBrowser'));
   }
   const timeoutMs = opts.timeoutMs ?? 60_000;
   const deadline = Date.now() + timeoutMs;
@@ -459,9 +512,9 @@ async function captureOnce(req: CaptureRequest, opts: CapturerOptions): Promise<
       proc = await launch(bin, userDataDir, Math.min(20_000, left()));
       cdp = await Cdp.connect(proc.ws, Math.min(10_000, left()));
     } catch (err) {
-      throw new AppError('INTERNAL', `Gagal menjalankan browser untuk ekspor (${bin}): ${errorMessage(err)}`);
+      throw new AppError('INTERNAL', tr('browserLaunchFailed', { bin, message: errorMessage(err) }));
     }
-    return await withTimeout(render(cdp, req, left), left(), 'Ekspor melebihi batas waktu. Coba lagi, atau periksa apakah halaman terus memuat.');
+    return await withTimeout(render(cdp, req, left), left(), tr('exportTimeout'));
   } finally {
     cdp?.close();
     if (proc) await killTree(proc.child, proc.exited);
@@ -479,7 +532,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, message: string): Promise<T> 
       },
       (e: unknown) => {
         clearTimeout(t);
-        reject(e instanceof AppError ? e : new AppError('INTERNAL', `Ekspor gagal: ${errorMessage(e)}`));
+        reject(e instanceof AppError ? e : new AppError('INTERNAL', tr('exportFailed', { message: errorMessage(e) })));
       },
     );
   });
@@ -510,7 +563,7 @@ async function render(cdp: Cdp, req: CaptureRequest, left: () => number): Promis
 
   const loaded = cdp.waitFor('Page.loadEventFired', sessionId, Math.min(30_000, left()));
   const nav = (await s('Page.navigate', { url: req.url })) as { errorText?: string };
-  if (nav.errorText) throw new AppError('BAD_REQUEST', `Halaman tidak bisa dibuka (${nav.errorText}). Pastikan prototype berjalan.`);
+  if (nav.errorText) throw new AppError('BAD_REQUEST', tr('pageOpenFailed', { error: nav.errorText }));
   await loaded; // waktu habis pun tetap lanjut: ambil apa yang sudah tampil
   if (req.state) await s('Runtime.evaluate', { expression: REAPPLY });
   const ev = (await s('Runtime.evaluate', { expression: SETTLE(req.wait), awaitPromise: true, returnByValue: true })) as {

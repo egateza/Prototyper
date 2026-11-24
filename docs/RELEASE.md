@@ -62,7 +62,7 @@ Sumber tunggal icon adalah `assets/icon.svg`, monogram "Blueprint" beraksen Indi
 
 ## Menerbitkan rilis
 
-1. Naikkan `version` di `package.json` (dan `package-lock.json`), tambahkan entri versi itu di urutan teratas [`web/whatsnew.json`](../web/whatsnew.json) (halaman *Yang baru* di Web UI & tray; tes `whatsnew.test.ts` gagal bila lupa), perbarui `RELEASE-NOTES.md`, lalu commit.
+1. Naikkan `version` di `package.json` (dan `package-lock.json`), tambahkan entri versi itu di urutan teratas [`web/whatsnew.json`](../web/whatsnew.json) (halaman *Yang baru* di Web UI & tray; tes `whatsnew.test.ts` gagal bila lupa). `title` dan `items` ditulis dalam Bahasa Indonesia (bahasa sumber); setiap entri juga wajib punya `translations` untuk setiap bahasa lain di `LOCALES` (`src/core/i18n.ts`), mis. `"translations": { "en": { "title": "…", "items": ["…"] } }` dengan jumlah dan urutan item yang sama (markdown `**…**`/`*…*` dipertahankan), perbarui `RELEASE-NOTES.md`, lalu commit.
 2. `git tag v0.1.0 && git push origin v0.1.0`
 3. Workflow [`release.yml`](../.github/workflows/release.yml) membangun di Windows x64, Linux x64/arm64, dan macOS arm64/x64, lalu membuat GitHub Release beserta `SHA256SUMS.txt`. Tag dengan tanda minus (`v0.2.0-beta.1`) diterbitkan sebagai prerelease.
 

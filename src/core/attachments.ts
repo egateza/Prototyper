@@ -2,6 +2,32 @@ import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { AppError } from './errors.js';
+import { defineMessages } from './i18n.js';
+
+const t = defineMessages({
+  id: {
+    dataRequired: 'data wajib berisi gambar (base64 atau data URL)',
+    notBase64: 'data bukan base64 yang valid',
+    emptyImage: 'Gambar kosong',
+    imageTooLarge: 'Gambar terlalu besar (maks. {mb} MB)',
+    unsupportedFormat: 'Format gambar tidak didukung (pakai PNG, JPG, GIF, WebP, atau SVG)',
+    mustBeArray: 'attachments harus array path lampiran',
+    invalidAttachment: 'Lampiran tidak valid: {value}',
+    tooMany: 'Maksimal {max} lampiran',
+    notFound: 'Lampiran tidak ditemukan: {path} (unggah dulu)',
+  },
+  en: {
+    dataRequired: 'data must contain an image (base64 or data URL)',
+    notBase64: 'data is not valid base64',
+    emptyImage: 'The image is empty',
+    imageTooLarge: 'The image is too large (max. {mb} MB)',
+    unsupportedFormat: 'Unsupported image format (use PNG, JPG, GIF, WebP, or SVG)',
+    mustBeArray: 'attachments must be an array of attachment paths',
+    invalidAttachment: 'Invalid attachment: {value}',
+    tooMany: 'At most {max} attachments',
+    notFound: 'Attachment not found: {path} (upload it first)',
+  },
+});
 
 /**
  * Lampiran gambar komentar/pesan agent, disimpan di folder prototype agar agent bisa membukanya
@@ -68,14 +94,14 @@ export const attachmentFile = (dir: string, name: string) => path.join(dir, ATTA
 
 /** Simpan gambar (base64 atau data URL). */
 export async function saveAttachment(dir: string, data: unknown): Promise<Attachment> {
-  if (typeof data !== 'string' || !data) throw new AppError('BAD_REQUEST', 'data wajib berisi gambar (base64 atau data URL)');
+  if (typeof data !== 'string' || !data) throw new AppError('BAD_REQUEST', t('dataRequired'));
   const b64 = data.replace(/^data:[^,]*;base64,/, '');
-  if (!/^[A-Za-z0-9+/\s]*={0,2}\s*$/.test(b64)) throw new AppError('BAD_REQUEST', 'data bukan base64 yang valid');
+  if (!/^[A-Za-z0-9+/\s]*={0,2}\s*$/.test(b64)) throw new AppError('BAD_REQUEST', t('notBase64'));
   const buf = Buffer.from(b64, 'base64');
-  if (!buf.length) throw new AppError('BAD_REQUEST', 'Gambar kosong');
-  if (buf.length > MAX_ATTACHMENT_BYTES) throw new AppError('BAD_REQUEST', `Gambar terlalu besar (maks. ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB)`);
+  if (!buf.length) throw new AppError('BAD_REQUEST', t('emptyImage'));
+  if (buf.length > MAX_ATTACHMENT_BYTES) throw new AppError('BAD_REQUEST', t('imageTooLarge', { mb: MAX_ATTACHMENT_BYTES / 1024 / 1024 }));
   const ext = sniffImage(buf);
-  if (!ext) throw new AppError('BAD_REQUEST', 'Format gambar tidak didukung (pakai PNG, JPG, GIF, WebP, atau SVG)');
+  if (!ext) throw new AppError('BAD_REQUEST', t('unsupportedFormat'));
   const name = `${createHash('sha256').update(buf).digest('hex').slice(0, 16)}.${ext}`;
   const file = attachmentFile(dir, name);
   await fs.mkdir(path.dirname(file), { recursive: true });
@@ -89,17 +115,17 @@ export async function saveAttachment(dir: string, data: unknown): Promise<Attach
  */
 export async function cleanAttachments(dir: string, v: unknown): Promise<string[]> {
   if (v === undefined || v === null) return [];
-  if (!Array.isArray(v)) throw new AppError('BAD_REQUEST', 'attachments harus array path lampiran');
+  if (!Array.isArray(v)) throw new AppError('BAD_REQUEST', t('mustBeArray'));
   const names: string[] = [];
   for (const x of v) {
     const name = typeof x === 'string' ? attachmentName(x) : null;
-    if (!name) throw new AppError('BAD_REQUEST', `Lampiran tidak valid: ${String(x).slice(0, 100)}`);
+    if (!name) throw new AppError('BAD_REQUEST', t('invalidAttachment', { value: String(x).slice(0, 100) }));
     if (!names.includes(name)) names.push(name);
   }
-  if (names.length > MAX_ATTACHMENTS) throw new AppError('BAD_REQUEST', `Maksimal ${MAX_ATTACHMENTS} lampiran`);
+  if (names.length > MAX_ATTACHMENTS) throw new AppError('BAD_REQUEST', t('tooMany', { max: MAX_ATTACHMENTS }));
   for (const n of names) {
     if (!(await fs.stat(attachmentFile(dir, n)).then((s) => s.isFile(), () => false))) {
-      throw new AppError('BAD_REQUEST', `Lampiran tidak ditemukan: ${attachmentRelPath(n)} (unggah dulu)`);
+      throw new AppError('BAD_REQUEST', t('notFound', { path: attachmentRelPath(n) }));
     }
   }
   return names.map(attachmentRelPath);

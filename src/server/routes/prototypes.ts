@@ -25,6 +25,44 @@ import type { AgentRunner } from '../../core/agent.js';
 import { EXPORT_MIME, exportFileName, parseExportQuery, type Capturer, type ExportQuery } from '../../core/capture.js';
 import { createPrototype, isTemplate, TEMPLATES } from '../../core/scaffold.js';
 import { toView, type PrototypeView } from '../../core/views.js';
+import { defineMessages } from '../../core/i18n.js';
+
+const t = defineMessages({
+  id: {
+    pathBody: 'Body harus berisi { "path": "<folder prototype>" }',
+    folderNotFound: 'Folder tidak ditemukan: {path}',
+    idBody: 'Body harus berisi { "id": "<id-prototype>" }',
+    badTemplate: 'template harus salah satu dari: {choices}',
+    htmlString: 'html harus berupa string',
+    manifestBody: 'Body harus berisi { "manifest": { … } }',
+    stopBeforeRename: 'Hentikan "{id}" dulu sebelum mengganti id-nya',
+    manifestInvalidSync: 'Manifest "{id}" tidak valid; perbaiki dulu sebelum sinkron',
+    localList: '"local" harus berupa daftar path, mis. ["src/styles/tokens.css"]',
+    dsBody: 'Body harus berisi { "id": "<id-desain-sistem>" } atau { "local": ["<path>"] }',
+    exposedBody: 'Body harus berisi { "exposed": true | false }',
+    notRunning: 'Prototype "{id}" belum berjalan. Jalankan dulu (Start / prototyper start {id}).',
+    notDetected: 'Jenis prototype tidak terdeteksi otomatis (tidak ada index.html atau package.json dengan script dev/start).',
+    adjustExample: 'Contoh di bawah perlu disesuaikan sebelum disimpan.',
+    manifestInvalid: 'manifest tidak valid',
+  },
+  en: {
+    pathBody: 'Body must contain { "path": "<prototype folder>" }',
+    folderNotFound: 'Folder not found: {path}',
+    idBody: 'Body must contain { "id": "<prototype-id>" }',
+    badTemplate: 'template must be one of: {choices}',
+    htmlString: 'html must be a string',
+    manifestBody: 'Body must contain { "manifest": { … } }',
+    stopBeforeRename: 'Stop "{id}" before changing its id',
+    manifestInvalidSync: 'Manifest "{id}" is invalid; fix it before syncing',
+    localList: '"local" must be a list of paths, e.g. ["src/styles/tokens.css"]',
+    dsBody: 'Body must contain { "id": "<design-system-id>" } or { "local": ["<path>"] }',
+    exposedBody: 'Body must contain { "exposed": true | false }',
+    notRunning: 'Prototype "{id}" is not running. Start it first (Start / prototyper start {id}).',
+    notDetected: 'The prototype type was not detected automatically (no index.html or package.json with a dev/start script).',
+    adjustExample: 'Adjust the example below before saving.',
+    manifestInvalid: 'invalid manifest',
+  },
+});
 
 export interface RouteContext {
   config: Config;
@@ -83,14 +121,14 @@ export interface DetectResponse {
 
 function requirePath(v: unknown): string {
   if (typeof v !== 'string' || !v.trim()) {
-    throw new AppError('BAD_REQUEST', 'Body harus berisi { "path": "<folder prototype>" }');
+    throw new AppError('BAD_REQUEST', t('pathBody'));
   }
   return path.resolve(v.trim());
 }
 
 async function requireDir(v: unknown): Promise<string> {
   const abs = requirePath(v);
-  if (!(await isDirectory(abs))) throw new AppError('BAD_REQUEST', `Folder tidak ditemukan: ${abs}`);
+  if (!(await isDirectory(abs))) throw new AppError('BAD_REQUEST', t('folderNotFound', { path: abs }));
   return abs;
 }
 
@@ -133,11 +171,11 @@ export const prototypeRoutes: FastifyPluginAsync<{ ctx: RouteContext }> = async 
   }>('/prototypes/new', { bodyLimit: NEW_BODY_LIMIT }, async (req, reply): Promise<NewPrototypeResponse> => {
     const b = req.body ?? {};
     const id = str(b.id);
-    if (!id) throw new AppError('BAD_REQUEST', 'Body harus berisi { "id": "<id-prototype>" }');
+    if (!id) throw new AppError('BAD_REQUEST', t('idBody'));
     if (b.template !== undefined && !isTemplate(b.template)) {
-      throw new AppError('BAD_REQUEST', `template harus salah satu dari: ${TEMPLATES.join(', ')}`);
+      throw new AppError('BAD_REQUEST', t('badTemplate', { choices: TEMPLATES.join(', ') }));
     }
-    if (b.html !== undefined && typeof b.html !== 'string') throw new AppError('BAD_REQUEST', 'html harus berupa string');
+    if (b.html !== undefined && typeof b.html !== 'string') throw new AppError('BAD_REQUEST', t('htmlString'));
     const name = str(b.name);
     const description = str(b.description);
     const dir = str(b.dir);
@@ -209,8 +247,8 @@ export const prototypeRoutes: FastifyPluginAsync<{ ctx: RouteContext }> = async 
           raw: null,
           error: null,
           notes: [
-            'Jenis prototype tidak terdeteksi otomatis (tidak ada index.html atau package.json dengan script dev/start).',
-            'Contoh di bawah perlu disesuaikan sebelum disimpan.',
+            t('notDetected'),
+            t('adjustExample'),
             ...r.notes,
           ],
         };
@@ -232,12 +270,12 @@ export const prototypeRoutes: FastifyPluginAsync<{ ctx: RouteContext }> = async 
   app.put<IdParams & { Body: { manifest?: unknown } | null }>('/prototypes/:id/manifest', async (req) => {
     const p = await registry.require(req.params.id);
     const raw = req.body?.manifest;
-    if (raw === undefined) throw new AppError('BAD_REQUEST', 'Body harus berisi { "manifest": { … } }');
+    if (raw === undefined) throw new AppError('BAD_REQUEST', t('manifestBody'));
     const m = parseManifest(raw);
     if (m.id !== p.id) {
       await registry.assertIdFree(m.id, p.path);
       if (runtime.isActive(p.id)) {
-        throw new AppError('CONFLICT', `Hentikan "${p.id}" dulu sebelum mengganti id-nya`);
+        throw new AppError('CONFLICT', t('stopBeforeRename', { id: p.id }));
       }
     }
     await writeManifest(p.path, raw, { overwrite: true });
@@ -248,7 +286,7 @@ export const prototypeRoutes: FastifyPluginAsync<{ ctx: RouteContext }> = async 
   // Pasang/perbarui petunjuk agent (AGENTS.md + CLAUDE.md), sama dengan `prototyper agents sync <id>`.
   app.post<IdParams>('/prototypes/:id/instructions/sync', async (req): Promise<InstructionsSyncResult> => {
     const p = await registry.require(req.params.id);
-    if (!p.manifest) throw new AppError('BAD_REQUEST', `Manifest "${p.id}" tidak valid; perbaiki dulu sebelum sinkron`);
+    if (!p.manifest) throw new AppError('BAD_REQUEST', t('manifestInvalidSync', { id: p.id }));
     const agentFiles = await syncAgentFiles(p.path, p.manifest, { home: config.home });
     return { id: p.id, agentFiles, prototype: view(await registry.require(p.id)) };
   });
@@ -259,7 +297,7 @@ export const prototypeRoutes: FastifyPluginAsync<{ ctx: RouteContext }> = async 
     for (const p of await registry.list()) {
       results.push(p.manifest
         ? { id: p.id, agentFiles: await syncAgentFiles(p.path, p.manifest, { home: config.home }), error: null }
-        : { id: p.id, agentFiles: [], error: p.error || 'manifest tidak valid' });
+        : { id: p.id, agentFiles: [], error: p.error || t('manifestInvalid') });
     }
     return { results };
   });
@@ -276,13 +314,13 @@ export const prototypeRoutes: FastifyPluginAsync<{ ctx: RouteContext }> = async 
     const b = req.body ?? {};
     if (b.local !== undefined) {
       if (!Array.isArray(b.local) || !b.local.every((x) => typeof x === 'string')) {
-        throw new AppError('BAD_REQUEST', '"local" harus berupa daftar path, mis. ["src/styles/tokens.css"]');
+        throw new AppError('BAD_REQUEST', t('localList'));
       }
       const r = await setLocalDesignSystem(registry, req.params.id, b.local as string[], { home: config.home });
       return { ...r, prototype: view(await registry.require(r.id)) };
     }
     const dsId = str(b.id);
-    if (!dsId) throw new AppError('BAD_REQUEST', 'Body harus berisi { "id": "<id-desain-sistem>" } atau { "local": ["<path>"] }');
+    if (!dsId) throw new AppError('BAD_REQUEST', t('dsBody'));
     const dir = str(b.dir);
     const r = await useDesignSystem(registry, req.params.id, dsId, { home: config.home, link: b.link !== false, ...(dir ? { dir } : {}) });
     return { ...r, prototype: view(await registry.require(r.id)) };
@@ -327,7 +365,7 @@ export const prototypeRoutes: FastifyPluginAsync<{ ctx: RouteContext }> = async 
   app.put<IdParams & { Body: { exposed?: unknown } | null }>('/prototypes/:id/lan', async (req) => {
     const p = await registry.require(req.params.id);
     const exposed = req.body?.exposed;
-    if (typeof exposed !== 'boolean') throw new AppError('BAD_REQUEST', 'Body harus berisi { "exposed": true | false }');
+    if (typeof exposed !== 'boolean') throw new AppError('BAD_REQUEST', t('exposedBody'));
     await runtime.setLanExposed(p, exposed);
     return view(p);
   });
@@ -344,7 +382,7 @@ export const prototypeRoutes: FastifyPluginAsync<{ ctx: RouteContext }> = async 
     const p = await registry.require(req.params.id);
     const info = runtime.info(p.id);
     if (info.status !== 'running' || info.port === null) {
-      throw new AppError('CONFLICT', `Prototype "${p.id}" belum berjalan. Jalankan dulu (Start / prototyper start ${p.id}).`);
+      throw new AppError('CONFLICT', t('notRunning', { id: p.id }));
     }
     const r = parseExportQuery(`http://localhost:${info.port}`, req.query ?? {});
     const out = await ctx.capture(r);

@@ -8,6 +8,8 @@ import type { HostEvent, TrayHostLike } from './host.js';
 import type { LanMode } from '../core/config.js';
 import { iconState, isLive, lanCopyText, lanUrl, statusNotices, summary, type LanScope, type TrayState } from './menu.js';
 import { LIST_PAGE, menuLayout, popupLayout } from './popup.js';
+import { getLocale, isLangSetting, isLocale, setLocale, type LangSetting, type Locale } from '../core/i18n.js';
+import { langName, t } from './messages.js';
 
 /** Akses ke daemon (lewat HTTP di aplikasi asli, tiruan di tes). */
 export interface DaemonApi {
@@ -24,6 +26,23 @@ export interface DaemonStatus {
   prototypes: PrototypeView[];
   /** Mode LAN daemon yang sedang berjalan. */
   lanMode: LanMode;
+  /** Bahasa daemon (`lang.locale` di /api/health; tidak ada di daemon lama). Tray mengikutinya. */
+  locale?: Locale;
+  /** Pengaturan bahasa daemon (tidak ada di daemon lama). */
+  lang?: { setting: LangSetting; fromEnv: boolean };
+}
+
+/** Hasil membaca/mengganti pengaturan bahasa. */
+export interface LangInfo {
+  setting: LangSetting;
+  locale: Locale;
+  fromEnv: boolean;
+}
+
+/** Pengaturan bahasa dari tray: lewat daemon bila berjalan (agar daemon & petunjuk agent ikut), selain itu settings.json. */
+export interface LanguageControl {
+  get(): LangInfo;
+  set(setting: LangSetting, daemonUp: boolean): Promise<LangInfo>;
 }
 
 export interface Updater {
@@ -46,6 +65,8 @@ export interface TrayDeps {
   selfUpdate: boolean;
   updater: Updater;
   startup: StartupControl | null;
+  /** Pengaturan bahasa (menu klik kanan → Bahasa). Tanpa ini menu bahasa tetap tampil tapi tidak bisa dipakai. */
+  language?: LanguageControl;
   openUrl: (url: string) => void;
   /** File pengaturan tray (notifikasi). */
   settingsFile: string;
@@ -89,9 +110,14 @@ interface Settings {
 }
 
 const LAN_MODES: readonly LanMode[] = ['off', 'prototypes', 'all'];
-const LAN_LABEL: Record<LanScope, string> = { all: 'Web UI + prototype', prototypes: 'prototype saja' };
+const lanLabel = (scope: LanScope): string => t(scope === 'all' ? 'lanLabelAll' : 'lanLabelPrototypes');
 
 export type AppApplyResult = { live: true; version: string } | { live: false };
+
+function initialLang(c: LanguageControl | undefined): TrayState['lang'] {
+  const l = c?.get();
+  return l ? { setting: l.setting, fromEnv: l.fromEnv } : { setting: 'auto', fromEnv: false };
+}
 
 /** Hash halaman "Yang baru" di Web UI (lihat `WHATSNEW` di web/app.js). */
 export const WHATSNEW_HASH = '#!whatsnew';
@@ -119,6 +145,8 @@ export class TrayController {
       lanScope: d.lanMode === 'prototypes' ? 'prototypes' : 'all',
       lanAddrs: [],
       theme: d.theme ?? 'light',
+      lang: initialLang(d.language),
+      langOpen: false,
       update: { status: 'idle', current: d.version, latest: null, progress: 0, checkedAt: null, error: null, selfUpdate: d.selfUpdate, restart: true },
     };
     d.host.on('event', (e: HostEvent) => void this.onEvent(e));
@@ -170,6 +198,9 @@ export class TrayController {
       const st = await this.d.api.status().catch(() => null);
       const s = this.state;
       if (st) {
+        // bahasa diganti di Web UI: tray ikut tanpa restart (render di bawah mengirim ulang menu/popup)
+        if (isLocale(st.locale) && st.locale !== getLocale()) setLocale(st.locale);
+        if (st.lang) s.lang = { setting: st.lang.setting, fromEnv: st.lang.fromEnv };
         if (s.daemonUp) for (const n of statusNotices(s.prototypes, st.prototypes)) this.notify(n.title, n.text);
         s.prototypes = st.prototypes;
         // daemon bisa dinyalakan dari luar tray (CLI) dengan mode lain: tampilkan mode sebenarnya
@@ -221,6 +252,9 @@ export class TrayController {
         return this.toggleStartup();
       case 'notif':
         return this.toggleNotifications();
+      case 'langMenu':
+        this.state.langOpen = !this.state.langOpen;
+        return;
       case 'lan':
         return this.setLanMode(this.state.lanMode === 'off' ? this.state.lanScope : 'off');
       case 'lan:all':
@@ -235,6 +269,29 @@ export class TrayController {
       case 'quit':
         return this.quit();
     }
+    if (id.startsWith('lang:')) return this.setLanguage(id.slice('lang:'.length));
+  }
+
+  /** Menu klik kanan → Bahasa → pilihan: simpan pengaturan, lalu tray langsung memakai bahasa baru. */
+  private async setLanguage(value: string): Promise<void> {
+    const s = this.state;
+    s.langOpen = false;
+    if (!isLangSetting(value) || !this.d.language) return;
+    if (s.lang.fromEnv) {
+      this.notify(t('langTitle'), t('langLocked', { value: s.lang.setting }), 'error');
+      return;
+    }
+    if (value === s.lang.setting) return;
+    let r: LangInfo;
+    try {
+      r = await this.d.language.set(value, s.daemonUp);
+    } catch (err) {
+      this.notify(t('langChangeFailed'), errorMessage(err), 'error');
+      return;
+    }
+    setLocale(r.locale);
+    s.lang = { setting: r.setting, fromEnv: r.fromEnv };
+    this.notify(t('langTitle'), t('langChanged', { name: langName(r.setting) }));
   }
 
   /** "Tampilkan lagi" / "lebih sedikit": spinner sebentar dulu, baru daftar diubah (host menganimasikan tingginya). */
@@ -252,7 +309,7 @@ export class TrayController {
   /** `hash`: halaman tertentu di Web UI, mis. `WHATSNEW_HASH`. */
   private openUi(hash = ''): void {
     if (!this.state.daemonUp) {
-      this.notify('Daemon dijeda', 'Lanjutkan daemon dulu untuk membuka Prototyper.', 'error');
+      this.notify(t('daemonPaused'), t('openNeedsDaemon'), 'error');
       return;
     }
     this.d.openUrl(`${this.state.url}${hash ? `/${hash}` : ''}`);
@@ -265,7 +322,7 @@ export class TrayController {
       return;
     }
     if (!this.state.daemonUp) {
-      this.notify('Daemon dijeda', 'Lanjutkan daemon dulu untuk menjalankan prototype.', 'error');
+      this.notify(t('daemonPaused'), t('actionNeedsDaemon'), 'error');
       return;
     }
     await this.d.api.action(id, action);
@@ -277,13 +334,13 @@ export class TrayController {
     for (const p of targets) {
       await this.d.api.action(p.id, 'start').catch(() => failed.push(p.name));
     }
-    if (failed.length) this.notify('Sebagian gagal dijalankan', failed.join(', '), 'error');
+    if (failed.length) this.notify(t('someFailedStart'), failed.join(', '), 'error');
   }
 
   private async stopAll(): Promise<void> {
     const targets = this.state.prototypes.filter((p) => isLive(p));
     for (const p of targets) await this.d.api.action(p.id, 'stop').catch(() => undefined);
-    this.notify('Prototyper', 'Semua prototype dihentikan.');
+    this.notify('Prototyper', t('allStopped'));
   }
 
   private async pauseDaemon(): Promise<void> {
@@ -293,7 +350,7 @@ export class TrayController {
       await this.d.api.shutdown();
       this.state.daemonUp = false;
       this.markStopped();
-      this.notify('Prototyper', 'Daemon dijeda. Semua prototype dihentikan.');
+      this.notify('Prototyper', t('pausedAllStopped'));
     } finally {
       this.state.daemonBusy = null;
       this.render();
@@ -306,10 +363,10 @@ export class TrayController {
     try {
       await this.d.api.ensure({ lanMode: this.state.lanMode });
       this.state.daemonUp = true;
-      if (announce) this.notify('Prototyper', 'Daemon berjalan kembali.');
+      if (announce) this.notify('Prototyper', t('resumed'));
     } catch (err) {
       this.state.daemonUp = false;
-      this.notify('Daemon gagal dinyalakan', errorMessage(err), 'error');
+      this.notify(t('daemonStartFailed'), errorMessage(err), 'error');
     } finally {
       this.state.daemonBusy = null;
       await this.poll();
@@ -328,17 +385,14 @@ export class TrayController {
     const next = !this.state.startup;
     await this.d.startup.set(next);
     this.state.startup = next;
-    this.notify(
-      'Jalankan saat startup',
-      next ? 'Diaktifkan — Prototyper otomatis berjalan di tray saat Windows mulai.' : 'Dinonaktifkan — jalankan manual dari prototyper.exe.',
-    );
+    this.notify(t('runAtStartup'), t(next ? 'startupOn' : 'startupOff'));
     this.render();
   }
 
   private async toggleNotifications(): Promise<void> {
     this.state.notifications = !this.state.notifications;
     await this.saveSettings();
-    if (this.state.notifications) this.notify('Notifikasi', 'Notifikasi tray diaktifkan.');
+    if (this.state.notifications) this.notify(t('notifTitle'), t('notifOn'));
     this.render();
   }
 
@@ -364,7 +418,7 @@ export class TrayController {
     await this.saveSettings();
     this.refreshLanAddrs();
     if (!s.daemonUp) {
-      this.notify('Mode LAN', next === 'off' ? 'Dimatikan.' : `${LAN_LABEL[next]} — berlaku saat daemon dilanjutkan.`);
+      this.notify(t('lanMode'), next === 'off' ? t('lanTurnedOff') : t('lanPending', { scope: lanLabel(next) }));
       return this.render();
     }
     const restore = s.prototypes.filter((p) => isLive(p)).map((p) => p.id);
@@ -380,7 +434,7 @@ export class TrayController {
       s.daemonUp = true;
     } catch (err) {
       s.daemonBusy = null;
-      this.notify('Gagal mengubah mode LAN', errorMessage(err), 'error');
+      this.notify(t('lanChangeFailed'), errorMessage(err), 'error');
       await this.poll();
       return;
     }
@@ -389,29 +443,26 @@ export class TrayController {
     s.daemonBusy = null;
     await this.poll();
     const addr = s.lanAddrs[0];
-    const firewall = 'Bila Windows meminta izin firewall, izinkan untuk jaringan yang sedang dipakai (Private atau Public).';
+    const firewall = t('firewall');
     if (next === 'off') {
-      this.notify('Mode LAN dimatikan', 'Prototyper & prototype hanya bisa dibuka dari komputer ini.');
+      this.notify(t('lanOffTitle'), t('lanOffText'));
     } else if (!addr) {
-      this.notify(`Mode LAN aktif (${LAN_LABEL[next]})`, 'Komputer ini belum terhubung ke jaringan. Alamat LAN muncul setelah tersambung.');
+      this.notify(t('lanOnScopeTitle', { scope: lanLabel(next) }), t('lanNoNetwork'));
     } else if (next === 'all') {
-      this.notify('Mode LAN aktif', `Buka ${lanUrl(s)} dari HP di jaringan yang sama, lalu pasangkan lewat ikon HP di Web UI komputer ini. ${firewall}`);
+      this.notify(t('lanOnTitle'), t('lanOnAll', { url: lanUrl(s), firewall }));
     } else {
-      this.notify(
-        'Mode LAN aktif (prototype saja)',
-        `Prototype bisa dibuka dari perangkat lain di http://${addr}:<port prototype>. Web UI Prototyper tetap hanya di komputer ini. ${firewall}`,
-      );
+      this.notify(t('lanOnScopeTitle', { scope: lanLabel(next) }), t('lanOnPrototypes', { addr, firewall }));
     }
-    if (failed.length) this.notify('Sebagian gagal dijalankan lagi', failed.join(', '), 'error');
+    if (failed.length) this.notify(t('someFailedRestart'), failed.join(', '), 'error');
   }
 
   private copyLanUrl(): void {
     const text = this.state.daemonUp ? lanCopyText(this.state) : null;
     if (!text) return;
-    if (!this.d.copyText) return this.notify('Alamat LAN', text);
+    if (!this.d.copyText) return this.notify(t('lanAddress'), text);
     this.d.copyText(text);
     const lines = text.split('\r\n');
-    this.notify('Alamat LAN disalin', lines.length > 1 ? `${lines.length} alamat prototype — tempel di perangkat lain.` : `${text} — tempel di browser perangkat lain.`);
+    this.notify(t('lanCopied'), lines.length > 1 ? t('lanCopiedMany', { n: lines.length }) : t('lanCopiedOne', { text }));
   }
 
   // ===== Pembaruan =====
@@ -431,16 +482,16 @@ export class TrayController {
       u.selfUpdate = this.d.selfUpdate && c.asset !== null;
       if (c.available) {
         u.status = 'available';
-        this.notify('Pembaruan tersedia', `Prototyper ${c.latest.version} sudah rilis (sekarang ${c.current}).`);
+        this.notify(t('updAvailable'), t('updAvailableText', { latest: c.latest.version, current: c.current }));
       } else {
         u.status = 'uptodate';
-        if (!silent) this.notify('Tidak ada pembaruan', `Prototyper ${c.current} sudah versi terbaru.`);
+        if (!silent) this.notify(t('updNone'), t('updNoneText', { current: c.current }));
       }
     } catch (err) {
       u.status = 'error';
       u.checkedAt = new Date();
       u.error = errorMessage(err);
-      if (!silent) this.notify('Gagal memeriksa pembaruan', u.error, 'error');
+      if (!silent) this.notify(t('updCheckFailed'), u.error, 'error');
     }
     this.render();
   }
@@ -472,15 +523,10 @@ export class TrayController {
       });
       u.status = 'ready';
       u.restart = !(c.kind === 'app' && this.d.applyApp && this.isWebOnly(this.downloaded));
-      this.notify(
-        'Pembaruan siap dipasang',
-        u.restart
-          ? `Pilih "Mulai ulang" di tray untuk memasang ${c.latest.version}.`
-          : `Pilih "Pasang" di tray untuk memasang ${c.latest.version}. Prototype tetap berjalan.`,
-      );
+      this.notify(t('updReady'), t(u.restart ? 'updReadyRestart' : 'updReadyLive', { version: c.latest.version }));
     } catch (err) {
       u.status = 'available';
-      this.notify('Gagal mengunduh pembaruan', errorMessage(err), 'error');
+      this.notify(t('updDownloadFailed'), errorMessage(err), 'error');
     }
     this.render();
   }
@@ -496,13 +542,13 @@ export class TrayController {
   private async installUpdate(file: string, check: UpdateCheck): Promise<void> {
     if (check.kind === 'app' && this.d.applyApp && this.d.relaunch) return this.applyAppUpdate(file, check, this.d.applyApp, this.d.relaunch);
     const restore = this.state.prototypes.filter((p) => p.status === 'running').map((p) => p.id);
-    this.notify('Memasang pembaruan…', 'Prototyper akan dimulai ulang.');
+    this.notify(t('updInstalling'), t('updWillRestart'));
     this.stopTimers();
     if (this.state.daemonUp) await this.d.api.shutdown(); // daemon versi lama harus berhenti dulu
     try {
       await this.d.install(file, restore, check);
     } catch (err) {
-      this.notify('Gagal memasang pembaruan', errorMessage(err), 'error');
+      this.notify(t('updInstallFailed'), errorMessage(err), 'error');
       await this.resumeDaemon(false);
       for (const id of restore) await this.d.api.action(id, 'start').catch(() => undefined);
       this.timers.push(setInterval(() => void this.poll(), this.d.pollMs ?? 2000));
@@ -527,7 +573,7 @@ export class TrayController {
       r = await applyApp(file, check);
     } catch (err) {
       // belum ada yang berubah: daemon & prototype tetap berjalan
-      this.notify('Gagal memasang pembaruan', errorMessage(err), 'error');
+      this.notify(t('updInstallFailed'), errorMessage(err), 'error');
       u.status = 'available';
       this.downloaded = null;
       this.render();
@@ -539,12 +585,12 @@ export class TrayController {
       u.status = 'uptodate';
       this.downloaded = null;
       this.check = null;
-      this.notify('Prototyper diperbarui', `Versi ${r.version} terpasang tanpa memulai ulang. Muat ulang halaman Prototyper di browser.`);
+      this.notify(t('updUpdated'), t('updUpdatedLive', { version: r.version }));
       this.render();
       return;
     }
     const restore = this.state.prototypes.filter((p) => p.status === 'running').map((p) => p.id);
-    this.notify('Memasang pembaruan…', 'Prototyper akan dimulai ulang.');
+    this.notify(t('updInstalling'), t('updWillRestart'));
     this.stopTimers();
     if (this.state.daemonUp) await this.d.api.shutdown().catch(() => undefined);
     relaunch(restore);

@@ -3,6 +3,28 @@ import QRCode from 'qrcode';
 import type { LanMode } from '../../core/config.js';
 import { deviceCookie, type DeviceStore, type DeviceView } from '../../core/devices.js';
 import { AppError } from '../../core/errors.js';
+import { defineMessages } from '../../core/i18n.js';
+
+const t = defineMessages({
+  id: {
+    localOnly: 'Kelola perangkat hanya dari komputer tempat Prototyper berjalan',
+    lanOff: 'Web UI belum terbuka ke jaringan. Nyalakan mode LAN (tray: Mode LAN → Web UI + prototype, atau prototyper serve --lan) lalu coba lagi.',
+    noLan: 'Komputer ini tidak terhubung ke jaringan (tidak ada alamat LAN).',
+    nameBody: 'Body harus berisi { "name": string }',
+    localNoPair: 'Komputer ini tidak perlu dipasangkan',
+    codeBody: 'Body harus berisi { "code": string }',
+    pairFailed: 'Pairing gagal',
+  },
+  en: {
+    localOnly: 'Devices can only be managed on the computer where Prototyper is running',
+    lanOff: 'The Web UI is not open to the network yet. Turn on LAN mode (tray: LAN mode → Web UI + prototypes, or prototyper serve --lan) and try again.',
+    noLan: 'This computer is not connected to a network (no LAN address).',
+    nameBody: 'Body must contain { "name": string }',
+    localNoPair: 'This computer does not need to be paired',
+    codeBody: 'Body must contain { "code": string }',
+    pairFailed: 'Pairing failed',
+  },
+});
 
 export interface PairingTarget {
   url: string;
@@ -31,10 +53,9 @@ export interface DevicesRouteOptions {
 }
 
 function requireLocal(req: FastifyRequest): void {
-  if (req.access !== 'local') throw new AppError('FORBIDDEN', 'Kelola perangkat hanya dari komputer tempat Prototyper berjalan');
+  if (req.access !== 'local') throw new AppError('FORBIDDEN', t('localOnly'));
 }
 
-const LAN_OFF = 'Web UI belum terbuka ke jaringan. Nyalakan mode LAN (tray: Mode LAN → Web UI + prototype, atau prototyper serve --lan) lalu coba lagi.';
 
 /**
  * Pairing perangkat lain (HP) untuk mode LAN.
@@ -51,9 +72,9 @@ export const devicesRoutes: FastifyPluginAsync<DevicesRouteOptions> = async (app
 
   app.post('/api/devices/pairing', async (req): Promise<PairingResponse> => {
     requireLocal(req);
-    if (opts.lanMode !== 'all') throw new AppError('CONFLICT', LAN_OFF);
+    if (opts.lanMode !== 'all') throw new AppError('CONFLICT', t('lanOff'));
     const addrs = opts.addresses();
-    if (!addrs.length) throw new AppError('CONFLICT', 'Komputer ini tidak terhubung ke jaringan (tidak ada alamat LAN).');
+    if (!addrs.length) throw new AppError('CONFLICT', t('noLan'));
     const p = devices.startPairing();
     const targets = await Promise.all(
       addrs.slice(0, 4).map(async (a) => {
@@ -79,7 +100,7 @@ export const devicesRoutes: FastifyPluginAsync<DevicesRouteOptions> = async (app
   app.patch<{ Params: { id: string }; Body: { name?: unknown } | null }>('/api/devices/:id', async (req) => {
     requireLocal(req);
     const name = req.body?.name;
-    if (typeof name !== 'string') throw new AppError('BAD_REQUEST', 'Body harus berisi { "name": string }');
+    if (typeof name !== 'string') throw new AppError('BAD_REQUEST', t('nameBody'));
     return devices.rename(req.params.id, name);
   });
 
@@ -90,9 +111,9 @@ export const devicesRoutes: FastifyPluginAsync<DevicesRouteOptions> = async (app
   });
 
   app.post<{ Body: { code?: unknown } | null }>('/api/devices/pair', async (req, reply) => {
-    if (req.access === 'local') throw new AppError('BAD_REQUEST', 'Komputer ini tidak perlu dipasangkan');
+    if (req.access === 'local') throw new AppError('BAD_REQUEST', t('localNoPair'));
     const code = req.body?.code;
-    if (typeof code !== 'string' || !code.trim()) throw new AppError('BAD_REQUEST', 'Body harus berisi { "code": string }');
+    if (typeof code !== 'string' || !code.trim()) throw new AppError('BAD_REQUEST', t('codeBody'));
     const { device, token } = await devices.pair(code, req.headers['user-agent']);
     reply.header('set-cookie', deviceCookie(token));
     return { device };
@@ -105,7 +126,7 @@ export const devicesRoutes: FastifyPluginAsync<DevicesRouteOptions> = async (app
       reply.header('set-cookie', deviceCookie(token));
       return reply.redirect('/');
     } catch (err) {
-      const msg = err instanceof AppError ? err.message : 'Pairing gagal';
+      const msg = err instanceof AppError ? err.message : t('pairFailed');
       return reply.redirect(`/?pair-error=${encodeURIComponent(msg)}`);
     }
   });

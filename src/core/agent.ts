@@ -7,7 +7,9 @@ import { DEFAULT_RESUME_HOURS, resumeState, SessionStore, type ResumeState } fro
 import { Checkpoints, removeCheckpoints, type FileChange, type UndoResult } from './checkpoint.js';
 import { attachmentsOf, listComments, noteUndo } from './comments.js';
 import type { Config } from './config.js';
+import { prompt as pr, t } from './agentmessages.js';
 import { AppError, errorMessage } from './errors.js';
+import { getLocale, getProcessLocale, withLocale, type Locale } from './i18n.js';
 import { LogStore } from './logs.js';
 import type { ResolvedPrototype } from './registry.js';
 import { killTree } from './runtime.js';
@@ -84,6 +86,11 @@ export interface AgentRunOptions {
   resume?: boolean;
   /** Internal: prompt untuk sesi lanjutan. */
   resumed?: boolean;
+  /**
+   * Internal: bahasa peminta yang memicu run (default `getLocale()` saat run dimulai). Dipakai untuk
+   * prompt (agent diminta membalas dalam bahasa ini) dan log run, termasuk retry setelah proses keluar.
+   */
+  locale?: Locale;
 }
 
 /** Perintah yang dijalankan: executable + argumen awal (mis. node + skrip JS di balik shim npm). */
@@ -99,10 +106,11 @@ interface Preset {
   name: string;
   exe: string;
   support: 'tested' | 'experimental';
-  install: string;
-  permissions: string;
+  /** Kunci pesan (agentmessages.ts) untuk cara install dan batas izin; diterjemahkan saat ditampilkan. */
+  install: 'installClaude' | 'installCodex' | 'installGemini' | 'installCopilot';
+  permissions: 'permClaude' | 'permCodex' | 'permGemini' | 'permCopilot';
   output: 'claude-stream' | 'text';
-  args(prompt: string, opts: { apikey: boolean; env: NodeJS.ProcessEnv; supports(flag: string): boolean; images?: readonly string[] }): string[];
+  args(prompt: string, opts: { apikey: boolean; env: NodeJS.ProcessEnv; supports(flag: string): boolean; images?: readonly string[]; locale?: Locale }): string[];
   /** true bila gambar lampiran perlu diberikan lewat argumen (agent tidak bisa membuka gambar dengan tool baca file). */
   imageArgs?: boolean;
   /** Flag yang belum ada di versi lama agent: dicek lewat `--help` dan hanya dipakai bila didukung. */
@@ -113,26 +121,16 @@ interface Preset {
 
 const CLAUDE_TOOLS = ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(prototyper *)', 'PowerShell(prototyper *)'];
 
-const BASE_RULES = [
-  'Kamu dijalankan oleh Prototyper tanpa sesi interaktif; pengguna membaca hasilmu di Web UI Prototyper.',
-  'Pengguna tidak bisa membalas jawaban akhirmu. Untuk bertanya, gunakan `prototyper comments ask` (dengan opsi) atau `prototyper comments reply` pada komentar terkait.',
-  'Hanya ubah file di folder kerja ini. Jangan ubah prototyper.json, folder .prototyper/, AGENTS.md, atau CLAUDE.md.',
-  'Selalu baca isi file yang relevan sebelum mengeditnya.',
-  'Jangan menutup komentar dengan `prototyper comments resolve`; laporkan hasil dengan `prototyper comments reply` dan biarkan pengguna yang menutupnya.',
-  "Teks balasan/pertanyaan yang lebih dari satu baris jangan dikirim sebagai argumen (di Windows terpotong di baris pertama); kirim lewat stdin: `prototyper comments reply <id> <commentId> --file - <<'EOF'` … `EOF`.",
-];
+const BASE_RULES = ['rule1', 'rule2', 'rule3', 'rule4', 'rule5', 'rule6', 'ruleLanguage'] as const;
 
 /**
  * Aturan per agent. Agent dengan tool baca/edit khusus (Claude, Gemini, Copilot) cukup diberi shell
  * `prototyper`. Codex membaca file lewat shell dan mengedit dengan apply_patch, jadi shell harus
  * boleh dipakai untuk membaca/mencari; batas tulisnya dijaga sandbox workspace-write.
  */
-export function agentRules(id: AgentId): string {
-  const extra =
-    id === 'codex'
-      ? 'Gunakan perintah shell untuk membaca dan mencari file di folder ini (mis. `Get-Content`, `rg`), `apply_patch` untuk mengedit, dan `prototyper …` untuk komentar. Jangan menginstal paket atau mengakses jaringan.'
-      : 'Gunakan tool baca/edit file untuk membaca dan mengubah file. Perintah shell yang boleh dipakai hanya `prototyper …`.';
-  return [...BASE_RULES, extra].join(' ');
+export function agentRules(id: AgentId, locale: Locale = getLocale()): string {
+  const extra = id === 'codex' ? ('ruleCodex' as const) : ('ruleTools' as const);
+  return [...BASE_RULES, extra].map((k) => pr.in(locale, k)).join(' ');
 }
 
 export const PRESETS: Record<AgentId, Preset> = {
@@ -141,19 +139,19 @@ export const PRESETS: Record<AgentId, Preset> = {
     name: 'Claude Code',
     exe: 'claude',
     support: 'tested',
-    install: 'Install Claude Code (https://code.claude.com), lalu login dengan `claude`.',
-    permissions: 'baca/edit file + perintah `prototyper`; lainnya ditolak otomatis (--permission-mode dontAsk)',
+    install: 'installClaude',
+    permissions: 'permClaude',
     output: 'claude-stream',
     // --permission-prompts baru ada di Claude Code versi baru; versi lama menolaknya ("unknown option").
     // Tanpa flag itu dontAsk tetap menolak izin yang tidak diizinkan.
     optionalFlags: ['--permission-prompts'],
-    args: (prompt, { apikey, supports }) => [
+    args: (prompt, { apikey, supports, locale }) => [
       '-p', prompt,
       '--output-format', 'stream-json', '--verbose',
       '--permission-mode', 'dontAsk',
       ...(supports('--permission-prompts') ? ['--permission-prompts', 'none'] : []),
       '--allowedTools', CLAUDE_TOOLS.join(','),
-      '--append-system-prompt', agentRules('claude'),
+      '--append-system-prompt', agentRules('claude', locale),
       ...(apikey ? ['--bare'] : []),
     ],
     session: { fresh: (id) => ['--session-id', id], resume: (id) => ['--resume', id] },
@@ -163,21 +161,21 @@ export const PRESETS: Record<AgentId, Preset> = {
     name: 'OpenAI Codex',
     exe: 'codex',
     support: 'tested',
-    install: '`npm install -g @openai/codex`, lalu `codex login` (Sign in with ChatGPT).',
-    permissions: 'sandbox workspace-write: perintah berjalan di sandbox, hanya bisa menulis di folder prototype, tanpa jaringan; config.toml tidak dimuat (--ignore-user-config) kecuali [windows] sandbox',
+    install: 'installCodex',
+    permissions: 'permCodex',
     output: 'text',
     // --ignore-user-config: model/MCP dari config.toml (mis. milik aplikasi Codex desktop) bisa tidak
     // didukung CLI dengan login ChatGPT; login tetap dipakai. Model bisa dipilih lewat PROTOTYPER_AGENT_CODEX_MODEL.
     // Codex membaca file lewat shell sehingga tidak bisa melihat gambar: lampiran diberikan lewat --image.
     // `--` sebelum prompt agar prompt tidak ikut terbaca sebagai nilai --image.
     imageArgs: true,
-    args: (prompt, { env, images = [] }) => [
+    args: (prompt, { env, images = [], locale }) => [
       'exec', '--ignore-user-config', '--sandbox', 'workspace-write', '--skip-git-repo-check',
       ...((sb) => (sb ? ['-c', `windows.sandbox="${sb}"`] : []))(codexWindowsSandbox(env)),
       ...(env.PROTOTYPER_AGENT_CODEX_MODEL ? ['-m', env.PROTOTYPER_AGENT_CODEX_MODEL] : []),
       ...images.flatMap((f) => ['--image', f]),
       ...(images.length ? ['--'] : []),
-      `${prompt}\n\n${agentRules('codex')}`,
+      `${prompt}\n\n${agentRules('codex', locale)}`,
     ],
   },
   gemini: {
@@ -185,20 +183,20 @@ export const PRESETS: Record<AgentId, Preset> = {
     name: 'Gemini CLI',
     exe: 'gemini',
     support: 'experimental',
-    install: '`npm install -g @google/gemini-cli`, lalu jalankan `gemini` sekali untuk login.',
-    permissions: 'edit file disetujui otomatis (--approval-mode auto_edit); shell hanya `prototyper`',
+    install: 'installGemini',
+    permissions: 'permGemini',
     output: 'text',
-    args: (prompt) => ['-p', `${prompt}\n\n${agentRules('gemini')}`, '--approval-mode', 'auto_edit', '--allowed-tools', 'run_shell_command(prototyper)'],
+    args: (prompt, { locale }) => ['-p', `${prompt}\n\n${agentRules('gemini', locale)}`, '--approval-mode', 'auto_edit', '--allowed-tools', 'run_shell_command(prototyper)'],
   },
   copilot: {
     id: 'copilot',
     name: 'GitHub Copilot CLI',
     exe: 'copilot',
     support: 'experimental',
-    install: 'Jalankan `copilot` sekali di terminal untuk menginstal, lalu login dengan akun GitHub.',
-    permissions: 'tulis file + shell `prototyper` saja (--allow-tool)',
+    install: 'installCopilot',
+    permissions: 'permCopilot',
     output: 'text',
-    args: (prompt) => ['-p', `${prompt}\n\n${agentRules('copilot')}`, '--allow-tool', 'write', '--allow-tool', 'shell(prototyper)'],
+    args: (prompt, { locale }) => ['-p', `${prompt}\n\n${agentRules('copilot', locale)}`, '--allow-tool', 'write', '--allow-tool', 'shell(prototyper)'],
   },
 };
 
@@ -254,41 +252,41 @@ export async function runImages(dir: string, opts: Pick<AgentRunOptions, 'attach
   return out;
 }
 
+/** Prompt untuk agent, dalam bahasa peminta (`opts.locale`, default bahasa aktif). */
 export function agentPrompt(p: ResolvedPrototype, opts: AgentRunOptions = {}): string {
+  const l = opts.locale ?? getLocale();
   const id = p.id;
   const name = p.manifest?.name ?? id;
-  const lines = [`Kerjakan komentar pengguna pada prototype "${name}" (id \`${id}\`). Folder kerja ini adalah folder prototype tersebut.`];
-  if (opts.resumed) {
-    lines.push(
-      'Ini lanjutan sesimu sebelumnya pada prototype ini. Sejak itu file dan komentar bisa sudah berubah (diedit pengguna, atau perubahanmu dibatalkan): ambil ulang komentar dan baca ulang file sebelum mengedit, jangan mengandalkan isi file dari ingatan.',
-    );
-  }
-  if (opts.commentIds?.length) lines.push(`Fokus hanya pada komentar: ${opts.commentIds.join(', ')}.`);
-  if (opts.message?.trim()) lines.push(`Pesan dari pengguna: ${opts.message.trim()}`);
+  const lines = [pr.in(l, 'intro', { name, id })];
+  if (opts.resumed) lines.push(pr.in(l, 'resumed'));
+  if (opts.commentIds?.length) lines.push(pr.in(l, 'focus', { ids: opts.commentIds.join(', ') }));
+  if (opts.message?.trim()) lines.push(pr.in(l, 'message', { message: opts.message.trim() }));
   if (opts.attachments?.length) {
-    lines.push(`Gambar lampiran dari pengguna (path relatif terhadap folder ini; buka dengan tool baca file): ${opts.attachments.map((a) => `\`${a}\``).join(', ')}.`);
+    lines.push(pr.in(l, 'attachments', { files: opts.attachments.map((a) => `\`${a}\``).join(', ') }));
   }
   lines.push(
     '',
-    'Langkah:',
-    `1. \`prototyper comments ${id} --waiting agent --json\` — komentar yang giliran agent. Perhatikan \`page\`, \`anchor\` (selector CSS / teks / potongan \`html\` elemen yang diklik pengguna), balasan, dan \`answer\` pada pertanyaan berpilihan.`,
-    '   Bila komentar/balasan punya `attachments` (gambar dari pengguna, path relatif terhadap folder ini), buka gambarnya dengan tool baca file sebelum mengerjakan.',
-    `   Sebelum mengerjakan tiap komentar, jalankan \`prototyper comments context ${id} <commentId> --json\`: komentar selesai terkait (halaman/elemen sama) dan keputusan sebelumnya (\`.prototyper/DECISIONS.md\`). Jangan mengulang perubahan yang sudah dibatalkan atau diminta dikembalikan.`,
-    `2. Kerjakan satu per satu dengan mengedit file di folder ini, lalu laporkan lewat \`prototyper comments reply ${id} <commentId> "<ringkasan perubahan>"\` dan biarkan komentar tetap open.`,
-    '   Jangan menutup komentar (`prototyper comments resolve`): pengguna yang memeriksa hasil dan menentukan pekerjaan selesai.',
-    `3. Bila ada beberapa kemungkinan, jangan menebak: \`prototyper comments ask ${id} <commentId> "<pertanyaan>" --option "A" --option "B"\` dan biarkan open.`,
-    `4. Pertanyaan balik atau permintaan revisi dari pengguna dijawab dengan \`prototyper comments reply ${id} <commentId> "<jawaban>"\`.`,
-    '5. Akhiri dengan ringkasan singkat dalam Bahasa Indonesia.',
+    pr.in(l, 'steps'),
+    pr.in(l, 'step1', { id }),
+    pr.in(l, 'step1Attachments'),
+    pr.in(l, 'step1Context', { id }),
+    pr.in(l, 'step2', { id }),
+    pr.in(l, 'step2NoResolve'),
+    pr.in(l, 'step3', { id }),
+    pr.in(l, 'step4', { id }),
+    pr.in(l, 'step5'),
   );
   return lines.join('\n');
 }
 
 /** Ubah satu event stream-json Claude Code menjadi baris log yang mudah dibaca. */
-export function describeEvent(ev: Record<string, unknown>, cwd: string): string[] {
+export function describeEvent(ev: Record<string, unknown>, cwd: string, locale: Locale = getLocale()): string[] {
   const rel = (f: unknown) => (typeof f === 'string' ? path.relative(cwd, f) || f : '');
   const short = (s: string, n = 220) => (s.length > n ? `${s.slice(0, n)}…` : s);
   const type = ev.type;
-  if (type === 'system' && ev.subtype === 'init') return [`sesi dimulai${typeof ev.model === 'string' ? ` · model ${ev.model}` : ''}`];
+  if (type === 'system' && ev.subtype === 'init') {
+    return [t.in(locale, 'sessionStarted', { model: typeof ev.model === 'string' ? t.in(locale, 'model', { model: ev.model }) : '' })];
+  }
   const content = (ev.message as { content?: unknown } | undefined)?.content;
   if (type === 'assistant' && Array.isArray(content)) {
     const out: string[] = [];
@@ -312,8 +310,8 @@ export function describeEvent(ev: Record<string, unknown>, cwd: string): string[
   }
   if (type === 'result') {
     const ok = ev.subtype === 'success' && !ev.is_error;
-    const turns = typeof ev.num_turns === 'number' ? `${ev.num_turns} langkah` : '';
-    return [ok ? `✓ selesai${turns ? ` (${turns})` : ''}` : `✗ berhenti: ${String(ev.subtype ?? 'error')}`];
+    const turns = typeof ev.num_turns === 'number' ? t.in(locale, 'resultTurns', { n: ev.num_turns }) : '';
+    return [ok ? t.in(locale, 'resultDone', { turns }) : t.in(locale, 'resultStopped', { reason: String(ev.subtype ?? 'error') })];
   }
   return [];
 }
@@ -480,10 +478,18 @@ export function helpHasFlag(help: string, flag: string): boolean {
   return new RegExp(`(^|[\\s,])${flag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=[\\s=,<\\[]|$)`, 'm').test(help);
 }
 
-/** Isi balasan komentar saat perubahan sebuah run dibatalkan. */
-export function undoReplyText(agentName: string, changes: readonly FileChange[]): string {
-  const names = changes.slice(0, 8).map((c) => c.path).join(', ') + (changes.length > 8 ? `, +${changes.length - 8} lainnya` : '');
-  return `↶ Perubahan dari ${agentName} untuk komentar ini dibatalkan pengguna: ${changes.length} file dikembalikan ke keadaan sebelum agent bekerja (${names}). Permintaan ini belum diterapkan lagi; balas komentar ini dengan arahan baru bila ingin dicoba ulang.`;
+/** Isi balasan komentar saat perubahan sebuah run dibatalkan (disimpan di comments.json: bahasa pengaturan). */
+export function undoReplyText(agentName: string, changes: readonly FileChange[], locale: Locale = getProcessLocale()): string {
+  const names = changes.slice(0, 8).map((c) => c.path).join(', ') + (changes.length > 8 ? t.in(locale, 'undoMore', { n: changes.length - 8 }) : '');
+  return t.in(locale, 'undoReply', { agent: agentName, n: changes.length, names });
+}
+
+/** Hasil cek agent sebelum diterjemahkan (di-cache; teks dibuat saat ditampilkan, dalam bahasa peminta). */
+interface AgentProbe {
+  available: boolean;
+  version: string | null;
+  path: string | null;
+  error: ((l: Locale) => string) | null;
 }
 
 export class AgentRunner {
@@ -494,7 +500,7 @@ export class AgentRunner {
   /** Run yang agent-nya benar-benar mulai (event sesi pertama sudah diterima). */
   private readonly started = new WeakSet<AgentRunInfo>();
   private readonly logStores = new Map<string, Promise<LogStore>>();
-  private readonly checks = new Map<AgentId, Promise<AgentInfo>>();
+  private readonly checks = new Map<AgentId, Promise<AgentProbe>>();
   private readonly helpChecks = new Map<AgentId, Promise<{ unsupported: Set<string> }>>();
   readonly auth: 'login' | 'apikey';
   readonly timeoutMs: number;
@@ -540,46 +546,57 @@ export class AgentRunner {
     return resolveCommand(PRESETS[id].exe, this.lookupEnv);
   }
 
-  /** Cek satu agent dengan `--version` (di-cache sampai force). */
+  /** Cek satu agent dengan `--version` (di-cache sampai force). Teks dalam bahasa peminta. */
   check(id: AgentId = this.defaultAgent, force = false): Promise<AgentInfo> {
+    const locale = getLocale();
+    const preset = PRESETS[id];
+    return this.probe(id, force).then((r) => ({
+      id, name: preset.name, support: preset.support,
+      install: t.in(locale, preset.install), permissions: t.in(locale, preset.permissions),
+      available: r.available, version: r.version, path: r.path, error: r.error ? r.error(locale) : null,
+    }));
+  }
+
+  private probe(id: AgentId, force: boolean): Promise<AgentProbe> {
     const cached = this.checks.get(id);
     if (cached && !force) return cached;
     this.helpChecks.delete(id); // agent bisa sudah diperbarui
     const preset = PRESETS[id];
-    const base = { id, name: preset.name, support: preset.support, install: preset.install, permissions: preset.permissions };
+    const exe = preset.exe;
     const cmd = this.command(id);
-    const p = new Promise<AgentInfo>((resolve) => {
+    const p = new Promise<AgentProbe>((resolve) => {
       if (!cmd) {
-        resolve({ ...base, available: false, version: null, path: null, error: `\`${preset.exe}\` tidak ditemukan di PATH.` });
+        resolve({ available: false, version: null, path: null, error: (l) => t.in(l, 'notOnPath', { exe }) });
         return;
       }
       let out = '';
       let err = '';
       let settled = false;
-      const done = (available: boolean, error: string | null) => {
+      const done = (available: boolean, error: AgentProbe['error']) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
         const version = available ? out.trim().split(/\r?\n/)[0] || null : null;
-        resolve({ ...base, available, version, path: cmd.path, error });
+        resolve({ available, version, path: cmd.path, error });
       };
       let child: ChildProcess;
       try {
         child = spawn(cmd.bin, [...cmd.prefixArgs, '--version'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: childEnv(this.config, '', this.lookupEnv) });
       } catch (e) {
-        done(false, errorMessage(e));
+        const msg = errorMessage(e);
+        done(false, () => msg);
         return;
       }
       const timer = setTimeout(() => {
         child.kill();
-        done(false, `\`${preset.exe} --version\` tidak merespons`);
+        done(false, (l) => t.in(l, 'versionTimeout', { exe }));
       }, VERSION_TIMEOUT_MS);
       child.stdout?.on('data', (d: Buffer) => (out += d.toString()));
       child.stderr?.on('data', (d: Buffer) => (err += d.toString()));
-      child.once('error', (e) => done(false, (e as NodeJS.ErrnoException).code === 'ENOENT' ? `\`${preset.exe}\` tidak ditemukan.` : e.message));
+      child.once('error', (e) => done(false, (e as NodeJS.ErrnoException).code === 'ENOENT' ? (l) => t.in(l, 'notFoundExe', { exe }) : () => e.message));
       child.once('close', (code) => {
         const msg = (err || out).trim().split(/\r?\n/)[0] ?? '';
-        done(code === 0, code === 0 ? null : `\`${preset.exe} --version\` gagal (exit ${code})${msg ? `: ${msg.slice(0, 200)}` : ''}`);
+        done(code === 0, code === 0 ? null : (l) => t.in(l, 'versionFailed', { exe, code, msg: msg ? `: ${msg.slice(0, 200)}` : '' }));
       });
     });
     this.checks.set(id, p);
@@ -655,11 +672,12 @@ export class AgentRunner {
   }
 
   async run(p: ResolvedPrototype, opts: AgentRunOptions = {}): Promise<AgentRunInfo> {
-    if (!p.manifest) throw new AppError('INVALID_MANIFEST', `Prototype "${p.id}" tidak valid: ${p.error ?? ''}`);
-    if (this.runs.has(p.id) || this.busy.has(p.id)) throw new AppError('CONFLICT', `Agent sedang bekerja pada "${p.id}". Tunggu selesai atau hentikan dulu.`);
+    if (!p.manifest) throw new AppError('INVALID_MANIFEST', t('invalidManifest', { id: p.id, error: p.error ?? '' }));
+    if (this.runs.has(p.id) || this.busy.has(p.id)) throw new AppError('CONFLICT', t('busy', { id: p.id }));
     this.busy.add(p.id);
     try {
-      return await this.startRun(p, opts);
+      // Bahasa peminta disimpan sekarang: prompt & log run (juga retry setelah proses keluar) memakainya.
+      return await this.startRun(p, { ...opts, locale: opts.locale ?? getLocale() });
     } finally {
       this.busy.delete(p.id);
     }
@@ -668,23 +686,24 @@ export class AgentRunner {
   private async startRun(p: ResolvedPrototype, opts: AgentRunOptions): Promise<AgentRunInfo> {
     const agentId = opts.agent ?? this.defaultAgent;
     const preset = PRESETS[agentId];
-    const avail = await this.check(agentId);
-    if (!avail.available) throw new AppError('BAD_REQUEST', `${preset.name} tidak tersedia: ${avail.error ?? ''} ${preset.install}`.trim());
+    const L = opts.locale ?? getLocale();
+    const avail = await withLocale(L, () => this.check(agentId));
+    if (!avail.available) throw new AppError('BAD_REQUEST', t.in(L, 'unavailable', { agent: preset.name, error: avail.error ?? '', install: avail.install }).replace(/ {2,}/g, ' ').trim());
     const cmd = this.command(agentId);
-    if (!cmd) throw new AppError('BAD_REQUEST', `${preset.name} tidak ditemukan`);
-    if (!existsSync(p.path)) throw new AppError('BAD_REQUEST', `Folder tidak ditemukan: ${p.path}`);
+    if (!cmd) throw new AppError('BAD_REQUEST', t.in(L, 'notFoundAgent', { agent: preset.name }));
+    if (!existsSync(p.path)) throw new AppError('BAD_REQUEST', t.in(L, 'folderNotFound', { path: p.path }));
 
     const logs = await this.logs(p.id);
     const shim = await ensureShim(this.config.home);
     const flags = await this.optionalFlags(agentId, cmd);
-    if (flags.unsupported.size) logs.system(`${preset.name} ${avail.version ?? ''} belum mendukung ${[...flags.unsupported].join(', ')} — flag itu tidak dipakai (perbarui agent untuk memakainya)`.replace(/ {2,}/g, ' '));
+    if (flags.unsupported.size) logs.system(t.in(L, 'logFlagsUnsupported', { agent: preset.name, version: avail.version ?? '', flags: [...flags.unsupported].join(', ') }).replace(/ {2,}/g, ' '));
     // Lanjut sesi: pakai id sesi sebelumnya bila masih berlaku; selain itu sesi baru ber-id dari Prototyper.
-    const prev = preset.session && opts.resume !== false ? await this.resumeInfo(p, agentId) : null;
+    const prev = preset.session && opts.resume !== false ? await withLocale(L, () => this.resumeInfo(p, agentId)) : null;
     const resumed = !!prev?.resumable;
     const sessionId = preset.session ? (resumed && prev?.session ? prev.session.sessionId : randomUUID()) : null;
     const images = preset.imageArgs ? await runImages(p.path, opts) : [];
     const args = [
-      ...preset.args(agentPrompt(p, { ...opts, resumed }), { apikey: this.auth === 'apikey', env: this.env, supports: (f) => !flags.unsupported.has(f), images }),
+      ...preset.args(agentPrompt(p, { ...opts, resumed, locale: L }), { apikey: this.auth === 'apikey', env: this.env, supports: (f) => !flags.unsupported.has(f), images, locale: L }),
       ...(preset.session && sessionId ? (resumed ? preset.session.resume(sessionId) : preset.session.fresh(sessionId)) : []),
     ];
     const info: AgentRunInfo = {
@@ -692,20 +711,21 @@ export class AgentRunner {
       commentIds: opts.commentIds ?? [], summary: null, costUsd: null, turns: null, error: null,
       checkpoint: null, checkpointError: null, sessionId, resumed,
     };
-    const authNote = agentId === 'claude' ? ` (${this.auth === 'apikey' ? 'API key, --bare' : 'login Claude Code'})` : preset.support === 'experimental' ? ' (eksperimental)' : '';
-    logs.system(`agent: ${preset.name}${authNote}${info.commentIds.length ? ` · komentar ${info.commentIds.join(', ')}` : ''} · ${cmd.path}`);
-    if (resumed && prev?.session) logs.system(`melanjutkan sesi ${prev.session.sessionId.slice(0, 8)} (run ke-${prev.session.runs + 1}, terakhir ${prev.session.endedAt})`);
-    else if (prev?.reason) logs.system(`sesi baru: ${prev.reason}`);
+    const authNote = agentId === 'claude' ? ` (${t.in(L, this.auth === 'apikey' ? 'logAuthApikey' : 'logAuthLogin')})` : preset.support === 'experimental' ? ` (${t.in(L, 'logExperimental')})` : '';
+    const commentsNote = info.commentIds.length ? t.in(L, 'logComments', { ids: info.commentIds.join(', ') }) : '';
+    logs.system(t.in(L, 'logAgent', { agent: preset.name, auth: authNote, comments: commentsNote, path: cmd.path }));
+    if (resumed && prev?.session) logs.system(t.in(L, 'logResuming', { session: prev.session.sessionId.slice(0, 8), run: prev.session.runs + 1, last: prev.session.endedAt }));
+    else if (prev?.reason) logs.system(t.in(L, 'logNewSession', { reason: prev.reason }));
 
     if (this.checkpoints) {
       try {
         const label = info.commentIds.length ? ` · ${info.commentIds.join(', ')}` : '';
         const before = await this.checkpoints.snapshot(p.id, p.path, `sebelum ${agentId}${label} · ${info.startedAt}`);
         info.checkpoint = { before, after: null, changes: [], undoneAt: null };
-        logs.system(`checkpoint ${before.slice(0, 8)}: perubahan agent bisa dibatalkan setelah selesai`);
+        logs.system(t.in(L, 'logCheckpoint', { id: before.slice(0, 8) }));
       } catch (err) {
         info.checkpointError = errorMessage(err);
-        logs.system(`checkpoint dilewati: ${info.checkpointError}`);
+        logs.system(t.in(L, 'logCheckpointSkipped', { error: info.checkpointError }));
       }
     }
 
@@ -721,8 +741,8 @@ export class AgentRunner {
     const run: ActiveRun = {
       info, child, exited, stopping: false, finished: new Promise<void>((r) => (finish = r)),
       timer: setTimeout(() => {
-        logs.system(`agent melewati batas waktu ${Math.round(this.timeoutMs / 60_000)} menit — dihentikan`);
-        info.error = 'Melewati batas waktu';
+        logs.system(t.in(L, 'logTimeout', { min: Math.round(this.timeoutMs / 60_000) }));
+        info.error = t.in(L, 'errTimeout');
         void this.stop(p.id);
       }, this.timeoutMs),
     };
@@ -743,14 +763,14 @@ export class AgentRunner {
       buf += d.toString('utf8');
       const lines = buf.split(/\r?\n/);
       buf = lines.pop() ?? '';
-      for (const line of lines) this.onLine(preset, line, p.path, info, logs, tail);
+      for (const line of lines) this.onLine(preset, line, p.path, info, logs, tail, L);
     });
     child.once('error', (err) => {
       info.error = err.message;
-      logs.system(`agent gagal dijalankan: ${err.message}`);
+      logs.system(t.in(L, 'logSpawnFailed', { error: err.message }));
     });
     void exited.then(async () => {
-      if (buf.trim()) this.onLine(preset, buf, p.path, info, logs, tail);
+      if (buf.trim()) this.onLine(preset, buf, p.path, info, logs, tail, L);
       logs.flush();
       clearTimeout(run.timer);
       info.exitCode = child.exitCode;
@@ -761,18 +781,18 @@ export class AgentRunner {
         info.error = ([...errTail].reverse().find((l) => /error/i.test(l)) ?? errTail[errTail.length - 1] ?? '').slice(0, 400) || null;
       }
       if (info.status === 'failed' && !gotOutput) {
-        info.error ??= `${preset.exe} keluar (exit ${child.exitCode ?? '-'}) tanpa pesan`;
-        logs.system(`${preset.name} keluar tanpa output apa pun. Coba jalankan \`${preset.exe}\` di terminal untuk melihat pesannya, atau set PROTOTYPER_AGENT_BIN_${agentId.toUpperCase()} ke path yang benar.`);
+        info.error ??= t.in(L, 'errNoMessage', { exe: preset.exe, code: child.exitCode ?? '-' });
+        logs.system(t.in(L, 'logNoOutput', { agent: preset.name, exe: preset.exe, env: agentId.toUpperCase() }));
       }
-      logs.system(`agent ${info.status === 'done' ? 'selesai' : info.status === 'stopped' ? 'dihentikan' : `gagal (exit ${child.exitCode ?? '-'})`}`);
+      logs.system(info.status === 'done' ? t.in(L, 'logDone') : info.status === 'stopped' ? t.in(L, 'logStopped') : t.in(L, 'logFailed', { code: child.exitCode ?? '-' }));
       // Resume gagal sebelum agent sempat bekerja (mis. sesi sudah dihapus): ulangi sekali dengan sesi baru.
       if (resumed && info.status === 'failed' && !this.started.has(info)) {
-        logs.system('sesi sebelumnya tidak bisa dilanjutkan — mengulang dengan sesi baru');
+        logs.system(t.in(L, 'logRetry'));
         this.busy.add(p.id); // sebelum runs.delete: tanpa jeda "tidak berjalan" sampai retry terdaftar
         this.runs.delete(p.id);
         try {
           await this.sessions.update(p.id, () => null).catch(() => null);
-          await this.startRun(p, { ...opts, resume: false });
+          await this.startRun(p, { ...opts, resume: false, locale: L });
         } catch (err) {
           info.error = errorMessage(err);
           this.last.set(p.id, info);
@@ -782,8 +802,8 @@ export class AgentRunner {
         finish();
         return;
       }
-      await this.checkpointAfter(p, info, logs);
-      await this.saveSession(p, info);
+      await this.checkpointAfter(p, info, logs, L);
+      await this.saveSession(p, info, L);
       this.runs.delete(p.id);
       this.last.set(p.id, info);
       finish();
@@ -792,7 +812,7 @@ export class AgentRunner {
   }
 
   /** Simpan sesi run ini agar run berikutnya bisa melanjutkannya. */
-  private async saveSession(p: ResolvedPrototype, info: AgentRunInfo): Promise<void> {
+  private async saveSession(p: ResolvedPrototype, info: AgentRunInfo, L: Locale): Promise<void> {
     const sessionId = info.sessionId;
     if (!sessionId || !this.started.has(info)) return; // agent tidak pernah mulai: tidak ada yang dilanjutkan
     const endedAt = info.endedAt ?? new Date().toISOString();
@@ -803,11 +823,11 @@ export class AgentRunner {
           : { agent: info.agent, sessionId, cwd: p.path, startedAt: info.startedAt, endedAt, runs: 1, undoneAt: null },
       );
     } catch (err) {
-      (await this.logs(p.id)).system(`gagal menyimpan sesi agent: ${errorMessage(err)}`);
+      (await this.logs(p.id)).system(t.in(L, 'logSaveSessionFailed', { error: errorMessage(err) }));
     }
   }
 
-  private onLine(preset: Preset, line: string, cwd: string, info: AgentRunInfo, logs: LogStore, tail: string[]): void {
+  private onLine(preset: Preset, line: string, cwd: string, info: AgentRunInfo, logs: LogStore, tail: string[], L: Locale): void {
     if (!line.trim()) return;
     if (preset.output === 'text') {
       logs.write('stdout', `${line}\n`);
@@ -834,7 +854,7 @@ export class AgentRunner {
       if (typeof ev.num_turns === 'number') info.turns = ev.num_turns;
       if (ev.is_error || ev.subtype !== 'success') info.error = typeof ev.result === 'string' && ev.result ? ev.result : String(ev.subtype ?? 'error');
     }
-    for (const l of describeEvent(ev, cwd)) logs.write('stdout', `${l}\n`);
+    for (const l of describeEvent(ev, cwd, L)) logs.write('stdout', `${l}\n`);
   }
 
   async stop(id: string): Promise<AgentRunInfo | null> {
@@ -846,17 +866,18 @@ export class AgentRunner {
     return this.last.get(id) ?? run.info;
   }
 
-  private async checkpointAfter(p: ResolvedPrototype, info: AgentRunInfo, logs: LogStore): Promise<void> {
+  private async checkpointAfter(p: ResolvedPrototype, info: AgentRunInfo, logs: LogStore, L: Locale): Promise<void> {
     const cp = info.checkpoint;
     if (!cp || !this.checkpoints) return;
     try {
       cp.after = await this.checkpoints.snapshot(p.id, p.path, `sesudah ${info.agent} (${info.status}) · ${new Date().toISOString()}`);
       cp.changes = await this.checkpoints.diff(p.id, p.path, cp.before, cp.after);
       const n = cp.changes.length;
-      logs.system(n ? `${n} file diubah agent: ${cp.changes.slice(0, 5).map((c) => c.path).join(', ')}${n > 5 ? `, +${n - 5}` : ''}` : 'agent tidak mengubah file');
+      const files = `${cp.changes.slice(0, 5).map((c) => c.path).join(', ')}${n > 5 ? `, +${n - 5}` : ''}`;
+      logs.system(n ? t.in(L, 'logFilesChanged', { n, files }) : t.in(L, 'logNoFilesChanged'));
     } catch (err) {
       info.checkpointError = errorMessage(err);
-      logs.system(`checkpoint sesudah run gagal: ${info.checkpointError}`);
+      logs.system(t.in(L, 'logCheckpointAfterFailed', { error: info.checkpointError }));
     }
   }
 
@@ -865,12 +886,12 @@ export class AgentRunner {
    * sebelum run, file baru dihapus. Komentar & balasan (.prototyper/) tidak ikut dibatalkan.
    */
   async undo(p: ResolvedPrototype, opts: { force?: boolean } = {}): Promise<{ run: AgentRunInfo; comments: string[] } & UndoResult> {
-    if (this.runs.has(p.id) || this.busy.has(p.id)) throw new AppError('CONFLICT', `Agent sedang bekerja pada "${p.id}". Tunggu selesai atau hentikan dulu.`);
+    if (this.runs.has(p.id) || this.busy.has(p.id)) throw new AppError('CONFLICT', t('busy', { id: p.id }));
     const info = this.last.get(p.id);
     const cp = info?.checkpoint;
-    if (!info || !cp?.after || !this.checkpoints) throw new AppError('BAD_REQUEST', 'Tidak ada checkpoint run agent untuk dibatalkan');
-    if (cp.undoneAt) throw new AppError('BAD_REQUEST', 'Perubahan run agent terakhir sudah dibatalkan');
-    if (!cp.changes.length) throw new AppError('BAD_REQUEST', 'Run agent terakhir tidak mengubah file');
+    if (!info || !cp?.after || !this.checkpoints) throw new AppError('BAD_REQUEST', t('noCheckpoint'));
+    if (cp.undoneAt) throw new AppError('BAD_REQUEST', t('alreadyUndone'));
+    if (!cp.changes.length) throw new AppError('BAD_REQUEST', t('noChanges'));
     this.busy.add(p.id);
     let res: UndoResult;
     try {
@@ -883,7 +904,7 @@ export class AgentRunner {
     // Sesi berisi perubahan yang kini sudah tidak ada: run berikutnya mulai sesi baru.
     await this.sessions.update(p.id, (cur) => (cur && cur.sessionId === info.sessionId ? { ...cur, undoneAt } : cur)).catch(() => null);
     const logs = await this.logs(p.id);
-    logs.system(`perubahan agent dibatalkan: ${res.restored.length} file dikembalikan, ${res.removed.length} file baru dihapus`);
+    logs.system(t('logUndone', { restored: res.restored.length, removed: res.removed.length }));
     // Beri tahu di komentar yang dikerjakan run ini bahwa perubahannya sudah tidak ada.
     let comments: string[] = [];
     try {
@@ -892,9 +913,9 @@ export class AgentRunner {
         { since: info.startedAt, until: info.endedAt ?? cp.undoneAt, ids: info.commentIds },
         undoReplyText(PRESETS[info.agent].name, cp.changes),
       );
-      if (comments.length) logs.system(`balasan pembatalan ditambahkan ke komentar ${comments.join(', ')}`);
+      if (comments.length) logs.system(t('logUndoReplies', { ids: comments.join(', ') }));
     } catch (err) {
-      logs.system(`gagal menambahkan balasan pembatalan ke komentar: ${errorMessage(err)}`);
+      logs.system(t('logUndoRepliesFailed', { error: errorMessage(err) }));
     }
     return { run: info, comments, ...res };
   }

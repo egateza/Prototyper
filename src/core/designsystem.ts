@@ -5,6 +5,48 @@ import { AppError } from './errors.js';
 import { fileExists } from './fsutil.js';
 import { MANIFEST_FILE, parseManifest, writeManifest, type Manifest } from './manifest.js';
 import type { Registry, ResolvedPrototype } from './registry.js';
+import { defineMessages } from './i18n.js';
+
+const t = defineMessages({
+  id: {
+    dsNotRegistered: 'Desain sistem "{id}" tidak terdaftar. Lihat daftar: prototyper ds list',
+    dsManifestInvalid: 'Manifest "{id}" tidak valid: {error}',
+    notDs: '"{id}" bukan desain sistem. Buat dengan: prototyper new <id> -t design-system',
+    prototypeNotRegistered: 'Prototype "{id}" tidak terdaftar. Lihat daftar: prototyper list',
+    manifestInvalidFixFirst: 'Manifest "{id}" tidak valid; perbaiki dulu: {error}',
+    noCss: 'Desain sistem tidak punya file CSS untuk dimuat.',
+    outsideStaticRoot: 'Folder {dir} berada di luar static.root ({root}); file desain sistem tidak bisa disajikan. Pakai --dir di dalam {root}.',
+    loadManually: '{file} tidak ditemukan; muat {hrefs} secara manual.',
+    noEntry: 'Entry JS tidak ditemukan ({candidates}); impor {css} secara manual.',
+    useSelf: 'Desain sistem tidak bisa memakai dirinya sendiri',
+    dsCannotUseDs: '"{id}" adalah desain sistem; desain sistem tidak memakai desain sistem lain',
+    localNothingToSync: '"{id}" memakai desain sistem sendiri ({paths}); tidak ada yang perlu disinkronkan',
+    notUsingDsYet: '"{id}" belum memakai desain sistem. Pasang dengan: prototyper ds use {id} <desain-sistem>',
+    isDsChangeRole: '"{id}" adalah desain sistem; ubah perannya lewat prototyper.json bila memang perlu',
+    notUsingDs: '"{id}" tidak memakai desain sistem',
+    localRequired: 'Isi minimal satu lokasi file/folder desain sistem, relatif ke folder prototype',
+    alreadyDs: '"{id}" sudah merupakan desain sistem; file bersamanya diatur lewat designSystem.files',
+  },
+  en: {
+    dsNotRegistered: 'Design system "{id}" is not registered. See the list: prototyper ds list',
+    dsManifestInvalid: 'Manifest "{id}" is invalid: {error}',
+    notDs: '"{id}" is not a design system. Create one with: prototyper new <id> -t design-system',
+    prototypeNotRegistered: 'Prototype "{id}" is not registered. See the list: prototyper list',
+    manifestInvalidFixFirst: 'Manifest "{id}" is invalid; fix it first: {error}',
+    noCss: 'The design system has no CSS file to load.',
+    outsideStaticRoot: 'Folder {dir} is outside static.root ({root}); design system files cannot be served. Use --dir inside {root}.',
+    loadManually: '{file} was not found; load {hrefs} manually.',
+    noEntry: 'No JS entry found ({candidates}); import {css} manually.',
+    useSelf: 'A design system cannot use itself',
+    dsCannotUseDs: '"{id}" is a design system; design systems do not use other design systems',
+    localNothingToSync: '"{id}" uses its own design system ({paths}); there is nothing to sync',
+    notUsingDsYet: '"{id}" does not use a design system yet. Set one up with: prototyper ds use {id} <design-system>',
+    isDsChangeRole: '"{id}" is a design system; change its role in prototyper.json if needed',
+    notUsingDs: '"{id}" does not use a design system',
+    localRequired: 'Specify at least one design system file/folder location, relative to the prototype folder',
+    alreadyDs: '"{id}" is already a design system; its shared files are set in designSystem.files',
+  },
+});
 
 /**
  * Desain sistem = prototype biasa (template `design-system`) dengan `designSystem.source: true`.
@@ -111,18 +153,18 @@ async function expected(p: CopyPlan, dsId: string, consumerId: string): Promise<
 
 function requireDs(list: ResolvedPrototype[], dsId: string): ResolvedPrototype & { manifest: Manifest } {
   const ds = list.find((p) => p.id === dsId);
-  if (!ds) throw new AppError('NOT_FOUND', `Desain sistem "${dsId}" tidak terdaftar. Lihat daftar: prototyper ds list`);
-  if (!ds.manifest) throw new AppError('BAD_REQUEST', `Manifest "${dsId}" tidak valid: ${ds.error ?? ''}`);
+  if (!ds) throw new AppError('NOT_FOUND', t('dsNotRegistered', { id: dsId }));
+  if (!ds.manifest) throw new AppError('BAD_REQUEST', t('dsManifestInvalid', { id: dsId, error: ds.error ?? '' }));
   if (!isDesignSystem(ds.manifest)) {
-    throw new AppError('BAD_REQUEST', `"${dsId}" bukan desain sistem. Buat dengan: prototyper new <id> -t design-system`);
+    throw new AppError('BAD_REQUEST', t('notDs', { id: dsId }));
   }
   return ds as ResolvedPrototype & { manifest: Manifest };
 }
 
 function requireValid(list: ResolvedPrototype[], id: string): ResolvedPrototype & { manifest: Manifest } {
   const p = list.find((x) => x.id === id);
-  if (!p) throw new AppError('NOT_FOUND', `Prototype "${id}" tidak terdaftar. Lihat daftar: prototyper list`);
-  if (!p.manifest) throw new AppError('BAD_REQUEST', `Manifest "${id}" tidak valid; perbaiki dulu: ${p.error ?? ''}`);
+  if (!p) throw new AppError('NOT_FOUND', t('prototypeNotRegistered', { id }));
+  if (!p.manifest) throw new AppError('BAD_REQUEST', t('manifestInvalidFixFirst', { id, error: p.error ?? '' }));
   return p as ResolvedPrototype & { manifest: Manifest };
 }
 
@@ -223,18 +265,18 @@ export function injectImports(code: string, specs: string[]): string {
 
 async function linkFiles(consumer: ResolvedPrototype & { manifest: Manifest }, dir: string, files: string[]): Promise<DsLinkResult> {
   const css = files.filter((f) => f.toLowerCase().endsWith('.css')).map((f) => path.posix.join(dir, f));
-  if (!css.length) return { file: null, action: 'skipped', note: 'Desain sistem tidak punya file CSS untuk dimuat.' };
+  if (!css.length) return { file: null, action: 'skipped', note: t('noCss') };
   const m = consumer.manifest;
   if (m.type === 'static') {
     const root = toPosix(m.static.root) || '.';
     const hrefs = css.map((f) => path.posix.relative(root === '.' ? '' : root, f));
     if (hrefs.some((h) => h.startsWith('..'))) {
-      return { file: null, action: 'skipped', note: `Folder ${dir} berada di luar static.root (${root}); file desain sistem tidak bisa disajikan. Pakai --dir di dalam ${root}.` };
+      return { file: null, action: 'skipped', note: t('outsideStaticRoot', { dir, root }) };
     }
     const rel = path.posix.join(root, toPosix(m.static.index));
     const file = path.join(consumer.path, ...rel.split('/'));
     const html = await readOrNull(file);
-    if (!html) return { file: null, action: 'skipped', note: `${rel} tidak ditemukan; muat ${hrefs.join(', ')} secara manual.` };
+    if (!html) return { file: null, action: 'skipped', note: t('loadManually', { file: rel, hrefs: hrefs.join(', ') }) };
     const text = html.toString('utf8');
     const next = injectLinks(text, hrefs);
     if (next === text) return { file: rel, action: 'present' };
@@ -257,7 +299,7 @@ async function linkFiles(consumer: ResolvedPrototype & { manifest: Manifest }, d
     await fs.writeFile(file, next, 'utf8');
     return { file: rel, action: 'added' };
   }
-  return { file: null, action: 'skipped', note: `Entry JS tidak ditemukan (${ENTRY_CANDIDATES.join(', ')}); impor ${css.join(', ')} secara manual.` };
+  return { file: null, action: 'skipped', note: t('noEntry', { candidates: ENTRY_CANDIDATES.join(', '), css: css.join(', ') }) };
 }
 
 export interface UseResult {
@@ -282,8 +324,8 @@ export async function useDesignSystem(
   const list = await registry.list();
   const ds = requireDs(list, dsId);
   const p = requireValid(list, id);
-  if (p.id === ds.id) throw new AppError('BAD_REQUEST', 'Desain sistem tidak bisa memakai dirinya sendiri');
-  if (isDesignSystem(p.manifest)) throw new AppError('BAD_REQUEST', `"${p.id}" adalah desain sistem; desain sistem tidak memakai desain sistem lain`);
+  if (p.id === ds.id) throw new AppError('BAD_REQUEST', t('useSelf'));
+  if (isDesignSystem(p.manifest)) throw new AppError('BAD_REQUEST', t('dsCannotUseDs', { id: p.id }));
   const dir = toPosix(opts.dir?.trim() || p.manifest.designSystem?.dir || DS_DEFAULT_DIR);
 
   const value: DsManifest = { use: ds.id, ...(dir !== DS_DEFAULT_DIR ? { dir } : {}) };
@@ -314,8 +356,8 @@ export async function syncDesignSystem(registry: Registry, id?: string): Promise
     if (isDesignSystem(p.manifest)) targets = list.filter((c) => c.manifest?.designSystem?.use === p.id);
     else if (p.manifest.designSystem?.use) targets = [p];
     else if (p.manifest.designSystem?.local) {
-      throw new AppError('BAD_REQUEST', `"${p.id}" memakai desain sistem sendiri (${p.manifest.designSystem.local.join(', ')}); tidak ada yang perlu disinkronkan`);
-    } else throw new AppError('BAD_REQUEST', `"${p.id}" belum memakai desain sistem. Pasang dengan: prototyper ds use ${p.id} <desain-sistem>`);
+      throw new AppError('BAD_REQUEST', t('localNothingToSync', { id: p.id, paths: p.manifest.designSystem.local.join(', ') }));
+    } else throw new AppError('BAD_REQUEST', t('notUsingDsYet', { id: p.id }));
   } else {
     targets = list.filter((c) => c.manifest?.designSystem?.use);
   }
@@ -353,8 +395,8 @@ export async function detachDesignSystem(registry: Registry, id: string, opts: {
   const d = p.manifest.designSystem;
   if (!d?.use && !d?.local) {
     throw new AppError('BAD_REQUEST', isDesignSystem(p.manifest)
-      ? `"${p.id}" adalah desain sistem; ubah perannya lewat prototyper.json bila memang perlu`
-      : `"${p.id}" tidak memakai desain sistem`);
+      ? t('isDsChangeRole', { id: p.id })
+      : t('notUsingDs', { id: p.id }));
   }
   const m = await writeDsField(p, undefined);
   const agentFiles = await syncAgentFiles(p.path, m, { home: opts.home ?? registry.home });
@@ -388,7 +430,7 @@ async function pathKind(abs: string): Promise<'file' | 'dir' | null> {
 /** Normalisasi & validasi daftar lokasi (relatif, di dalam folder prototype). */
 function normalizeLocal(paths: string[]): string[] {
   const out = [...new Set(paths.map((x) => toPosix(x.trim())).filter(Boolean))];
-  if (!out.length) throw new AppError('BAD_REQUEST', 'Isi minimal satu lokasi file/folder desain sistem, relatif ke folder prototype');
+  if (!out.length) throw new AppError('BAD_REQUEST', t('localRequired'));
   return out;
 }
 
@@ -428,7 +470,7 @@ export async function setLocalDesignSystem(
   opts: { home?: string } = {},
 ): Promise<LocalResult> {
   const p = requireValid(await registry.list(), id);
-  if (isDesignSystem(p.manifest)) throw new AppError('BAD_REQUEST', `"${p.id}" sudah merupakan desain sistem; file bersamanya diatur lewat designSystem.files`);
+  if (isDesignSystem(p.manifest)) throw new AppError('BAD_REQUEST', t('alreadyDs', { id: p.id }));
   const local = normalizeLocal(paths);
   const m = await writeDsField(p, { local }); // validasi path (relatif, tanpa "..")
   const st = await localStatus({ ...p, manifest: m });

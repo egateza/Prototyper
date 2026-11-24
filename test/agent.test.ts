@@ -4,8 +4,10 @@ import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { agentPrompt, agentRules, AgentRunner, childEnv, describeEvent, ensureShim, expandWinVars, helpHasFlag, parseCodexWindowsSandbox, npmShimTarget, parseRegPath, resolveCommand, scriptRunner, withExtraPath } from '../src/core/agent.js';
+import { withLocale } from '../src/core/i18n.js';
+import { agentPrompt, agentRules, AgentRunner, childEnv, describeEvent, undoReplyText, ensureShim, expandWinVars, helpHasFlag, parseCodexWindowsSandbox, npmShimTarget, parseRegPath, resolveCommand, scriptRunner, withExtraPath } from '../src/core/agent.js';
 import { addComment } from '../src/core/comments.js';
+import { parseManifest } from '../src/core/manifest.js';
 import { buildApp } from '../src/server/app.js';
 import { makePrototype, testConfig, tmpDir } from './helpers.js';
 
@@ -61,6 +63,41 @@ describe('agent (helper)', () => {
     expect(s).toContain('prototyper comments reply pos <commentId>');
     expect(s).toContain('Jangan menutup komentar');
     expect(agentRules('claude')).toContain('biarkan pengguna yang menutupnya');
+  });
+});
+
+describe('agent (bahasa Inggris)', () => {
+  const p = { id: 'pos', path: '/x', addedAt: '', manifest: null, error: null };
+
+  it('prompt & aturan dalam bahasa peminta; agent diminta membalas dalam bahasa itu', () => {
+    const s = withLocale('en', () => agentPrompt(p, { commentIds: ['c2'], message: 'use purple', resumed: true }));
+    expect(s).toContain("Work on the user's comments on the prototype \"pos\" (id `pos`).");
+    expect(s).toContain('Focus only on these comments: c2.');
+    expect(s).toContain('Message from the user: use purple');
+    expect(s).toContain('This continues your previous session');
+    expect(s).toContain('prototyper comments pos --waiting agent --json');
+    expect(s).toContain('prototyper comments reply pos <commentId> "<summary of changes>"');
+    expect(s).toContain('5. Finish with a short summary in English.');
+    expect(s).not.toMatch(/Kerjakan|Langkah|Bahasa Indonesia/);
+    // locale eksplisit menang atas bahasa aktif
+    expect(agentPrompt(p, { locale: 'en' })).toContain('Steps:');
+    expect(agentPrompt(p)).toContain('Langkah:');
+
+    const rules = agentRules('claude', 'en');
+    expect(rules).toContain('Write comment replies and questions in English.');
+    expect(rules).toContain('The only shell command you may use is `prototyper …`.');
+    expect(agentRules('codex', 'en')).toContain('`apply_patch` to edit');
+    expect(agentRules('claude')).toContain('Tulis balasan dan pertanyaan komentar dalam Bahasa Indonesia.');
+  });
+
+  it('describeEvent & balasan undo dalam bahasa Inggris', () => {
+    const cwd = path.resolve('/proj');
+    expect(describeEvent({ type: 'system', subtype: 'init', model: 'm' }, cwd, 'en')).toEqual(['session started · model m']);
+    expect(describeEvent({ type: 'result', subtype: 'success', num_turns: 1 }, cwd, 'en')).toEqual(['✓ done (1 turn)']);
+    expect(withLocale('en', () => describeEvent({ type: 'result', subtype: 'error_max_turns', is_error: true }, cwd))).toEqual(['✗ stopped: error_max_turns']);
+    const changes = [{ path: 'a.html', status: 'modified' }] as unknown as Parameters<typeof undoReplyText>[1];
+    expect(undoReplyText('Claude Code', changes, 'en')).toMatch(/^↶ The user undid the changes from Claude Code for this comment: 1 file was restored .*\(a\.html\)/);
+    expect(undoReplyText('Claude Code', changes)).toContain('↶ Perubahan dari Claude Code untuk komentar ini dibatalkan pengguna: 1 file');
   });
 });
 
@@ -152,6 +189,22 @@ describe('agent tidak tersedia', () => {
     const res = await app.inject({ method: 'POST', url: '/api/prototypes/tanpa-agen/agent/run', payload: {} });
     expect(res.statusCode).toBe(400);
     await app.close();
+  });
+});
+
+describe('agent tidak tersedia (bahasa Inggris)', () => {
+  it('info agent & pesan error mengikuti bahasa peminta, walau hasil cek di-cache', async () => {
+    const runner = new AgentRunner(testConfig(), { claude: { bin: 'perintah-yang-tidak-ada-xyz', prefixArgs: [] } });
+    const en = await withLocale('en', () => runner.check('claude'));
+    expect(en).toMatchObject({ available: false, error: '`claude` was not found.' });
+    expect(en.install).toContain('then log in with `claude`');
+    expect(en.permissions).toContain('everything else is denied automatically');
+    const id = await runner.check('claude'); // dari cache, bahasa lain
+    expect(id).toMatchObject({ available: false, error: '`claude` tidak ditemukan.' });
+    expect(id.install).toContain('lalu login dengan `claude`');
+    const dir = makePrototype({ id: 'tanpa-agen-en', name: 'T', type: 'static' }, { 'index.html': 'x' });
+    const p = { id: 'tanpa-agen-en', path: dir, addedAt: '', manifest: parseManifest({ id: 'tanpa-agen-en', name: 'T', type: 'static' }), error: null };
+    await expect(withLocale('en', () => runner.run(p))).rejects.toThrow(/^Claude Code is not available: `claude` was not found\. Install Claude Code/);
   });
 });
 

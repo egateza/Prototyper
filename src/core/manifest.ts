@@ -2,6 +2,38 @@ import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { AppError } from './errors.js';
+import { defineMessages } from './i18n.js';
+
+const t = defineMessages({
+  id: {
+    relPath: 'harus path relatif di dalam folder prototype (tanpa ".." dan bukan path absolut)',
+    badRegex: 'bukan regular expression yang valid',
+    badId: 'id harus huruf kecil/angka/strip, 2-63 karakter, diawali huruf atau angka',
+    badDsId: 'id desain sistem tidak valid',
+    dsPickOne: 'pilih salah satu: source (desain sistem), use (memakai desain sistem), atau local (desain sistem sendiri)',
+    dsFilesSourceOnly: 'files hanya untuk desain sistem (source: true)',
+    dsDirUseOnly: 'dir hanya untuk pemakai (use)',
+    dsRequired: 'isi source: true (desain sistem), use: "<id>" (memakai desain sistem), atau local: [...] (desain sistem sendiri)',
+    invalid: '{source} tidak valid: {issues}',
+    notFound: '{file} tidak ditemukan di {dir}. Buat dengan: prototyper init "{dir}"',
+    notJson: '{file} bukan JSON yang valid: {message}',
+    exists: '{file} sudah ada. Timpa secara eksplisit bila memang ingin mengganti.',
+  },
+  en: {
+    relPath: 'must be a relative path inside the prototype folder (no ".." and not an absolute path)',
+    badRegex: 'is not a valid regular expression',
+    badId: 'id must be lowercase letters/digits/hyphens, 2-63 characters, starting with a letter or digit',
+    badDsId: 'invalid design system id',
+    dsPickOne: 'choose one: source (design system), use (uses a design system), or local (own design system)',
+    dsFilesSourceOnly: 'files is only for design systems (source: true)',
+    dsDirUseOnly: 'dir is only for consumers (use)',
+    dsRequired: 'set source: true (design system), use: "<id>" (uses a design system), or local: [...] (own design system)',
+    invalid: '{source} is invalid: {issues}',
+    notFound: '{file} was not found in {dir}. Create it with: prototyper init "{dir}"',
+    notJson: '{file} is not valid JSON: {message}',
+    exists: '{file} already exists. Overwrite it explicitly if you really want to replace it.',
+  },
+});
 
 export const MANIFEST_FILE = 'prototyper.json';
 export const SCHEMA_URL =
@@ -14,7 +46,7 @@ const relPath = z
   .string()
   .min(1)
   .refine((p) => !path.isAbsolute(p) && !/^[a-zA-Z]:/.test(p) && !p.split(/[\\/]/).includes('..'), {
-    message: 'harus path relatif di dalam folder prototype (tanpa ".." dan bukan path absolut)',
+    error: () => t('relPath'),
   });
 
 const regexString = z
@@ -29,7 +61,7 @@ const regexString = z
         return false;
       }
     },
-    { message: 'bukan regular expression yang valid' },
+    { error: () => t('badRegex') },
   );
 
 export const staticConfigSchema = z
@@ -74,7 +106,7 @@ const baseShape = {
   $schema: z.string().optional(),
   id: z
     .string()
-    .regex(ID_RE, 'id harus huruf kecil/angka/strip, 2-63 karakter, diawali huruf atau angka')
+    .regex(ID_RE, { error: () => t('badId') })
     .describe('ID unik, mis. pos-sembako-ui'),
   name: z.string().min(1).describe('Nama tampilan'),
   description: z.string().optional(),
@@ -114,7 +146,7 @@ const baseShape = {
         .describe('Desain sistem: file yang disalin ke prototype pemakai, relatif ke folder ini (default ["tokens.css", "components.css"])'),
       use: z
         .string()
-        .regex(ID_RE, 'id desain sistem tidak valid')
+        .regex(ID_RE, { error: () => t('badDsId') })
         .optional()
         .describe('Pemakai: id desain sistem yang dipakai. Pasang dengan: prototyper ds use <id> <desain-sistem>'),
       dir: relPath
@@ -128,12 +160,12 @@ const baseShape = {
     })
     .strict()
     .refine((d) => [d.source, d.use, d.local].filter(Boolean).length <= 1, {
-      message: 'pilih salah satu: source (desain sistem), use (memakai desain sistem), atau local (desain sistem sendiri)',
+      error: () => t('dsPickOne'),
     })
-    .refine((d) => d.source || d.files === undefined, { message: 'files hanya untuk desain sistem (source: true)' })
-    .refine((d) => d.use || d.dir === undefined, { message: 'dir hanya untuk pemakai (use)' })
+    .refine((d) => d.source || d.files === undefined, { error: () => t('dsFilesSourceOnly') })
+    .refine((d) => d.use || d.dir === undefined, { error: () => t('dsDirUseOnly') })
     .refine((d) => d.source || d.use || d.local, {
-      message: 'isi source: true (desain sistem), use: "<id>" (memakai desain sistem), atau local: [...] (desain sistem sendiri)',
+      error: () => t('dsRequired'),
     })
     .optional()
     .describe('Desain sistem: token & komponen yang dipakai bersama beberapa prototype'),
@@ -158,7 +190,7 @@ export function parseManifest(data: unknown, source = MANIFEST_FILE): Manifest {
   const r = manifestSchema.safeParse(data);
   if (!r.success) {
     const issues = formatIssues(r.error);
-    throw new AppError('INVALID_MANIFEST', `${source} tidak valid: ${issues.join('; ')}`, issues);
+    throw new AppError('INVALID_MANIFEST', t('invalid', { source, issues: issues.join('; ') }), issues);
   }
   return r.data;
 }
@@ -171,10 +203,7 @@ export async function loadManifest(dir: string): Promise<Manifest> {
     raw = await fs.readFile(file, 'utf8');
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-      throw new AppError(
-        'INVALID_MANIFEST',
-        `${MANIFEST_FILE} tidak ditemukan di ${dir}. Buat dengan: prototyper init "${dir}"`,
-      );
+      throw new AppError('INVALID_MANIFEST', t('notFound', { file: MANIFEST_FILE, dir }));
     }
     throw err;
   }
@@ -182,7 +211,7 @@ export async function loadManifest(dir: string): Promise<Manifest> {
   try {
     data = JSON.parse(raw.replace(/^﻿/, ''));
   } catch (err) {
-    throw new AppError('INVALID_MANIFEST', `${file} bukan JSON yang valid: ${(err as Error).message}`);
+    throw new AppError('INVALID_MANIFEST', t('notJson', { file, message: (err as Error).message }));
   }
   return parseManifest(data, file);
 }
@@ -213,7 +242,7 @@ export async function writeManifest(
 ): Promise<string> {
   const file = path.join(dir, MANIFEST_FILE);
   if (!overwrite && existsSync(file)) {
-    throw new AppError('CONFLICT', `${file} sudah ada. Timpa secara eksplisit bila memang ingin mengganti.`);
+    throw new AppError('CONFLICT', t('exists', { file }));
   }
   await fs.writeFile(file, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
   return file;

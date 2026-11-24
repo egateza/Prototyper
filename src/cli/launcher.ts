@@ -2,6 +2,20 @@ import { execFileSync } from 'node:child_process';
 import type { Config } from '../core/config.js';
 import { launchTray } from '../tray/index.js';
 import { reportError } from './output.js';
+import { defineMessages } from '../core/i18n.js';
+
+const t = defineMessages({
+  id: {
+    pressEnter: '\nTekan Enter untuk menutup jendela ini.',
+    alreadyRunning: 'Prototyper sudah berjalan di tray.',
+    running: 'Prototyper berjalan di tray (ikon di pojok kanan bawah).',
+  },
+  en: {
+    pressEnter: '\nPress Enter to close this window.',
+    alreadyRunning: 'Prototyper is already running in the tray.',
+    running: 'Prototyper is running in the tray (icon in the bottom-right corner).',
+  },
+});
 
 /**
  * Mode peluncur: biner tunggal yang di-dobel-klik dari Explorer (Windows). Tanpa ini, exe hanya
@@ -47,7 +61,7 @@ export function windowsParentImage(ppid: number = process.ppid): string | null {
 /** Tahan jendela konsol agar pesan terbaca, lalu keluar. */
 function pauseAndExit(code: number): void {
   if (!process.stdin.isTTY) process.exit(code);
-  console.log('\nTekan Enter untuk menutup jendela ini.');
+  console.log(t('pressEnter'));
   process.stdin.resume();
   process.stdin.once('data', () => process.exit(code));
 }
@@ -59,7 +73,7 @@ function pauseAndExit(code: number): void {
 export async function runLauncher(config: Config): Promise<void> {
   try {
     const r = await launchTray(config);
-    console.log(r.alreadyRunning ? 'Prototyper sudah berjalan di tray.' : 'Prototyper berjalan di tray (ikon di pojok kanan bawah).');
+    console.log(r.alreadyRunning ? t('alreadyRunning') : t('running'));
   } catch (err) {
     reportError(err, false);
     pauseAndExit(1);

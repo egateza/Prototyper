@@ -6,6 +6,7 @@ import {
   addComment,
   AGENT_SOURCE,
   commentsPath,
+  LOCAL_USER_SOURCE,
   countComments,
   deleteComment,
   deleteReply,
@@ -18,6 +19,7 @@ import {
   replyComment,
   resolveComment,
 } from '../src/core/comments.js';
+import { setLocale, withLocale } from '../src/core/i18n.js';
 import { buildApp } from '../src/server/app.js';
 import { makePrototype, testConfig, tmpDir } from './helpers.js';
 
@@ -298,5 +300,33 @@ describe('API komentar', () => {
     expect((await fetch(`${url}/.PROTOTYPER/comments.json`)).status).toBe(404);
     expect((await fetch(`${url}/index.html`)).status).toBe(200);
     await app.inject({ method: 'POST', url: '/api/prototypes/komen/stop' });
+  });
+});
+
+describe('komentar multibahasa', () => {
+  it('pesan error mengikuti bahasa peminta', async () => {
+    const dir = tmpDir();
+    await addComment(dir, { text: 'Tombol' });
+    await replyComment(dir, 'c1', { text: 'Sudah', role: 'agent', author: 'agent' });
+    await expect(withLocale('en', () => getComment(dir, 'c7'))).rejects.toThrow('Comment "c7" not found');
+    await expect(withLocale('en', () => addComment(dir, { text: '  ' }))).rejects.toThrow('text is required');
+    await expect(withLocale('en', () => replyComment(dir, 'c1', { text: 'Q', options: ['A', 'a'] }))).rejects.toThrow('options must not be duplicated');
+    await expect(withLocale('en', () => editComment(dir, 'c1', { text: 'x' }))).rejects.toThrow(
+      'Comment c1 was already handled by the agent, so it cannot be edited. Add a reply if something changed.',
+    );
+    await expect(editComment(dir, 'c1', { text: 'x' })).rejects.toThrow('Komentar c1 sudah dikerjakan agent, jadi tidak bisa diedit.');
+  });
+
+  it('nama penulis default mengikuti bahasa pengaturan saat ditulis', async () => {
+    const dir = tmpDir();
+    try {
+      setLocale('en');
+      expect(LOCAL_USER_SOURCE.author).toBe('User (this PC)');
+      expect((await addComment(dir, { text: 'a' })).author).toBe('user');
+    } finally {
+      setLocale('id');
+    }
+    expect(LOCAL_USER_SOURCE.author).toBe('Pengguna (PC ini)');
+    expect((await addComment(dir, { text: 'b' })).author).toBe('pengguna');
   });
 });

@@ -10,6 +10,44 @@ import { unpackFiles } from './apppack.js';
 import { compareVersions } from './semver.js';
 import { AppError, errorMessage } from './errors.js';
 import { windowsCommandLine } from './startup.js';
+import { defineMessages } from './i18n.js';
+
+const t = defineMessages({
+  id: {
+    badResponse: 'Respons GitHub Releases tidak dikenali',
+    unreachable: 'Tidak bisa menghubungi GitHub: {message}',
+    noRelease: 'Belum ada rilis di github.com/{repo}',
+    httpError: 'GitHub membalas HTTP {status}',
+    noAsset: 'Tidak ada berkas pembaruan untuk instalasi ini',
+    noChecksums: 'Rilis tidak memiliki SHA256SUMS.txt; pembaruan dibatalkan',
+    checksumsDownloadFailed: 'Gagal mengunduh SHA256SUMS.txt (HTTP {status})',
+    notListed: '{name} tidak tercantum di SHA256SUMS.txt; pembaruan dibatalkan',
+    downloadFailed: 'Gagal mengunduh {name} (HTTP {status})',
+    downloadInterrupted: 'Unduhan {name} terputus: {message}',
+    checksumMismatch: 'Checksum {name} tidak cocok; berkas dibuang',
+    installFailed: 'Gagal memasang pembaruan: {message}',
+    notAppPack: '{name} bukan paket aplikasi Prototyper',
+    runtimeMismatch: 'Paket aplikasi butuh runtime {need}, exe ini runtime {have}',
+    verifyFailed: 'Aplikasi {version} gagal dijalankan, pembaruan dibatalkan: {message}',
+  },
+  en: {
+    badResponse: 'Unrecognized GitHub Releases response',
+    unreachable: 'Could not reach GitHub: {message}',
+    noRelease: 'No releases yet at github.com/{repo}',
+    httpError: 'GitHub responded with HTTP {status}',
+    noAsset: 'There is no update file for this installation',
+    noChecksums: 'The release has no SHA256SUMS.txt; update canceled',
+    checksumsDownloadFailed: 'Could not download SHA256SUMS.txt (HTTP {status})',
+    notListed: '{name} is not listed in SHA256SUMS.txt; update canceled',
+    downloadFailed: 'Could not download {name} (HTTP {status})',
+    downloadInterrupted: 'Download of {name} was interrupted: {message}',
+    checksumMismatch: 'Checksum of {name} does not match; file discarded',
+    installFailed: 'Could not install the update: {message}',
+    notAppPack: '{name} is not a Prototyper app package',
+    runtimeMismatch: 'The app package needs runtime {need}, this exe has runtime {have}',
+    verifyFailed: 'App {version} failed to run, update canceled: {message}',
+  },
+});
 
 /**
  * Pemeriksaan & pemasangan pembaruan dari GitHub Releases (dipakai tray).
@@ -94,7 +132,7 @@ interface GithubRelease {
 export function parseRelease(data: unknown): ReleaseInfo {
   const r = data as GithubRelease | null;
   if (!r || typeof r.tag_name !== 'string' || typeof r.html_url !== 'string') {
-    throw new AppError('INTERNAL', 'Respons GitHub Releases tidak dikenali');
+    throw new AppError('INTERNAL', t('badResponse'));
   }
   return {
     version: r.tag_name.replace(/^v/i, ''),
@@ -117,10 +155,10 @@ export async function fetchLatestRelease(repo: string, currentVersion: string, f
       signal: AbortSignal.timeout(15_000),
     });
   } catch (err) {
-    throw new AppError('INTERNAL', `Tidak bisa menghubungi GitHub: ${errorMessage(err)}`);
+    throw new AppError('INTERNAL', t('unreachable', { message: errorMessage(err) }));
   }
-  if (res.status === 404) throw new AppError('NOT_FOUND', `Belum ada rilis di github.com/${repo}`);
-  if (!res.ok) throw new AppError('INTERNAL', `GitHub membalas HTTP ${res.status}`);
+  if (res.status === 404) throw new AppError('NOT_FOUND', t('noRelease', { repo }));
+  if (!res.ok) throw new AppError('INTERNAL', t('httpError', { status: res.status }));
   return parseRelease(await res.json());
 }
 
@@ -166,19 +204,19 @@ export async function downloadUpdate(
   fetchImpl: FetchFn = fetch,
 ): Promise<string> {
   const { asset, checksums } = check;
-  if (!asset) throw new AppError('BAD_REQUEST', 'Tidak ada berkas pembaruan untuk instalasi ini');
-  if (!checksums) throw new AppError('INTERNAL', 'Rilis tidak memiliki SHA256SUMS.txt; pembaruan dibatalkan');
+  if (!asset) throw new AppError('BAD_REQUEST', t('noAsset'));
+  if (!checksums) throw new AppError('INTERNAL', t('noChecksums'));
 
   const sumsRes = await fetchImpl(checksums.url, { headers: headers(check.current) });
-  if (!sumsRes.ok) throw new AppError('INTERNAL', `Gagal mengunduh SHA256SUMS.txt (HTTP ${sumsRes.status})`);
+  if (!sumsRes.ok) throw new AppError('INTERNAL', t('checksumsDownloadFailed', { status: sumsRes.status }));
   const expected = parseSha256Sums(await sumsRes.text()).get(asset.name);
-  if (!expected) throw new AppError('INTERNAL', `${asset.name} tidak tercantum di SHA256SUMS.txt; pembaruan dibatalkan`);
+  if (!expected) throw new AppError('INTERNAL', t('notListed', { name: asset.name }));
 
   mkdirSync(dir, { recursive: true });
   const target = path.join(dir, asset.name);
   const part = `${target}.download`;
   const res = await fetchImpl(asset.url, { headers: headers(check.current) });
-  if (!res.ok || !res.body) throw new AppError('INTERNAL', `Gagal mengunduh ${asset.name} (HTTP ${res.status})`);
+  if (!res.ok || !res.body) throw new AppError('INTERNAL', t('downloadFailed', { name: asset.name, status: res.status }));
   const total = Number(res.headers.get('content-length')) || asset.size || 0;
   const hash = createHash('sha256');
   let received = 0;
@@ -192,12 +230,12 @@ export async function downloadUpdate(
     await pipeline(body, createWriteStream(part));
   } catch (err) {
     rmSync(part, { force: true });
-    throw new AppError('INTERNAL', `Unduhan ${asset.name} terputus: ${errorMessage(err)}`);
+    throw new AppError('INTERNAL', t('downloadInterrupted', { name: asset.name, message: errorMessage(err) }));
   }
   const actual = hash.digest('hex');
   if (actual !== expected) {
     rmSync(part, { force: true });
-    throw new AppError('INTERNAL', `Checksum ${asset.name} tidak cocok; berkas dibuang`);
+    throw new AppError('INTERNAL', t('checksumMismatch', { name: asset.name }));
   }
   rmSync(target, { force: true });
   renameSync(part, target);
@@ -222,7 +260,7 @@ export function replaceExecutable(exe: string, downloaded: string): void {
   } catch (err) {
     rmSync(exe, { force: true });
     renameSync(old, exe);
-    throw new AppError('INTERNAL', `Gagal memasang pembaruan: ${errorMessage(err)}`);
+    throw new AppError('INTERNAL', t('installFailed', { message: errorMessage(err) }));
   }
   rmSync(downloaded, { force: true });
 }
@@ -272,10 +310,10 @@ export async function installAppUpdate(pack: string, o: AppInstallOptions): Prom
     info = null;
   }
   if (!info || !files.has(BUNDLE_FILE) || !files.has('package.json')) {
-    throw new AppError('BAD_REQUEST', `${path.basename(pack)} bukan paket aplikasi Prototyper`);
+    throw new AppError('BAD_REQUEST', t('notAppPack', { name: path.basename(pack) }));
   }
   if (info.runtime !== o.runtime) {
-    throw new AppError('BAD_REQUEST', `Paket aplikasi butuh runtime ${info.runtime}, exe ini runtime ${o.runtime}`);
+    throw new AppError('BAD_REQUEST', t('runtimeMismatch', { need: info.runtime, have: o.runtime }));
   }
 
   const dir = path.join(o.root, info.id);
@@ -298,7 +336,7 @@ export async function installAppUpdate(pack: string, o: AppInstallOptions): Prom
     if (before) writeFileSync(pointerFile, before);
     else rmSync(pointerFile, { force: true });
     rmSync(dir, { recursive: true, force: true });
-    throw new AppError('INTERNAL', `Aplikasi ${info.version} gagal dijalankan, pembaruan dibatalkan: ${errorMessage(err)}`);
+    throw new AppError('INTERNAL', t('verifyFailed', { version: info.version, message: errorMessage(err) }));
   }
   pruneAppStore(o.root, [info.id, o.active.id, o.embedded.id, ...(o.keep ?? [])]);
   rmSync(pack, { force: true });

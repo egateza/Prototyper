@@ -5,6 +5,22 @@ import type { ResumeState } from '../../core/agentsession.js';
 import { AppError } from '../../core/errors.js';
 import type { LogLine } from '../../core/logs.js';
 import type { Registry } from '../../core/registry.js';
+import { defineMessages } from '../../core/i18n.js';
+
+const t = defineMessages({
+  id: {
+    badAgent: 'agent harus salah satu dari: {choices}',
+    badCommentIds: 'commentIds harus array id komentar, mis. ["c3"]',
+    badMessage: 'message harus teks (maks. 2000 karakter)',
+    badResume: 'resume harus true atau false',
+  },
+  en: {
+    badAgent: 'agent must be one of: {choices}',
+    badCommentIds: 'commentIds must be an array of comment ids, e.g. ["c3"]',
+    badMessage: 'message must be text (max. 2000 characters)',
+    badResume: 'resume must be true or false',
+  },
+});
 
 type Params = { Params: { id: string } };
 
@@ -32,7 +48,7 @@ export const agentRoutes: FastifyPluginAsync<{ registry: Registry; agent: AgentR
   app.get<Params & { Querystring: { agent?: string } }>('/prototypes/:id/agent', async (req): Promise<AgentStateResponse> => {
     const p = await registry.require(req.params.id);
     const q = req.query.agent;
-    if (q !== undefined && !isAgentId(q)) throw new AppError('BAD_REQUEST', `agent harus salah satu dari: ${AGENT_IDS.join(', ')}`);
+    if (q !== undefined && !isAgentId(q)) throw new AppError('BAD_REQUEST', t('badAgent', { choices: AGENT_IDS.join(', ') }));
     const which = isAgentId(q) ? q : agent.defaultAgent;
     return { id: p.id, running: agent.isRunning(p.id), run: agent.info(p.id), resume: { agent: which, ...(await agent.resumeInfo(p, which)) } };
   });
@@ -40,19 +56,19 @@ export const agentRoutes: FastifyPluginAsync<{ registry: Registry; agent: AgentR
   app.post<Params & { Body: { agent?: unknown; commentIds?: unknown; message?: unknown; attachments?: unknown; resume?: unknown } | null }>('/prototypes/:id/agent/run', async (req, reply) => {
     const p = await registry.require(req.params.id);
     const b = req.body ?? {};
-    if (b.agent !== undefined && !isAgentId(b.agent)) throw new AppError('BAD_REQUEST', `agent harus salah satu dari: ${AGENT_IDS.join(', ')}`);
+    if (b.agent !== undefined && !isAgentId(b.agent)) throw new AppError('BAD_REQUEST', t('badAgent', { choices: AGENT_IDS.join(', ') }));
     let commentIds: string[] | undefined;
     if (b.commentIds !== undefined) {
       if (!Array.isArray(b.commentIds) || b.commentIds.some((x) => typeof x !== 'string' || !/^c\d+$/.test(x))) {
-        throw new AppError('BAD_REQUEST', 'commentIds harus array id komentar, mis. ["c3"]');
+        throw new AppError('BAD_REQUEST', t('badCommentIds'));
       }
       commentIds = b.commentIds as string[];
     }
     if (b.message !== undefined && (typeof b.message !== 'string' || b.message.length > 2000)) {
-      throw new AppError('BAD_REQUEST', 'message harus teks (maks. 2000 karakter)');
+      throw new AppError('BAD_REQUEST', t('badMessage'));
     }
     const attachments = await cleanAttachments(p.path, b.attachments);
-    if (b.resume !== undefined && typeof b.resume !== 'boolean') throw new AppError('BAD_REQUEST', 'resume harus true atau false');
+    if (b.resume !== undefined && typeof b.resume !== 'boolean') throw new AppError('BAD_REQUEST', t('badResume'));
     const run = await agent.run(p, {
       ...(isAgentId(b.agent) ? { agent: b.agent } : {}),
       ...(typeof b.resume === 'boolean' ? { resume: b.resume } : {}),

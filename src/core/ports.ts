@@ -1,6 +1,12 @@
 import net from 'node:net';
 import type { PortRange } from './config.js';
 import { AppError } from './errors.js';
+import { defineMessages } from './i18n.js';
+
+const t = defineMessages({
+  id: { noFreePort: 'Tidak ada port bebas di rentang {start}-{end}' },
+  en: { noFreePort: 'No free port in the range {start}-{end}' },
+});
 
 function canListen(port: number, host: string): Promise<boolean> {
   return new Promise((resolve) => {
@@ -39,7 +45,7 @@ export async function allocatePort({ range, preferred, exclude = new Set(), host
     if (exclude.has(p)) continue;
     if (await isPortFree(p, hosts)) return p;
   }
-  throw new AppError('CONFLICT', `Tidak ada port bebas di rentang ${range.start}-${range.end}`);
+  throw new AppError('CONFLICT', t('noFreePort', { start: range.start, end: range.end }));
 }
 
 function connect(port: number, host: string): Promise<boolean> {

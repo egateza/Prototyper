@@ -2,6 +2,24 @@ import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto
 import path from 'node:path';
 import { AppError } from './errors.js';
 import { readJsonFile, writeJsonAtomic } from './fsutil.js';
+import { defineMessages } from './i18n.js';
+
+const t = defineMessages({
+  id: {
+    noActiveCode: 'Tidak ada kode pairing aktif. Buat kode baru di komputer (Hubungkan HP).',
+    tooManyAttempts: 'Kode salah terlalu sering; kode dibatalkan. Buat kode baru di komputer.',
+    wrongCode: 'Kode pairing salah',
+    deviceNotFound: 'Perangkat "{id}" tidak ditemukan',
+    nameEmpty: 'Nama perangkat tidak boleh kosong',
+  },
+  en: {
+    noActiveCode: 'There is no active pairing code. Create a new code on the computer (Connect phone).',
+    tooManyAttempts: 'Too many wrong attempts; the code was canceled. Create a new code on the computer.',
+    wrongCode: 'Wrong pairing code',
+    deviceNotFound: 'Device "{id}" not found',
+    nameEmpty: 'Device name cannot be empty',
+  },
+});
 
 /**
  * Perangkat lain (mis. HP) yang dipasangkan agar bisa mengedit lewat Web UI pada mode LAN.
@@ -108,14 +126,14 @@ export class DeviceStore {
   /** Tukar kode pairing dengan token perangkat. Kode langsung hangus setelah dipakai. */
   async pair(code: string, userAgent?: string): Promise<{ device: DeviceView; token: string }> {
     const p = this.activePairing() ? this.pairing : null;
-    if (!p) throw new AppError('FORBIDDEN', 'Tidak ada kode pairing aktif. Buat kode baru di komputer (Hubungkan HP).');
+    if (!p) throw new AppError('FORBIDDEN', t('noActiveCode'));
     if (code.trim() !== p.code) {
       p.attempts += 1;
       if (p.attempts >= PAIRING_MAX_ATTEMPTS) {
         this.pairing = null;
-        throw new AppError('FORBIDDEN', 'Kode salah terlalu sering; kode dibatalkan. Buat kode baru di komputer.');
+        throw new AppError('FORBIDDEN', t('tooManyAttempts'));
       }
-      throw new AppError('FORBIDDEN', 'Kode pairing salah');
+      throw new AppError('FORBIDDEN', t('wrongCode'));
     }
     this.pairing = null;
     const id = randomBytes(6).toString('hex');
@@ -146,15 +164,15 @@ export class DeviceStore {
   async revoke(id: string): Promise<void> {
     const before = this.devices.length;
     this.devices = this.devices.filter((d) => d.id !== id);
-    if (this.devices.length === before) throw new AppError('NOT_FOUND', `Perangkat "${id}" tidak ditemukan`);
+    if (this.devices.length === before) throw new AppError('NOT_FOUND', t('deviceNotFound', { id }));
     await this.save();
   }
 
   async rename(id: string, name: string): Promise<DeviceView> {
     const d = this.devices.find((x) => x.id === id);
-    if (!d) throw new AppError('NOT_FOUND', `Perangkat "${id}" tidak ditemukan`);
+    if (!d) throw new AppError('NOT_FOUND', t('deviceNotFound', { id }));
     const n = name.trim().slice(0, 60);
-    if (!n) throw new AppError('BAD_REQUEST', 'Nama perangkat tidak boleh kosong');
+    if (!n) throw new AppError('BAD_REQUEST', t('nameEmpty'));
     d.name = n;
     await this.save();
     const { tokenHash: _h, ...view } = d;

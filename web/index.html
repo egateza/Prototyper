@@ -15,50 +15,51 @@
 <body>
   <div class="ws" id="ws">
     <aside class="ws-side">
-      <div class="brand"><a class="brand-link" href="#" title="Beranda"><span class="brand-mark"><svg viewBox="4 4 56 56" aria-hidden="true"><rect x="4" y="4" width="56" height="56" rx="14" fill="#5b5bf6"/><path d="M4 18h56M4 32h56M4 46h56M18 4v56M32 4v56M46 4v56" stroke="#fff" stroke-opacity=".16" stroke-width="1"/><path d="M22 46V18h12a9 9 0 0 1 0 18H22" fill="none" stroke="#fff" stroke-width="4" stroke-linejoin="round"/><g fill="#5b5bf6" stroke="#fff" stroke-width="2"><rect x="19" y="15" width="6" height="6"/><rect x="19" y="43" width="6" height="6"/><rect x="19" y="33" width="6" height="6"/><circle cx="43" cy="27" r="3"/></g></svg></span>Prototyper</a>
+      <div class="brand"><a class="brand-link" href="#" title="Beranda" data-i18n-title="home"><span class="brand-mark"><svg viewBox="4 4 56 56" aria-hidden="true"><rect x="4" y="4" width="56" height="56" rx="14" fill="#5b5bf6"/><path d="M4 18h56M4 32h56M4 46h56M18 4v56M32 4v56M46 4v56" stroke="#fff" stroke-opacity=".16" stroke-width="1"/><path d="M22 46V18h12a9 9 0 0 1 0 18H22" fill="none" stroke="#fff" stroke-width="4" stroke-linejoin="round"/><g fill="#5b5bf6" stroke="#fff" stroke-width="2"><rect x="19" y="15" width="6" height="6"/><rect x="19" y="43" width="6" height="6"/><rect x="19" y="33" width="6" height="6"/><circle cx="43" cy="27" r="3"/></g></svg></span>Prototyper</a>
         <small id="meta"></small>
         <button type="button" class="icon-btn pin" id="btn-pin"></button>
-        <button type="button" class="icon-btn power" id="btn-shutdown" title="Matikan Prototyper" aria-label="Matikan Prototyper"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M12 3v8M6.3 6.3a8 8 0 1 0 11.4 0"/></svg></button></div>
+        <button type="button" class="icon-btn power" id="btn-shutdown" title="Matikan Prototyper" aria-label="Matikan Prototyper" data-i18n-title="shutdownTitle" data-i18n-aria-label="shutdownTitle"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M12 3v8M6.3 6.3a8 8 0 1 0 11.4 0"/></svg></button></div>
       <label class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M10 2a8 8 0 0 1 6.32 12.9l5.39 5.4-1.41 1.4-5.4-5.39A8 8 0 1 1 10 2Zm0 2a6 6 0 1 0 0 12 6 6 0 0 0 0-12Z"/></svg>
-        <input id="q" placeholder="Cari…" autocomplete="off" spellcheck="false" aria-label="Cari prototype"><kbd>/</kbd></label>
+        <input id="q" placeholder="Cari…" autocomplete="off" spellcheck="false" aria-label="Cari prototype" data-i18n-placeholder="searchPlaceholder" data-i18n-aria-label="searchLabel"><kbd>/</kbd></label>
       <div class="ws-filter" id="filter">
-        <button type="button" data-f="semua">Semua</button>
-        <button type="button" data-f="aktif">Aktif</button>
-        <button type="button" data-f="masalah">Masalah</button>
-        <button type="button" data-f="ds" title="Hanya desain sistem">Desain sistem</button>
+        <button type="button" data-f="semua" data-i18n="filterAll">Semua</button>
+        <button type="button" data-f="aktif" data-i18n="filterActive">Aktif</button>
+        <button type="button" data-f="masalah" data-i18n="filterProblems">Masalah</button>
+        <button type="button" data-f="ds" title="Hanya desain sistem" data-i18n="designSystem" data-i18n-title="filterDsTitle">Desain sistem</button>
       </div>
-      <div id="offline" class="callout err offline" hidden>Daemon tidak terjangkau. Mencoba lagi…</div>
+      <div id="offline" class="callout err offline" hidden data-i18n="offline">Daemon tidak terjangkau. Mencoba lagi…</div>
       <button type="button" id="upd-bar" class="upd-bar" hidden></button>
-      <nav class="ws-list" id="side-list" aria-label="Daftar prototype"></nav>
+      <nav class="ws-list" id="side-list" aria-label="Daftar prototype" data-i18n-aria-label="prototypeList"></nav>
       <div class="ws-side-foot">
-        <button type="button" class="btn primary" id="btn-new"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" d="M12 5v14M5 12h14"/></svg>Baru</button>
-        <button type="button" class="btn" id="btn-add" title="Daftarkan folder yang sudah ada">Daftarkan</button>
-        <button type="button" class="icon-btn" id="btn-phone" title="Hubungkan HP: edit dari perangkat lain lewat jaringan" aria-label="Hubungkan HP"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10.5 18h3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
-        <button type="button" class="icon-btn" id="btn-theme" title="Tema"></button>
-        <button type="button" class="icon-btn" id="btn-palette" title="Palet perintah (Ctrl K)" aria-label="Palet perintah"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6Z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/></svg></button>
+        <button type="button" class="btn primary" id="btn-new"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" d="M12 5v14M5 12h14"/></svg><span data-i18n="newShort">Baru</span></button>
+        <button type="button" class="btn" id="btn-add" title="Daftarkan folder yang sudah ada" data-i18n="registerShort" data-i18n-title="cmdRegister">Daftarkan</button>
+        <button type="button" class="icon-btn" id="btn-phone" title="Hubungkan HP: edit dari perangkat lain lewat jaringan" aria-label="Hubungkan HP" data-i18n-title="phoneTitle" data-i18n-aria-label="connectPhone"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10.5 18h3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+        <button type="button" class="icon-btn" id="btn-theme" title="Tema" data-i18n-title="theme"></button>
+        <button type="button" class="icon-btn" id="btn-lang"></button>
+        <button type="button" class="icon-btn" id="btn-palette" title="Palet perintah (Ctrl K)" aria-label="Palet perintah" data-i18n-title="paletteTitle" data-i18n-aria-label="palette"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6Z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/></svg></button>
       </div>
     </aside>
-    <button type="button" class="side-edge" id="side-edge" title="Tampilkan sidebar" aria-label="Tampilkan sidebar"><i></i></button>
+    <button type="button" class="side-edge" id="side-edge" title="Tampilkan sidebar" aria-label="Tampilkan sidebar" data-i18n-title="showSidebar" data-i18n-aria-label="showSidebar"><i></i></button>
     <main class="ws-main" id="main"></main>
   </div>
 
   <!-- Tampilan mobile: sidebar & panel komentar dibuka sebagai lembar lewat tombol mengambang -->
   <div class="m-backdrop" id="m-backdrop"></div>
   <div class="fabs" id="fabs">
-    <button type="button" class="fab" id="fab-menu" title="Menu: daftar prototype" aria-label="Menu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
+    <button type="button" class="fab" id="fab-menu" title="Menu: daftar prototype" aria-label="Menu" data-i18n-title="fabMenuTitle" data-i18n-aria-label="menu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
     <span class="fab-gap"></span>
-    <button type="button" class="fab fab-sm" id="fab-pick" title="Komentari elemen: ketuk elemen di pratinjau" aria-label="Komentari elemen" aria-pressed="false" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4l7 17 2.5-7.5L21 11 4 4Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
-    <button type="button" class="fab fab-primary" id="fab-cm" title="Komentar" aria-label="Komentar" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 19 17h-8l-5 4v-4H5a1.5 1.5 0 0 1-1.5-1.5v-9A1.5 1.5 0 0 1 5 5Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><span class="fab-badge" id="fab-cm-badge" hidden></span></button>
+    <button type="button" class="fab fab-sm" id="fab-pick" title="Komentari elemen: ketuk elemen di pratinjau" aria-label="Komentari elemen" data-i18n-title="fabPickTitle" data-i18n-aria-label="fabPickLabel" aria-pressed="false" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4l7 17 2.5-7.5L21 11 4 4Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
+    <button type="button" class="fab fab-primary" id="fab-cm" title="Komentar" aria-label="Komentar" data-i18n-title="comments" data-i18n-aria-label="comments" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 19 17h-8l-5 4v-4H5a1.5 1.5 0 0 1-1.5-1.5v-9A1.5 1.5 0 0 1 5 5Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><span class="fab-badge" id="fab-cm-badge" hidden></span></button>
   </div>
 
   <!-- Perangkat lain yang belum dipasangkan (mode LAN) -->
   <section class="pair-screen" id="pair-screen" hidden>
     <form class="pair-card" id="pair-form">
-      <h1>Hubungkan perangkat ini</h1>
-      <p class="muted">Di komputer tempat Prototyper berjalan, klik ikon <b>HP</b> di bawah sidebar (atau palet perintah → <i>Hubungkan HP</i>). Pindai QR-nya, atau ketik kode 6 digit di sini.</p>
-      <input id="pair-code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="000000" aria-label="Kode pairing">
+      <h1 data-i18n="pairScreenTitle">Hubungkan perangkat ini</h1>
+      <p class="muted" data-i18n-html="pairScreenBody">Di komputer tempat Prototyper berjalan, klik ikon <b>HP</b> di bawah sidebar (atau palet perintah → <i>Hubungkan HP</i>). Pindai QR-nya, atau ketik kode 6 digit di sini.</p>
+      <input id="pair-code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="000000" aria-label="Kode pairing" data-i18n-aria-label="pairCodeLabel">
       <div class="callout err" id="pair-err" hidden></div>
-      <button type="submit" class="btn primary" id="pair-submit">Hubungkan</button>
+      <button type="submit" class="btn primary" id="pair-submit" data-i18n="connect">Hubungkan</button>
     </form>
   </section>
 
@@ -67,17 +68,17 @@
     <form method="dialog">
       <div class="dlg-head">
         <div>
-          <h2>Hubungkan HP</h2>
-          <p class="muted">Berkomentar, menjawab pertanyaan agent, dan menjalankan agent dari HP lewat jaringan yang sama.</p>
+          <h2 data-i18n="connectPhone">Hubungkan HP</h2>
+          <p class="muted" data-i18n="phoneDialogSub">Berkomentar, menjawab pertanyaan agent, dan menjalankan agent dari HP lewat jaringan yang sama.</p>
         </div>
-        <button type="button" class="icon-btn" data-close aria-label="Tutup">✕</button>
+        <button type="button" class="icon-btn" data-close aria-label="Tutup" data-i18n-aria-label="close">✕</button>
       </div>
       <div id="phone-body"></div>
-      <h3 class="phone-sub">Perangkat terpasang</h3>
+      <h3 class="phone-sub" data-i18n="pairedDevices">Perangkat terpasang</h3>
       <div class="phone-devices" id="phone-devices"></div>
-      <p class="muted hint">HP yang terpasang bisa menjalankan agent di komputer ini; pakai hanya di jaringan yang Anda percayai. Hapus/daftarkan prototype, manifest, update, dan mematikan Prototyper tetap hanya dari komputer.</p>
+      <p class="muted hint" data-i18n="phoneDialogHint">HP yang terpasang bisa menjalankan agent di komputer ini; pakai hanya di jaringan yang Anda percayai. Hapus/daftarkan prototype, manifest, update, dan mematikan Prototyper tetap hanya dari komputer.</p>
       <div class="dlg-foot">
-        <button type="button" class="btn primary" data-close>Tutup</button>
+        <button type="button" class="btn primary" data-close data-i18n="close">Tutup</button>
       </div>
     </form>
   </dialog>
@@ -87,28 +88,28 @@
     <form method="dialog" id="add-form">
       <div class="dlg-head">
         <div>
-          <h2 id="add-title">Daftarkan prototype</h2>
-          <p class="muted" id="add-sub">Arahkan ke folder prototype. Bila belum ada <code>prototyper.json</code>, isinya dideteksi otomatis.</p>
+          <h2 id="add-title" data-i18n="addTitle">Daftarkan prototype</h2>
+          <p class="muted" id="add-sub" data-i18n-html="addSub">Arahkan ke folder prototype. Bila belum ada <code>prototyper.json</code>, isinya dideteksi otomatis.</p>
         </div>
-        <button type="button" class="icon-btn" data-close aria-label="Tutup">✕</button>
+        <button type="button" class="icon-btn" data-close aria-label="Tutup" data-i18n-aria-label="close">✕</button>
       </div>
       <div id="add-step1">
         <div class="field">
-          <label for="add-path">Path folder</label>
+          <label for="add-path" data-i18n="folderPath">Path folder</label>
           <div class="path-row">
             <input id="add-path" placeholder="D:\IdeaProjects\pos-sembako-ui" autocomplete="off" spellcheck="false">
-            <button type="button" class="btn browse" id="add-browse" title="Pilih folder lewat dialog bawaan sistem (Explorer)"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 6.5A2.5 2.5 0 0 1 5.5 4h4.1l2 2h6.9A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-11Z"/></svg>Pilih…</button>
+            <button type="button" class="btn browse" id="add-browse" title="Pilih folder lewat dialog bawaan sistem (Explorer)" data-i18n-title="browseTitle"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 6.5A2.5 2.5 0 0 1 5.5 4h4.1l2 2h6.9A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-11Z"/></svg><span data-i18n="browse">Pilih…</span></button>
           </div>
         </div>
       </div>
       <div id="add-step2" hidden>
         <div class="detect-path"><code id="add-folder"></code></div>
         <div class="field" id="add-type-row">
-          <span>Jenis</span>
+          <span data-i18n="infoType">Jenis</span>
           <div class="seg seg-wide" id="add-type">
-            <button type="button" data-val=""><b>otomatis</b><small>hasil deteksi</small></button>
-            <button type="button" data-val="static"><b>static</b><small>HTML/JS di-serve langsung</small></button>
-            <button type="button" data-val="command"><b>command</b><small>npm run dev, dll.</small></button>
+            <button type="button" data-val=""><b data-i18n="typeAuto">otomatis</b><small data-i18n="typeAutoSub">hasil deteksi</small></button>
+            <button type="button" data-val="static"><b>static</b><small data-i18n="typeStaticSub">HTML/JS di-serve langsung</small></button>
+            <button type="button" data-val="command"><b>command</b><small data-i18n="typeCommandSub">npm run dev, dll.</small></button>
           </div>
         </div>
         <ul class="notes" id="add-notes"></ul>
@@ -116,13 +117,13 @@
           <span>prototyper.json</span>
           <textarea id="add-json" rows="12" spellcheck="false"></textarea>
         </label>
-        <p class="muted hint">Placeholder <code>{port}</code> dan <code>{host}</code> pada <code>command.run</code> diganti otomatis saat dijalankan.</p>
-        <div class="callout warn">Perintah pada <code>run</code>/<code>install</code> akan dieksekusi di komputer ini — pastikan isinya benar.</div>
+        <p class="muted hint" data-i18n-html="addPlaceholderHint">Placeholder <code>{port}</code> dan <code>{host}</code> pada <code>command.run</code> diganti otomatis saat dijalankan.</p>
+        <div class="callout warn" data-i18n-html="addCommandWarn">Perintah pada <code>run</code>/<code>install</code> akan dieksekusi di komputer ini — pastikan isinya benar.</div>
       </div>
       <div id="add-err" class="callout err" hidden></div>
       <div class="dlg-foot">
-        <button type="button" class="btn ghost" data-close>Batal</button>
-        <button type="submit" class="btn primary" id="add-next">Lanjut</button>
+        <button type="button" class="btn ghost" data-close data-i18n="cancel">Batal</button>
+        <button type="submit" class="btn primary" id="add-next" data-i18n="next">Lanjut</button>
       </div>
     </form>
   </dialog>
@@ -132,53 +133,53 @@
     <form method="dialog" id="new-form">
       <div class="dlg-head">
         <div>
-          <h2>Buat prototype baru</h2>
-          <p class="muted">Folder dibuat dari template, lengkap dengan <code>prototyper.json</code> dan <code>AGENTS.md</code>, lalu langsung didaftarkan.</p>
+          <h2 data-i18n="cmdNewPrototype">Buat prototype baru</h2>
+          <p class="muted" data-i18n-html="newSub">Folder dibuat dari template, lengkap dengan <code>prototyper.json</code> dan <code>AGENTS.md</code>, lalu langsung didaftarkan.</p>
         </div>
-        <button type="button" class="icon-btn" data-close aria-label="Tutup">✕</button>
+        <button type="button" class="icon-btn" data-close aria-label="Tutup" data-i18n-aria-label="close">✕</button>
       </div>
       <div class="row2">
         <label class="field">
           <span>ID</span>
-          <input id="new-id" placeholder="kasir-grosir" autocomplete="off" spellcheck="false" required>
+          <input id="new-id" placeholder="kasir-grosir" autocomplete="off" spellcheck="false" required data-i18n-placeholder="newIdPlaceholder">
         </label>
         <label class="field">
-          <span>Nama tampilan <small class="muted">(opsional)</small></span>
-          <input id="new-name" class="plain" placeholder="Kasir Grosir" autocomplete="off">
+          <span><span data-i18n="displayName">Nama tampilan</span> <small class="muted" data-i18n="optional">(opsional)</small></span>
+          <input id="new-name" class="plain" placeholder="Kasir Grosir" autocomplete="off" data-i18n-placeholder="newNamePlaceholder">
         </label>
       </div>
       <div class="field">
         <span>Template</span>
         <div class="seg seg-wide" id="new-tpl">
-          <button type="button" data-val="static" aria-pressed="true"><b>static</b><small>HTML/CSS/JS, tanpa build</small></button>
+          <button type="button" data-val="static" aria-pressed="true"><b>static</b><small data-i18n="tplStaticSub">HTML/CSS/JS, tanpa build</small></button>
           <button type="button" data-val="vite-vanilla" aria-pressed="false"><b>vite-vanilla</b><small>Vite + JavaScript</small></button>
           <button type="button" data-val="vite-react" aria-pressed="false"><b>vite-react</b><small>Vite + React</small></button>
-          <button type="button" data-val="design-system" aria-pressed="false"><b>desain sistem</b><small>token + komponen + katalog</small></button>
+          <button type="button" data-val="design-system" aria-pressed="false"><b data-i18n="dsTag">desain sistem</b><small data-i18n="tplDsSub">token + komponen + katalog</small></button>
         </div>
       </div>
       <label class="field" id="new-ds-row" hidden>
-        <span>Desain sistem <small class="muted">(opsional — token &amp; komponen bersama)</small></span>
-        <select id="new-ds"><option value="">Tanpa desain sistem</option></select>
+        <span><span data-i18n="designSystem">Desain sistem</span> <small class="muted" data-i18n="newDsOptional">(opsional — token &amp; komponen bersama)</small></span>
+        <select id="new-ds"><option value="" data-i18n="noDesignSystem">Tanpa desain sistem</option></select>
       </label>
       <label class="field" id="new-html-row">
-        <span>Impor HTML <small class="muted">(opsional — mis. artifact Claude yang diunduh)</small></span>
+        <span><span data-i18n="importHtml">Impor HTML</span> <small class="muted" data-i18n="importHtmlOptional">(opsional — mis. artifact Claude yang diunduh)</small></span>
         <input type="file" id="new-html" accept=".html,.htm,text/html">
       </label>
       <label class="check" id="new-install-row" hidden>
-        <input type="checkbox" id="new-install" checked> Jalankan <code>npm install</code> setelah dibuat
+        <input type="checkbox" id="new-install" checked> <span data-i18n-html="newInstall">Jalankan <code>npm install</code> setelah dibuat</span>
       </label>
       <div class="field">
-        <label for="new-dir">Folder <small class="muted">(opsional)</small></label>
+        <label for="new-dir"><span data-i18n="infoFolder">Folder</span> <small class="muted" data-i18n="optional">(opsional)</small></label>
         <div class="path-row">
           <input id="new-dir" autocomplete="off" spellcheck="false">
-          <button type="button" class="btn browse" id="new-browse" title="Pilih folder induk; prototype dibuat di subfolder bernama id"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 6.5A2.5 2.5 0 0 1 5.5 4h4.1l2 2h6.9A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-11Z"/></svg>Pilih…</button>
+          <button type="button" class="btn browse" id="new-browse" title="Pilih folder induk; prototype dibuat di subfolder bernama id" data-i18n-title="newBrowseTitle"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 6.5A2.5 2.5 0 0 1 5.5 4h4.1l2 2h6.9A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-11Z"/></svg><span data-i18n="browse">Pilih…</span></button>
         </div>
       </div>
       <p class="muted hint" id="new-hint"></p>
       <div id="new-err" class="callout err" hidden></div>
       <div class="dlg-foot">
-        <button type="button" class="btn ghost" data-close>Batal</button>
-        <button type="submit" class="btn primary" id="new-go">Buat</button>
+        <button type="button" class="btn ghost" data-close data-i18n="cancel">Batal</button>
+        <button type="submit" class="btn primary" id="new-go" data-i18n="create">Buat</button>
       </div>
     </form>
   </dialog>
@@ -188,49 +189,49 @@
     <form method="dialog" id="ds-form">
       <div class="dlg-head">
         <div>
-          <h2>Desain sistem</h2>
+          <h2 data-i18n="designSystem">Desain sistem</h2>
           <p class="muted" id="ds-sub"></p>
         </div>
-        <button type="button" class="icon-btn" data-close aria-label="Tutup">✕</button>
+        <button type="button" class="icon-btn" data-close aria-label="Tutup" data-i18n-aria-label="close">✕</button>
       </div>
       <div class="field">
-        <span>Sumber</span>
+        <span data-i18n="dsSource">Sumber</span>
         <div class="seg seg-wide" id="ds-mode">
-          <button type="button" data-val="shared"><b>Bersama</b><small>pakai desain sistem terdaftar</small></button>
-          <button type="button" data-val="local"><b>Milik sendiri</b><small>sudah ada di folder prototype ini</small></button>
+          <button type="button" data-val="shared"><b data-i18n="dsShared">Bersama</b><small data-i18n="dsSharedSub">pakai desain sistem terdaftar</small></button>
+          <button type="button" data-val="local"><b data-i18n="dsLocal">Milik sendiri</b><small data-i18n="dsLocalSub">sudah ada di folder prototype ini</small></button>
         </div>
       </div>
       <div id="ds-shared">
-        <p class="muted" id="ds-none" hidden>Belum ada desain sistem terdaftar. Buat dulu lewat <b>Baru → desain sistem</b>, atau pilih <b>Milik sendiri</b>.</p>
+        <p class="muted" id="ds-none" hidden data-i18n-html="dsNone">Belum ada desain sistem terdaftar. Buat dulu lewat <b>Baru → desain sistem</b>, atau pilih <b>Milik sendiri</b>.</p>
         <label class="field" id="ds-pick-row">
-          <span>Desain sistem</span>
+          <span data-i18n="designSystem">Desain sistem</span>
           <select id="ds-pick"></select>
         </label>
         <div class="field" id="ds-dir-row">
-          <label for="ds-dir">Folder salinan <small class="muted">(opsional, di dalam folder prototype)</small></label>
+          <label for="ds-dir"><span data-i18n="dsCopyFolder">Folder salinan</span> <small class="muted" data-i18n="dsCopyFolderOptional">(opsional, di dalam folder prototype)</small></label>
           <div class="path-row">
             <input id="ds-dir" placeholder="design-system" autocomplete="off" spellcheck="false">
-            <button type="button" class="btn browse" id="ds-dir-browse" title="Pilih folder di dalam folder prototype"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 6.5A2.5 2.5 0 0 1 5.5 4h4.1l2 2h6.9A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-11Z"/></svg>Pilih…</button>
+            <button type="button" class="btn browse" id="ds-dir-browse" title="Pilih folder di dalam folder prototype" data-i18n-title="dsDirBrowseTitle"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 6.5A2.5 2.5 0 0 1 5.5 4h4.1l2 2h6.9A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-11Z"/></svg><span data-i18n="browse">Pilih…</span></button>
           </div>
         </div>
-        <p class="muted hint">File token &amp; komponen disalin ke folder ini, dimuat dari halaman/entry prototype, dan aturan pemakaiannya ditulis di AGENTS.md agar agent memakainya.</p>
+        <p class="muted hint" data-i18n-html="dsSharedHint">File token &amp; komponen disalin ke folder ini, dimuat dari halaman/entry prototype, dan aturan pemakaiannya ditulis di AGENTS.md agar agent memakainya.</p>
       </div>
       <div id="ds-local" hidden>
         <label class="field">
-          <span>Lokasi <small class="muted">(satu per baris, relatif ke folder prototype; file atau folder)</small></span>
+          <span><span data-i18n="dsLocations">Lokasi</span> <small class="muted" data-i18n="dsLocationsSub">(satu per baris, relatif ke folder prototype; file atau folder)</small></span>
           <textarea id="ds-paths" rows="3" spellcheck="false" placeholder="src/styles/tokens.css&#10;src/components/ui"></textarea>
         </label>
         <div class="path-btns">
-          <button type="button" class="btn browse" id="ds-add-file" title="Tambah file dari folder prototype (boleh lebih dari satu)"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 6.5A2.5 2.5 0 0 1 5.5 4h4.1l2 2h6.9A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-11Z"/></svg>+ File…</button>
-          <button type="button" class="btn browse" id="ds-add-folder" title="Tambah folder dari folder prototype"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 6.5A2.5 2.5 0 0 1 5.5 4h4.1l2 2h6.9A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-11Z"/></svg>+ Folder…</button>
+          <button type="button" class="btn browse" id="ds-add-file" title="Tambah file dari folder prototype (boleh lebih dari satu)" data-i18n-title="dsAddFileTitle"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 6.5A2.5 2.5 0 0 1 5.5 4h4.1l2 2h6.9A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-11Z"/></svg><span data-i18n="dsAddFile">+ File…</span></button>
+          <button type="button" class="btn browse" id="ds-add-folder" title="Tambah folder dari folder prototype" data-i18n-title="dsAddFolderTitle"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 6.5A2.5 2.5 0 0 1 5.5 4h4.1l2 2h6.9A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-11Z"/></svg><span data-i18n="dsAddFolder">+ Folder…</span></button>
         </div>
         <div class="ds-cands" id="ds-cands"></div>
-        <p class="muted hint">Tidak ada file yang disalin atau diubah. Lokasinya dicatat di <code>prototyper.json</code> dan AGENTS.md, agar agent memakai token &amp; komponen di sana dan menambah yang baru di tempat yang sama.</p>
+        <p class="muted hint" data-i18n-html="dsLocalHint">Tidak ada file yang disalin atau diubah. Lokasinya dicatat di <code>prototyper.json</code> dan AGENTS.md, agar agent memakai token &amp; komponen di sana dan menambah yang baru di tempat yang sama.</p>
       </div>
       <div id="ds-err" class="callout err" hidden></div>
       <div class="dlg-foot">
-        <button type="button" class="btn ghost" data-close>Batal</button>
-        <button type="submit" class="btn primary" id="ds-go">Simpan</button>
+        <button type="button" class="btn ghost" data-close data-i18n="cancel">Batal</button>
+        <button type="submit" class="btn primary" id="ds-go" data-i18n="save">Simpan</button>
       </div>
     </form>
   </dialog>
@@ -240,28 +241,28 @@
     <form method="dialog" id="ex-form">
       <div class="dlg-head">
         <div>
-          <h2>Ekspor halaman</h2>
+          <h2 data-i18n="exTitle">Ekspor halaman</h2>
           <p class="muted" id="ex-sub"></p>
         </div>
-        <button type="button" class="icon-btn" data-close aria-label="Tutup">✕</button>
+        <button type="button" class="icon-btn" data-close aria-label="Tutup" data-i18n-aria-label="close">✕</button>
       </div>
       <div class="field">
-        <span>Format</span>
+        <span data-i18n="exFormat">Format</span>
         <div class="seg seg-wide" id="ex-format">
-          <button type="button" data-val="png"><b>PNG</b><small>tajam, untuk desain</small></button>
-          <button type="button" data-val="jpeg"><b>JPG</b><small>kecil, untuk chat</small></button>
-          <button type="button" data-val="pdf"><b>PDF</b><small>teks bisa dipilih</small></button>
+          <button type="button" data-val="png"><b>PNG</b><small data-i18n="exPngSub">tajam, untuk desain</small></button>
+          <button type="button" data-val="jpeg"><b>JPG</b><small data-i18n="exJpgSub">kecil, untuk chat</small></button>
+          <button type="button" data-val="pdf"><b>PDF</b><small data-i18n="exPdfSub">teks bisa dipilih</small></button>
         </div>
       </div>
       <div class="field" id="ex-area-row">
-        <span>Area</span>
+        <span data-i18n="exArea">Area</span>
         <div class="seg" id="ex-area">
-          <button type="button" data-val="full">Seluruh halaman</button>
-          <button type="button" data-val="view">Layar saja</button>
+          <button type="button" data-val="full" data-i18n="exAreaFull">Seluruh halaman</button>
+          <button type="button" data-val="view" data-i18n="exAreaView">Layar saja</button>
         </div>
       </div>
       <div class="field" id="ex-scale-row">
-        <span>Resolusi</span>
+        <span data-i18n="exScale">Resolusi</span>
         <div class="seg" id="ex-scale">
           <button type="button" data-val="1">1×</button>
           <button type="button" data-val="2">2× (retina)</button>
@@ -269,22 +270,22 @@
         </div>
       </div>
       <div class="field" id="ex-paper-row" hidden>
-        <span>Kertas</span>
+        <span data-i18n="exPaper">Kertas</span>
         <div class="seg" id="ex-paper">
-          <button type="button" data-val="screen">Seperti layar</button>
-          <button type="button" data-val="a4">A4 (cetak)</button>
+          <button type="button" data-val="screen" data-i18n="exPaperScreen">Seperti layar</button>
+          <button type="button" data-val="a4" data-i18n="exPaperA4">A4 (cetak)</button>
         </div>
       </div>
       <label class="field">
-        <span>Halaman</span>
-        <input id="ex-page" spellcheck="false" autocomplete="off" placeholder="/" title="Path halaman yang diekspor, mis. /kasir atau /#/bayar">
+        <span data-i18n="page">Halaman</span>
+        <input id="ex-page" spellcheck="false" autocomplete="off" placeholder="/" title="Path halaman yang diekspor, mis. /kasir atau /#/bayar" data-i18n-title="exPageTitle">
       </label>
       <p class="muted hint" id="ex-hint"></p>
       <div id="ex-err" class="callout err" hidden></div>
       <div class="dlg-foot">
-        <button type="button" class="btn ghost" data-close>Batal</button>
-        <button type="button" class="btn" id="ex-copy" hidden>Salin gambar</button>
-        <button type="submit" class="btn primary" id="ex-go">Unduh</button>
+        <button type="button" class="btn ghost" data-close data-i18n="cancel">Batal</button>
+        <button type="button" class="btn" id="ex-copy" hidden data-i18n="copyImage">Salin gambar</button>
+        <button type="submit" class="btn primary" id="ex-go" data-i18n="download">Unduh</button>
       </div>
     </form>
   </dialog>
@@ -294,16 +295,16 @@
     <form method="dialog">
       <div class="dlg-head">
         <div>
-          <h2>Agent lokal</h2>
-          <p class="muted">Agent coding yang dikenali Prototyper di komputer ini. Agent yang tersedia bisa dipilih untuk mengerjakan komentar.</p>
+          <h2 data-i18n="localAgents">Agent lokal</h2>
+          <p class="muted" data-i18n="agentsDialogSub">Agent coding yang dikenali Prototyper di komputer ini. Agent yang tersedia bisa dipilih untuk mengerjakan komentar.</p>
         </div>
-        <button type="button" class="icon-btn" data-close aria-label="Tutup">✕</button>
+        <button type="button" class="icon-btn" data-close aria-label="Tutup" data-i18n-aria-label="close">✕</button>
       </div>
       <div class="agents-list" id="agents-list"></div>
-      <p class="muted hint">Baru menginstal agent? Klik Cek ulang. Path bisa dipaksa lewat env <code>PROTOTYPER_AGENT_BIN_&lt;ID&gt;</code>, default lewat <code>PROTOTYPER_AGENT_DEFAULT</code>.</p>
+      <p class="muted hint" data-i18n-html="agentsDialogHint">Baru menginstal agent? Klik Cek ulang. Path bisa dipaksa lewat env <code>PROTOTYPER_AGENT_BIN_&lt;ID&gt;</code>, default lewat <code>PROTOTYPER_AGENT_DEFAULT</code>.</p>
       <div class="dlg-foot">
-        <button type="button" class="btn ghost" id="agents-refresh">Cek ulang</button>
-        <button type="button" class="btn primary" data-close>Tutup</button>
+        <button type="button" class="btn ghost" id="agents-refresh" data-i18n="recheck">Cek ulang</button>
+        <button type="button" class="btn primary" data-close data-i18n="close">Tutup</button>
       </div>
     </form>
   </dialog>
@@ -315,8 +316,25 @@
       <p class="muted" id="cf-body"></p>
       <ul class="cf-list" id="cf-list" hidden></ul>
       <div class="dlg-foot">
-        <button value="cancel" class="btn ghost">Batal</button>
-        <button value="ok" class="btn danger-solid" id="cf-ok">Hapus</button>
+        <button value="cancel" class="btn ghost" data-i18n="cancel">Batal</button>
+        <button value="ok" class="btn danger-solid" id="cf-ok" data-i18n="delete">Hapus</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Bahasa -->
+  <dialog id="dlg-lang" class="small">
+    <form method="dialog">
+      <div class="dlg-head">
+        <div>
+          <h2 data-i18n="langDialogTitle">Bahasa</h2>
+          <p class="muted" data-i18n="langDialogSub">Berlaku untuk Web UI, CLI, tray, dan pesan dari daemon di komputer ini.</p>
+        </div>
+        <button type="button" class="icon-btn" data-close aria-label="Tutup" data-i18n-aria-label="close">✕</button>
+      </div>
+      <div class="lang-list" id="lang-list"></div>
+      <div class="dlg-foot">
+        <button type="button" class="btn primary" data-close data-i18n="close">Tutup</button>
       </div>
     </form>
   </dialog>
@@ -330,7 +348,7 @@
   <dialog id="dlg-cmd" class="cmd">
     <div class="cmd-input">
       <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M10 2a8 8 0 0 1 6.32 12.9l5.39 5.4-1.41 1.4-5.4-5.39A8 8 0 1 1 10 2Zm0 2a6 6 0 1 0 0 12 6 6 0 0 0 0-12Z"/></svg>
-      <input id="cmd-q" placeholder="Cari prototype atau perintah…" autocomplete="off" spellcheck="false" aria-label="Cari perintah">
+      <input id="cmd-q" placeholder="Cari prototype atau perintah…" autocomplete="off" spellcheck="false" aria-label="Cari perintah" data-i18n-placeholder="cmdPlaceholder" data-i18n-aria-label="cmdSearchLabel">
       <kbd>Esc</kbd>
     </div>
     <ul id="cmd-list" role="listbox"></ul>

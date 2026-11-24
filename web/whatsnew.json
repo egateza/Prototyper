@@ -9,7 +9,17 @@
         "**Penulis komentar kini terlihat asalnya.** Komentar dan balasan dari komputer ini ditandai **Pengguna (PC ini)**, sedangkan dari HP yang dipasangkan memakai nama perangkatnya, mis. *Android · Chrome*.",
         "Nama perangkat bisa diganti lewat tombol **Ganti nama** di dialog **Hubungkan HP**. Komentar lama dari perangkat itu ikut tampil dengan nama barunya.",
         "Panel komentar di layar HP tidak lagi meluber ke kanan: bar agent, kartu komentar, dan filter Open/Selesai/Semua kini pas selebar layar."
-      ]
+      ],
+      "translations": {
+        "en": {
+          "title": "Device names on comments & mobile comment panel",
+          "items": [
+            "**You can now see where a comment came from.** Comments and replies from this computer are marked **User (this PC)**, and those from a paired phone use the device name, e.g. *Android · Chrome*.",
+            "Rename a device with the **Rename** button in the **Connect phone** dialog. Older comments from that device also show the new name.",
+            "The comment panel no longer overflows to the right on phone screens: the agent bar, comment cards, and the Open/Resolved/All filter now fit the screen width."
+          ]
+        }
+      }
     },
     {
       "version": "0.4.1",
@@ -23,7 +33,21 @@
         "Label yang sama tampil di Web UI: item sidebar, kartu Beranda, dan judul halaman prototype.",
         "Tombol palet perintah di bawah sidebar kini berupa ikon (Ctrl K) agar footer tidak meluber.",
         "Setelah HP berhasil dipasangkan, halamannya langsung dimuat ulang dan masuk ke Web UI. Dialog **Hubungkan HP** tidak lagi meluber di layar sempit."
-      ]
+      ],
+      "translations": {
+        "en": {
+          "title": "Page export, comment editing & a compact tray",
+          "items": [
+            "**Export a page** to PNG, JPG, or PDF with the export button in the preview bar (or the command palette). The result matches the device, orientation, and light/dark theme of the preview. PNG/JPG can be copied straight to the clipboard.",
+            "**Edit & delete comments** before the agent works on them: click the pencil or trash icon on a comment. You can also edit/delete your replies before the agent responds. Changed text is marked *(edited)*. This also works from a paired phone.",
+            "The tray popup shows **5 prototypes** first. Click **Show more** for the next 5 (with a short loading state and a smooth height animation), and **Show less** to collapse again.",
+            "Each row in the tray now has a **Prototype** or **Design system** label under its name, together with its status.",
+            "The same label appears in the Web UI: sidebar items, Home cards, and the prototype page title.",
+            "The command palette button at the bottom of the sidebar is now an icon (Ctrl K) so the footer does not overflow.",
+            "After a phone is paired, its page reloads right away and opens the Web UI. The **Connect phone** dialog no longer overflows on narrow screens."
+          ]
+        }
+      }
     },
     {
       "version": "0.4.0",
@@ -37,7 +61,21 @@
         "**Lampiran gambar** di komentar, balasan, dan pesan ke agent: tempel, seret, atau pilih gambar.",
         "Tombol **Pilih…** membuka dialog pilih folder/file bawaan Windows, jadi path tidak perlu diketik.",
         "**LAN per prototype**: buka akses jaringan untuk satu prototype saja lewat tombol **LAN** di halaman prototype."
-      ]
+      ],
+      "translations": {
+        "en": {
+          "title": "Edit from your phone, design systems & image attachments",
+          "items": [
+            "**Edit from your phone.** With LAN mode set to **Web UI + prototype**, click the **phone** icon at the bottom of the sidebar and scan the QR code. From your phone you can comment, answer agent questions, run the agent, and start/stop prototypes.",
+            "Devices that are not paired can no longer open the prototype list or comments. A paired phone can be removed at any time from the same dialog. Removing/registering prototypes, the manifest, updates, and shutting down Prototyper are still available only from the computer.",
+            "**Mobile view**: open the sidebar and the comment panel with floating buttons. Tap the arrow button, then tap an element in the preview to comment on it. **Desktop** mode in the preview now keeps the desktop layout even on a small screen.",
+            "**Design systems**: create shared tokens & components with the *design-system* template, use them in other prototypes, then push changes to all of them with one click.",
+            "**Image attachments** in comments, replies, and messages to the agent: paste, drag, or choose an image.",
+            "The **Choose…** button opens the built-in Windows folder/file picker, so you do not have to type paths.",
+            "**LAN per prototype**: open network access for a single prototype with the **LAN** button on the prototype page."
+          ]
+        }
+      }
     },
     {
       "version": "0.3.11",
@@ -50,7 +88,20 @@
         "**Mode LAN dari tray**: nyalakan toggle **Mode LAN** di popup tray agar Prototyper & prototype bisa dibuka dari HP/laptop lain di jaringan yang sama. Alamatnya tampil di bawah toggle dengan tombol **Salin**. Perangkat lain hanya bisa melihat; kontrol tetap dari komputer ini.",
         "Pilih **Prototype saja** di bawah toggle Mode LAN bila hanya prototype yang perlu dibuka dari perangkat lain: Web UI Prototyper, komentar, dan log tetap hanya di komputer ini.",
         "Prototype yang dibuka di HP kini memakai layout mobile seperti di pratinjau perangkat: meta viewport disisipkan otomatis bila halaman belum punya."
-      ]
+      ],
+      "translations": {
+        "en": {
+          "title": "Continue agent sessions & LAN mode from the tray",
+          "items": [
+            "With Claude Code, the next **Work on it** click on the same prototype continues the conversation from the previous run: the agent remembers what it already saw and changed, so the results are more consistent and use fewer tokens.",
+            "The agent bar shows **↻ Continue session · N runs**. Click it to start a **New session** on the next run.",
+            "A session is not continued after 24 hours, if you undid the changes from the last run, or if the prototype folder moved. If the session is gone, Prototyper starts a new one automatically.",
+            "**LAN mode from the tray**: turn on the **LAN mode** toggle in the tray popup so Prototyper & prototypes can be opened from another phone/laptop on the same network. The address appears below the toggle with a **Copy** button. Other devices can only view; control stays on this computer.",
+            "Choose **Prototypes only** under the LAN mode toggle if only prototypes need to be opened from other devices: the Prototyper Web UI, comments, and logs stay on this computer.",
+            "Prototypes opened on a phone now use the mobile layout, just like the device preview: a viewport meta tag is inserted automatically if the page does not have one."
+          ]
+        }
+      }
     },
     {
       "version": "0.3.10",
@@ -61,7 +112,18 @@
         "Agent kini melihat riwayat sebelum mengerjakan komentar lewat `prototyper comments context <id> <komentar>`: komentar selesai di halaman/elemen yang sama dan keputusan sebelumnya. Agent jadi tidak mengulang revisi yang sudah Anda tolak.",
         "Komentar elemen menyimpan potongan HTML elemen saat komentar dibuat, sehingga tetap bisa ditemukan walau struktur halaman berubah.",
         "Komentar selesai yang lebih tua dari 30 hari dipindah ke `.prototyper/comments-archive/` agar daftar tetap ringkas. Atur dengan `\"comments\": { \"archiveDays\": N }` di `prototyper.json` (0 = tidak diarsipkan); lihat lagi dengan `--include-archive`."
-      ]
+      ],
+      "translations": {
+        "en": {
+          "title": "Comment history & context for the agent",
+          "items": [
+            "Each resolved comment is recorded as one line in `.prototyper/DECISIONS.md`: date, comment, page, element, and request → result. Reopened comments and undone agent changes are recorded too.",
+            "The agent now checks the history before working on a comment with `prototyper comments context <id> <comment>`: resolved comments on the same page/element and earlier decisions. This way the agent does not repeat revisions you already rejected.",
+            "Element comments store an HTML snippet of the element when the comment is created, so it can still be found even if the page structure changes.",
+            "Resolved comments older than 30 days are moved to `.prototyper/comments-archive/` to keep the list short. Configure this with `\"comments\": { \"archiveDays\": N }` in `prototyper.json` (0 = never archive); view them again with `--include-archive`."
+          ]
+        }
+      }
     },
     {
       "version": "0.3.9",
@@ -72,7 +134,18 @@
         "File yang diubah agent dikembalikan dan file baru buatan agent dihapus; file lain yang Anda edit tidak ikut berubah. Bila file itu sudah Anda edit lagi, Prototyper bertanya dulu sebelum menimpa.",
         "Komentar yang dikerjakan agent mendapat balasan bahwa perubahannya dibatalkan, dan giliran kembali ke Anda. Komentar yang sempat diselesaikan agent dibuka lagi.",
         "Butuh Git; checkpoint disimpan terpisah, jadi repo Git Anda tidak disentuh."
-      ]
+      ],
+      "translations": {
+        "en": {
+          "title": "Undo agent changes",
+          "items": [
+            "Before the agent starts working, Prototyper saves a checkpoint of the prototype folder. If the agent changes files, the agent bar shows an **Undo (N files)** button with the list of files.",
+            "Files changed by the agent are restored and new files created by the agent are deleted; other files you edited are left as they are. If you edited one of those files again, Prototyper asks before overwriting it.",
+            "Comments the agent worked on get a reply saying the changes were undone, and it becomes your turn again. Comments the agent had resolved are reopened.",
+            "Requires Git; the checkpoint is stored separately, so your Git repo is not touched."
+          ]
+        }
+      }
     },
     {
       "version": "0.3.8",
@@ -82,7 +155,17 @@
         "Halaman prototype static yang terbuka, di pratinjau maupun di tab browser biasa, kini dimuat ulang otomatis begitu file berubah, misalnya saat agent selesai mengedit. Posisi scroll dipertahankan.",
         "Bila yang berubah hanya file `.css`, tampilan diperbarui tanpa memuat ulang halaman, jadi isian form dan state lain tetap.",
         "Matikan per prototype dengan `\"static\": { \"liveReload\": false }` di `prototyper.json`."
-      ]
+      ],
+      "translations": {
+        "en": {
+          "title": "Live reload for static prototypes",
+          "items": [
+            "Open pages of a static prototype, in the preview or in a normal browser tab, now reload automatically as soon as a file changes, for example when the agent finishes editing. The scroll position is kept.",
+            "If only `.css` files changed, the page is updated without reloading, so form input and other state are kept.",
+            "Turn it off per prototype with `\"static\": { \"liveReload\": false }` in `prototyper.json`."
+          ]
+        }
+      }
     },
     {
       "version": "0.3.7",
@@ -90,7 +173,15 @@
       "title": "Ikon perangkat memantul saat diputar",
       "items": [
         "Saat orientasi pratinjau diputar (klik ikon tablet/mobile yang aktif), ikon itu berputar dengan efek memantul. Ikon lain tetap diam."
-      ]
+      ],
+      "translations": {
+        "en": {
+          "title": "Device icon bounces when rotated",
+          "items": [
+            "When you rotate the preview orientation (click the active tablet/mobile icon), that icon spins with a bounce effect. The other icons stay still."
+          ]
+        }
+      }
     },
     {
       "version": "0.3.6",
@@ -99,7 +190,16 @@
       "items": [
         "Bila pembaruan yang diunduh tray hanya mengubah Web UI, tombolnya kini **Pasang**, bukan **Mulai ulang**: Prototyper dan prototype tetap berjalan, cukup muat ulang halaman Prototyper di browser.",
         "Pembaruan yang mengubah kode tetap bertuliskan **Mulai ulang**."
-      ]
+      ],
+      "translations": {
+        "en": {
+          "title": "Install button for Web UI updates",
+          "items": [
+            "If an update downloaded by the tray only changes the Web UI, the button now says **Install** instead of **Restart**: Prototyper and prototypes keep running, and you only need to reload the Prototyper page in your browser.",
+            "Updates that change code still say **Restart**."
+          ]
+        }
+      }
     },
     {
       "version": "0.3.5",
@@ -108,7 +208,16 @@
       "items": [
         "**Sembunyikan pratinjau** kini hanya menyembunyikan dan menampilkan lagi. Halaman prototype tidak dimuat ulang, jadi posisi scroll, isian form, dan state lainnya tetap.",
         "Mode **Komentari** otomatis berhenti saat pratinjau disembunyikan."
-      ]
+      ],
+      "translations": {
+        "en": {
+          "title": "Hide the preview without reloading",
+          "items": [
+            "**Hide preview** now only hides and shows the preview again. The prototype page is not reloaded, so the scroll position, form input, and other state are kept.",
+            "**Comment** mode stops automatically when the preview is hidden."
+          ]
+        }
+      }
     },
     {
       "version": "0.3.4",
@@ -117,7 +226,16 @@
       "items": [
         "Bila **Tampilkan notifikasi** tidak dicentang, notifikasi pembaruan, konfirmasi startup, dan info lain kini ikut diam. Sebelumnya hanya notifikasi status prototype yang mati.",
         "Yang tetap tampil hanya error dari aksi yang Anda klik sendiri (mis. gagal memasang pembaruan), agar kegagalan tidak terjadi diam-diam."
-      ]
+      ],
+      "translations": {
+        "en": {
+          "title": "Tray notifications can really be turned off",
+          "items": [
+            "If **Show notifications** is unchecked, update notifications, startup confirmations, and other info are now silent too. Before, only prototype status notifications were turned off.",
+            "Only errors from actions you clicked yourself (e.g. an update failed to install) are still shown, so failures do not happen silently."
+          ]
+        }
+      }
     },
     {
       "version": "0.3.3",
@@ -127,7 +245,17 @@
         "Pembaruan dari tray yang hanya mengubah Web UI kini dipasang tanpa mematikan daemon maupun prototype yang sedang berjalan: cukup muat ulang halaman Prototyper di browser. Pembaruan yang mengubah kode tetap memulai ulang Prototyper seperti biasa.",
         "Paket aplikasi dipasang lebih dulu selagi Prototyper berjalan; bila pemasangan gagal, tidak ada yang dihentikan.",
         "Pembaruan ke 0.3.3 ini sendiri masih memulai ulang sekali; mulai rilis berikutnya pembaruan khusus Web UI berlaku tanpa restart."
-      ]
+      ],
+      "translations": {
+        "en": {
+          "title": "Web UI updates without a restart",
+          "items": [
+            "Updates from the tray that only change the Web UI are now installed without stopping the daemon or running prototypes: just reload the Prototyper page in your browser. Updates that change code still restart Prototyper as usual.",
+            "The app package is installed first while Prototyper is running; if installing fails, nothing is stopped.",
+            "The update to 0.3.3 itself still restarts once; starting with the next release, Web UI-only updates apply without a restart."
+          ]
+        }
+      }
     },
     {
       "version": "0.3.2",
@@ -135,7 +263,15 @@
       "title": "Versi di popup tray",
       "items": [
         "Popup klik kiri tray kini menampilkan versi Prototyper yang sedang berjalan di samping judul."
-      ]
+      ],
+      "translations": {
+        "en": {
+          "title": "Version in the tray popup",
+          "items": [
+            "The tray's left-click popup now shows the running Prototyper version next to the title."
+          ]
+        }
+      }
     },
     {
       "version": "0.3.1",
@@ -145,7 +281,17 @@
         "Halaman **Yang baru** di Web UI kini dibuka dengan klik nomor versi di samping logo; titik kecil di samping versi menandai perubahan yang belum dilihat. Item di sidebar dan palet perintah dihapus. Menu tray tetap ada.",
         "Ikon tombol agent **Kerjakan** kembali seperti semula.",
         "Berkas `.wixpdb` (simbol debug installer) tidak lagi ikut di halaman rilis."
-      ]
+      ],
+      "translations": {
+        "en": {
+          "title": "Small fixes",
+          "items": [
+            "The **What's new** page in the Web UI now opens by clicking the version number next to the logo; a small dot next to the version marks changes you have not seen yet. The items in the sidebar and command palette were removed. The tray menu entry stays.",
+            "The icon of the agent **Work on it** button is back to the original.",
+            "`.wixpdb` files (installer debug symbols) are no longer included on the release page."
+          ]
+        }
+      }
     },
     {
       "version": "0.3.0",
@@ -157,7 +303,19 @@
         "**Halaman Yang baru** : klik nomor versi di samping logo Web UI, atau dari menu klik kanan tray.",
         "Perintah `prototyper quit` untuk menutup tray, daemon, dan semua prototype sekaligus.",
         "Popup tray kini tertutup saat mengklik di luar popup, dan tidak muncul di Alt+Tab maupun taskbar."
-      ]
+      ],
+      "translations": {
+        "en": {
+          "title": "MSI installer, smaller updates, and the What's new page",
+          "items": [
+            "**MSI installer (Windows).** `prototyper-<version>-win-x64.msi` installs Prototyper per user without admin rights: Start Menu shortcut, PATH, and the tray starts right away. Uninstalling closes the tray, daemon, and prototypes first.",
+            "**Smaller updates.** If the exe does not need to be replaced, the tray only downloads the app package (about 0.6 MB) instead of the full exe. An app that fails to load automatically falls back to the version bundled in the exe.",
+            "**What's new page**: click the version number next to the Web UI logo, or use the tray right-click menu.",
+            "The `prototyper quit` command closes the tray, daemon, and all prototypes at once.",
+            "The tray popup now closes when you click outside it, and no longer appears in Alt+Tab or the taskbar."
+          ]
+        }
+      }
     },
     {
       "version": "0.2.0",
@@ -169,7 +327,19 @@
         "**Jalankan saat startup** (Windows) dari tray.",
         "Icon Prototyper (\"Blueprint\") untuk exe, Web UI, dan tray.",
         "Petunjuk agent di semua prototype disesuaikan otomatis saat daemon versi baru menyala."
-      ]
+      ],
+      "translations": {
+        "en": {
+          "title": "Windows tray and updates from the tray",
+          "items": [
+            "**Windows tray.** Double-click `prototyper.exe` to run Prototyper as a tray icon, without a console window. Left-click opens a compact popup (daemon status, prototype list with start/stop toggles, start/stop all), right-click opens a menu, and double-click opens the Web UI.",
+            "**Updates from the tray.** The tray checks GitHub Releases. For `prototyper.exe`, the update is downloaded, verified against `SHA256SUMS.txt`, then installed with \"Restart\"; prototypes that were running are started again.",
+            "**Run at startup** (Windows) from the tray.",
+            "Prototyper icon (\"Blueprint\") for the exe, Web UI, and tray.",
+            "Agent instructions in all prototypes are updated automatically when a new daemon version starts."
+          ]
+        }
+      }
     },
     {
       "version": "0.1.0",
@@ -182,7 +352,20 @@
         "**Agent dari Web UI**: kerjakan komentar dengan Claude Code, Codex, Gemini CLI, atau Copilot CLI.",
         "`prototyper new` dari template `static`, `vite-vanilla`, atau `vite-react`, dan petunjuk agent (`AGENTS.md`/`CLAUDE.md`) otomatis.",
         "Rilis untuk Windows, Linux, dan macOS: biner tunggal, portable, dan paket npm."
-      ]
+      ],
+      "translations": {
+        "en": {
+          "title": "First release",
+          "items": [
+            "**Daemon + CLI.** Register, start, and stop local prototypes (static or command mode) with automatic ports; every command has `--json` for agents.",
+            "**Web UI** at http://localhost:4000: home, preview with device sizes, live logs, `prototyper.json` editor, and the `Ctrl+K` command palette.",
+            "**Comments** per prototype, including clicking elements in the static preview and multiple-choice questions from the agent.",
+            "**Agent from the Web UI**: work on comments with Claude Code, Codex, Gemini CLI, or Copilot CLI.",
+            "`prototyper new` from the `static`, `vite-vanilla`, or `vite-react` template, and automatic agent instructions (`AGENTS.md`/`CLAUDE.md`).",
+            "Releases for Windows, Linux, and macOS: single binary, portable, and npm package."
+          ]
+        }
+      }
     }
   ]
 }

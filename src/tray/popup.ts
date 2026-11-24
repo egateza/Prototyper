@@ -1,6 +1,8 @@
 import { isLive, lanCopyText, lanNote, type TrayState, type UpdateState } from './menu.js';
 import type { RunStatus } from '../core/runtime.js';
 import type { PrototypeView } from '../core/views.js';
+import { formatPercent, langName, statusLabel, t } from './messages.js';
+import { LANG_SETTINGS } from '../core/i18n.js';
 
 /**
  * Popup klik kiri tray: varian "B Ringkas" dari prototype prototyper-runtime (gelap, padat, lebar 284px).
@@ -67,17 +69,9 @@ export const ROW_H = 38;
 
 /** Label jenis di bawah nama: desain sistem (dibuat dengan template design-system) atau prototype biasa. */
 export function kindLabel(p: PrototypeView): { text: string; color: string } {
-  return p.manifest?.designSystem?.source ? { text: 'Desain sistem', color: '#c4b5fd' } : { text: 'Prototype', color: '#7dd3fc' };
+  return p.manifest?.designSystem?.source ? { text: t('kindDesignSystem'), color: '#c4b5fd' } : { text: t('kindPrototype'), color: '#7dd3fc' };
 }
 
-const STATUS_TEXT: Record<RunStatus, string> = {
-  stopped: 'Berhenti',
-  starting: 'Memulai…',
-  running: 'Berjalan',
-  stopping: 'Menghentikan…',
-  crashed: 'Berhenti tak terduga',
-  failed: 'Gagal',
-};
 const STATUS_DOT: Record<RunStatus, string> = {
   stopped: C.idle,
   starting: C.warn,
@@ -101,11 +95,11 @@ export function glyphRuns(text: string, size: number, color: string, bold = fals
 export const buttonWidth = (text: string) => Math.round(text.length * 6.8 + 20);
 
 export function popupSummary(s: TrayState): string {
-  if (s.daemonBusy === 'starting') return 'Menyalakan daemon…';
-  if (s.daemonBusy === 'stopping') return 'Menghentikan daemon…';
-  if (!s.daemonUp) return 'Daemon dijeda';
+  if (s.daemonBusy === 'starting') return t('daemonStarting');
+  if (s.daemonBusy === 'stopping') return t('daemonStopping');
+  if (!s.daemonUp) return t('daemonPaused');
   const running = s.prototypes.filter((p) => p.status === 'running').length;
-  return `Aktif · ${running} dari ${s.prototypes.length} berjalan`;
+  return t('popupActive', { running, total: s.prototypes.length });
 }
 
 interface UpdateView {
@@ -122,22 +116,28 @@ export function updateView(u: UpdateState): UpdateView {
   const base = { iconBg: C.btnHover, iconFg: '#c4b5fd', busy: false, primary: false };
   switch (u.status) {
     case 'checking':
-      return { ...base, icon: null, title: 'Memeriksa pembaruan…', button: 'Memeriksa…', busy: true };
+      return { ...base, icon: null, title: t('updCheckingTitle'), button: t('updCheckingButton'), busy: true };
     case 'uptodate':
-      return { ...base, icon: '✓', iconBg: '#14532d', iconFg: '#86efac', title: 'Sudah versi terbaru', button: 'Periksa' };
+      return { ...base, icon: '✓', iconBg: '#14532d', iconFg: '#86efac', title: t('updUpToDate'), button: t('updCheckButton') };
     case 'available':
       return {
-        ...base, icon: '⬇', iconBg: '#451a03', iconFg: '#fbbf24', title: `Pembaruan ${u.latest} tersedia`,
-        button: u.selfUpdate ? 'Unduh' : 'Lihat', primary: true,
+        ...base, icon: '⬇', iconBg: '#451a03', iconFg: '#fbbf24', title: t('updAvailableTitle', { version: u.latest }),
+        button: t(u.selfUpdate ? 'updDownloadButton' : 'updViewButton'), primary: true,
       };
     case 'downloading':
-      return { ...base, icon: '⬇', iconBg: '#451a03', iconFg: '#fbbf24', title: `Mengunduh ${u.latest}…`, button: 'Mengunduh…', busy: true };
+      return {
+        ...base, icon: '⬇', iconBg: '#451a03', iconFg: '#fbbf24', title: t('updDownloadingTitle', { version: u.latest }),
+        button: t('updDownloadingButton'), busy: true,
+      };
     case 'ready':
-      return { ...base, icon: '★', iconBg: C.accent, iconFg: '#ffffff', title: `${u.latest} siap dipasang`, button: u.restart ? 'Mulai ulang' : 'Pasang', primary: true };
+      return {
+        ...base, icon: '★', iconBg: C.accent, iconFg: '#ffffff', title: t('updReadyTitle', { version: u.latest }),
+        button: t(u.restart ? 'updRestartButton' : 'updInstallButton'), primary: true,
+      };
     case 'error':
-      return { ...base, icon: '!', iconBg: '#450a0a', iconFg: '#fca5a5', title: 'Gagal memeriksa pembaruan', button: 'Coba lagi' };
+      return { ...base, icon: '!', iconBg: '#450a0a', iconFg: '#fca5a5', title: t('updCheckFailed'), button: t('updRetryButton') };
     default:
-      return { ...base, icon: '⟳', title: 'Periksa pembaruan', button: 'Periksa' };
+      return { ...base, icon: '⟳', title: t('updCheckTitle'), button: t('updCheckButton') };
   }
 }
 
@@ -189,7 +189,7 @@ export function popupLayout(s: TrayState): Popup {
       items.push({ k: 'text', x: ox, y: mid - 12, w: 24, h: 24, align: 'center', runs: [{ text: '↗', size: 12, color: C.text, symbol: true }] });
       textEnd = ox - 8;
     }
-    const status = p.valid ? `${STATUS_TEXT[p.status]}${p.status === 'running' && p.port ? ` · :${p.port}` : ''}` : 'manifest tidak valid';
+    const status = p.valid ? `${statusLabel(p.status)}${p.status === 'running' && p.port ? ` · :${p.port}` : ''}` : t('invalidManifest');
     const kind = kindLabel(p);
     items.push({ k: 'text', x: 30, y: y + 3, w: textEnd - 30, h: 18, runs: [{ text: p.name, size: 13, color: C.text }] });
     items.push({
@@ -205,21 +205,22 @@ export function popupLayout(s: TrayState): Popup {
   // "Tampilkan lagi" bila masih ada yang tersembunyi; "Tampilkan lebih sedikit" setelah diperluas
   const hidden = s.prototypes.length - shown.length;
   if (hidden > 0 || shown.length > LIST_PAGE) {
-    const more = `Tampilkan ${Math.min(hidden, LIST_PAGE)} lagi${hidden > LIST_PAGE ? `  (${hidden} tersembunyi)` : ''}`;
+    const n = Math.min(hidden, LIST_PAGE);
+    const more = hidden > LIST_PAGE ? t('showMoreHidden', { n, hidden }) : t('showMore', { n });
     if (s.listBusy) {
       // spinner + "Memuat…" di tengah; tanpa area klik agar tidak diklik dua kali
       const cx = rowX + rowW / 2;
       items.push({ k: 'spinner', x: cx - 38, y: y + 8, d: 12, color: '#c4b5fd' });
-      items.push({ k: 'text', x: cx - 20, y: y + 2, w: 80, h: 24, runs: [{ text: 'Memuat…', size: 11, color: C.muted, bold: true }] });
+      items.push({ k: 'text', x: cx - 20, y: y + 2, w: 80, h: 24, runs: [{ text: t('loading'), size: 11, color: C.muted, bold: true }] });
     } else {
-      const label = hidden > 0 ? more : 'Tampilkan lebih sedikit';
+      const label = hidden > 0 ? more : t('showLess');
       items.push({ k: 'hit', x: rowX, y: y + 2, w: rowW, h: 24, r: 6, id: hidden > 0 ? 'more' : 'less', hover: C.hover });
       items.push({ k: 'text', x: rowX, y: y + 2, w: rowW, h: 24, align: 'center', runs: [{ text: label, size: 11, color: '#c4b5fd', bold: true }] });
     }
     y += 28;
   }
   if (!s.prototypes.length) {
-    const msg = s.daemonUp ? 'Belum ada prototype — tambahkan lewat Web UI' : 'Daemon dijeda — lanjutkan untuk melihat prototype';
+    const msg = t(s.daemonUp ? 'emptyList' : 'emptyListPaused');
     items.push({ k: 'text', x: 14, y, w: rowW - 16, h: 28, runs: [{ text: msg, size: 12, color: C.muted }] });
     y += 28;
   }
@@ -230,7 +231,7 @@ export function popupLayout(s: TrayState): Popup {
   y += 5;
   if (s.startup !== null) {
     items.push({ k: 'hit', x: rowX, y, w: rowW, h: 26, r: 6, id: 'startup', hover: C.hover });
-    items.push({ k: 'text', x: 14, y, w: toggleX - 22, h: 26, runs: [{ text: 'Jalankan saat startup', size: 12, color: C.text, bold: true }] });
+    items.push({ k: 'text', x: 14, y, w: toggleX - 22, h: 26, runs: [{ text: t('runAtStartup'), size: 12, color: C.text, bold: true }] });
     items.push({ k: 'toggle', x: toggleX, y: y + 5, w: 28, h: 16, on: s.startup });
     y += 26;
   }
@@ -238,7 +239,7 @@ export function popupLayout(s: TrayState): Popup {
   items.push({ k: 'hit', x: rowX, y, w: rowW, h: 26, r: 6, ...(busy ? {} : { id: 'lan' }), hover: C.hover });
   items.push({
     k: 'text', x: 14, y, w: toggleX - 22, h: 26,
-    runs: [{ text: 'Mode LAN', size: 12, color: busy ? C.muted : C.text, bold: true }, { text: '  akses dari perangkat lain', size: 11, color: C.muted }],
+    runs: [{ text: t('lanMode'), size: 12, color: busy ? C.muted : C.text, bold: true }, { text: `  ${t('lanModeHint')}`, size: 11, color: C.muted }],
   });
   items.push({ k: 'toggle', x: toggleX, y: y + 5, w: 28, h: 16, on: s.lanMode !== 'off' });
   y += 26;
@@ -246,7 +247,7 @@ export function popupLayout(s: TrayState): Popup {
     // lingkup: Web UI + prototype, atau prototype saja
     const segX = 14;
     const segW = (toggleX + 28 - segX - 4) / 2;
-    for (const [i, mode, label] of [[0, 'all', 'Semua'], [1, 'prototypes', 'Prototype saja']] as const) {
+    for (const [i, mode, label] of [[0, 'all', t('lanScopeAll')], [1, 'prototypes', t('lanScopePrototypes')]] as const) {
       const sx = segX + i * (segW + 4);
       const on = s.lanMode === mode;
       items.push({ k: 'rect', x: sx, y: y + 1, w: segW, h: 22, r: 6, ...(on ? { fill: C.accent } : { stroke: C.line }) });
@@ -255,14 +256,15 @@ export function popupLayout(s: TrayState): Popup {
     }
     y += 26;
     const copy = s.daemonUp ? lanCopyText(s) : null;
-    const bw2 = buttonWidth('Salin');
+    const copyLabel = t('copy');
+    const bw2 = buttonWidth(copyLabel);
     const sx = toggleX + 28 - bw2;
     const note = lanNote(s);
     items.push({ k: 'text', x: 14, y, w: sx - 8 - 14, h: 20, runs: [{ text: note, size: 11, color: copy ? '#c4b5fd' : C.muted }] });
     if (copy) {
       items.push({ k: 'rect', x: sx, y: y + 1, w: bw2, h: 18, r: 5, stroke: C.line });
       items.push({ k: 'hit', x: sx, y: y + 1, w: bw2, h: 18, r: 5, id: 'lanCopy', hover: C.btnHover });
-      items.push({ k: 'text', x: sx, y: y + 1, w: bw2, h: 18, align: 'center', runs: [{ text: 'Salin', size: 11, color: C.text }] });
+      items.push({ k: 'text', x: sx, y: y + 1, w: bw2, h: 18, align: 'center', runs: [{ text: copyLabel, size: 11, color: C.text }] });
     }
     y += 24;
   }
@@ -287,7 +289,7 @@ export function popupLayout(s: TrayState): Popup {
   items.push({ k: 'rect', x: 0, y, w: W, h: 1, fill: C.line });
   y += 1;
   const fw = (W - 24 - 8) / 2;
-  for (const [i, id, label] of [[0, 'startAll', '▶ Jalankan semua'], [1, 'stopAll', '■ Hentikan semua']] as const) {
+  for (const [i, id, label] of [[0, 'startAll', t('startAll')], [1, 'stopAll', t('stopAll')]] as const) {
     const fx = 12 + i * (fw + 8);
     items.push({ k: 'rect', x: fx, y: y + 6, w: fw, h: 26, r: 6, stroke: C.line });
     if (canAct) items.push({ k: 'hit', x: fx, y: y + 6, w: fw, h: 26, r: 6, id, hover: C.hover });
@@ -300,7 +302,7 @@ export function popupLayout(s: TrayState): Popup {
   items.push({ k: 'hit', x: 0, y, w: W, h: 38, id: 'open', hover: '#ffffff1f' });
   items.push({
     k: 'text', x: 12, y, w: W - 40, h: 38,
-    runs: [{ text: '🌐', size: 16, color: '#ffffff', symbol: true }, { text: '  Buka Prototyper', size: 14, color: '#ffffff', bold: true }],
+    runs: [{ text: '🌐', size: 16, color: '#ffffff', symbol: true }, { text: `  ${t('openPrototyper')}`, size: 14, color: '#ffffff', bold: true }],
   });
   items.push({ k: 'text', x: W - 36, y, w: 24, h: 38, align: 'right', runs: [{ text: '↗', size: 16, color: '#ffffff', symbol: true }] });
   y += 38;
@@ -316,71 +318,94 @@ export const MENU_THEME = {
 };
 export const MENU_W = 240;
 
-type MenuRow = { sep: true } | { id: string; text: string; bold?: boolean; check?: boolean; checked?: boolean; disabled?: boolean; hl?: boolean };
+type MenuRow =
+  | { sep: true }
+  | {
+      id: string;
+      text: string;
+      bold?: boolean;
+      check?: boolean;
+      checked?: boolean;
+      disabled?: boolean;
+      hl?: boolean;
+      /** Menu tetap terbuka setelah diklik (mis. membuka pilihan bahasa). */
+      keepOpen?: boolean;
+      /** Panah buka/tutup di kanan: `open` = pilihan sedang tampil. */
+      expand?: 'open' | 'closed';
+      /** Sub-pilihan: digeser ke kanan. */
+      indent?: boolean;
+    };
 
 /** Teks item pembaruan di menu klik kanan (`#ctxUpdate` di prototype). */
 export function menuUpdateRow(u: UpdateState): { text: string; disabled: boolean; hl: boolean } {
   switch (u.status) {
     case 'checking':
-      return { text: '⟳ Memeriksa pembaruan…', disabled: true, hl: false };
+      return { text: t('menuUpdChecking'), disabled: true, hl: false };
     case 'available':
-      return { text: u.selfUpdate ? `⬇ Unduh pembaruan ${u.latest}` : `⬇ Lihat pembaruan ${u.latest}`, disabled: false, hl: true };
+      return { text: t(u.selfUpdate ? 'menuUpdDownload' : 'menuUpdView', { version: u.latest }), disabled: false, hl: true };
     case 'downloading':
-      return { text: `⬇ Mengunduh… ${Math.round(u.progress * 100)}%`, disabled: true, hl: false };
+      return { text: t('menuUpdDownloading', { percent: formatPercent(u.progress) }), disabled: true, hl: false };
     case 'ready':
-      return { text: u.restart ? '★ Mulai ulang untuk memperbarui' : `★ Pasang pembaruan ${u.latest}`, disabled: false, hl: true };
+      return { text: u.restart ? t('menuUpdRestart') : t('menuUpdInstall', { version: u.latest }), disabled: false, hl: true };
     default:
-      return { text: '⟳ Periksa pembaruan…', disabled: false, hl: false };
+      return { text: t('menuUpdCheck'), disabled: false, hl: false };
   }
 }
 
 /** Menu klik kanan: urutan & gaya sama dengan menu konteks prototype. */
 export function menuLayout(s: TrayState): Popup {
-  const t = MENU_THEME[s.theme];
+  const th = MENU_THEME[s.theme];
   const busy = s.daemonBusy !== null;
   const rows: MenuRow[] = [
-    { id: 'open', text: '🌐 Buka Prototyper di browser', bold: true },
+    { id: 'open', text: t('menuOpen'), bold: true },
     { sep: true },
-    { id: 'startAll', text: '▶ Jalankan semua', disabled: !s.daemonUp || busy },
-    { id: 'stopAll', text: '■ Hentikan semua', disabled: !s.daemonUp || busy },
-    { id: 'pause', text: s.daemonUp ? '⏸ Jeda daemon' : '▶ Lanjutkan daemon', disabled: busy },
+    { id: 'startAll', text: t('startAll'), disabled: !s.daemonUp || busy },
+    { id: 'stopAll', text: t('stopAll'), disabled: !s.daemonUp || busy },
+    { id: 'pause', text: t(s.daemonUp ? 'menuPause' : 'menuResume'), disabled: busy },
     { sep: true },
-    ...(s.startup === null ? [] : [{ id: 'startup', text: 'Jalankan saat startup', check: true, checked: s.startup }]),
-    { id: 'lan', text: 'Mode LAN', check: true, checked: s.lanMode !== 'off', disabled: busy },
+    ...(s.startup === null ? [] : [{ id: 'startup', text: t('runAtStartup'), check: true, checked: s.startup }]),
+    { id: 'lan', text: t('lanMode'), check: true, checked: s.lanMode !== 'off', disabled: busy },
     ...(s.lanMode === 'off'
       ? []
       : [
-          { id: 'lan:all', text: 'LAN: Web UI + prototype', check: true, checked: s.lanMode === 'all', disabled: busy },
-          { id: 'lan:prototypes', text: 'LAN: prototype saja', check: true, checked: s.lanMode === 'prototypes', disabled: busy },
+          { id: 'lan:all', text: t('menuLanAll'), check: true, checked: s.lanMode === 'all', disabled: busy },
+          { id: 'lan:prototypes', text: t('menuLanPrototypes'), check: true, checked: s.lanMode === 'prototypes', disabled: busy },
         ]),
-    ...(s.daemonUp && lanCopyText(s) ? [{ id: 'lanCopy', text: '📋 Salin alamat LAN' }] : []),
-    { id: 'notif', text: 'Tampilkan notifikasi', check: true, checked: s.notifications },
+    ...(s.daemonUp && lanCopyText(s) ? [{ id: 'lanCopy', text: t('menuCopyLan') }] : []),
+    { id: 'notif', text: t('menuNotifications'), check: true, checked: s.notifications },
+    { id: 'langMenu', text: t('menuLanguage', { name: langName(s.lang.setting) }), keepOpen: true, expand: s.langOpen ? 'open' : 'closed' },
+    ...(s.langOpen
+      ? LANG_SETTINGS.map((l) => ({ id: `lang:${l}`, text: langName(l), check: true, checked: s.lang.setting === l, disabled: s.lang.fromEnv, indent: true }))
+      : []),
     { sep: true },
     { id: 'update', ...menuUpdateRow(s.update) },
-    { id: 'whatsnew', text: `✨ Yang baru di ${s.update.current}`, disabled: !s.daemonUp || busy },
+    { id: 'whatsnew', text: t('menuWhatsNew', { version: s.update.current }), disabled: !s.daemonUp || busy },
     { sep: true },
-    { id: 'quit', text: 'Keluar' },
+    { id: 'quit', text: t('menuQuit') },
   ];
   const W = MENU_W;
-  const bg: Extract<PopupItem, { k: 'rect' }> = { k: 'rect', x: 0, y: 0, w: W, h: 0, fill: t.bg };
+  const bg: Extract<PopupItem, { k: 'rect' }> = { k: 'rect', x: 0, y: 0, w: W, h: 0, fill: th.bg };
   const items: PopupItem[] = [bg];
   let y = 4;
   for (const r of rows) {
     if ('sep' in r) {
-      items.push({ k: 'rect', x: 10, y: y + 4, w: W - 20, h: 1, fill: t.line });
+      items.push({ k: 'rect', x: 10, y: y + 4, w: W - 20, h: 1, fill: th.line });
       y += 9;
       continue;
     }
     const h = 30;
-    // semua item menutup menu setelah diklik, seperti menu biasa
-    if (!r.disabled) items.push({ k: 'hit', x: 4, y, w: W - 8, h, r: 4, id: r.id, hover: t.hover, close: true });
-    if (r.check && r.checked) items.push({ k: 'text', x: 15, y, w: 14, h, runs: [{ text: '✓', size: 13, color: t.accent, bold: true, symbol: true }] });
-    const color = r.disabled ? t.muted : r.hl ? t.accent : t.text;
+    // item menutup menu setelah diklik, seperti menu biasa (kecuali yang membuka sub-pilihan)
+    if (!r.disabled) items.push({ k: 'hit', x: 4, y, w: W - 8, h, r: 4, id: r.id, hover: th.hover, close: !r.keepOpen });
+    const dx = r.indent ? 14 : 0;
+    if (r.check && r.checked) items.push({ k: 'text', x: 15 + dx, y, w: 14, h, runs: [{ text: '✓', size: 13, color: th.accent, bold: true, symbol: true }] });
+    const color = r.disabled ? th.muted : r.hl ? th.accent : th.text;
     const runs = glyphRuns(r.text, 13, color, !!(r.bold || r.hl));
-    items.push({ k: 'text', x: r.check ? 34 : 16, y, w: W - (r.check ? 34 : 16) - 12, h, runs });
+    const x = (r.check ? 34 : 16) + dx;
+    items.push({ k: 'text', x, y, w: W - x - (r.expand ? 30 : 12), h, runs });
+    if (r.expand) items.push({ k: 'text', x: W - 28, y, w: 14, h, runs: [{ text: r.expand === 'open' ? '▾' : '▸', size: 12, color: th.muted, symbol: true }] });
     y += h;
   }
   y += 4;
   bg.h = y;
-  return { w: W, h: y, bg: t.bg, r: 8, border: t.line, items };
+  return { w: W, h: y, bg: th.bg, r: 8, border: th.line, items };
 }

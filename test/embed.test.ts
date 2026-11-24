@@ -1,9 +1,39 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { addComment, cleanAnchor, listComments } from '../src/core/comments.js';
 import { EMBED_PATH, EMBED_TAG, EMBED_TAG_LIVE, injectEmbedTag, injectViewportMeta, VIEWPORT_META } from '../src/core/embed.js';
-import { buildApp } from '../src/server/app.js';
+import { LOCALES } from '../src/core/i18n.js';
+import { buildApp, WEB_DIR } from '../src/server/app.js';
 import { makePrototype, testConfig, tmpDir } from './helpers.js';
+
+describe('kamus web/embed.js', () => {
+  // embed.js skrip klasik tanpa impor; kamusnya ada di antara penanda // i18n:start … // i18n:end.
+  const src = readFileSync(path.join(WEB_DIR, 'embed.js'), 'utf8');
+  const block = /\/\/ i18n:start\s*const MESSAGES = (\{[\s\S]*?\});\s*\/\/ i18n:end/.exec(src)?.[1];
+  // Hanya literal objek berisi string; dievaluasi tanpa akses ke variabel luar.
+  const messages = new Function(`'use strict'; return (${block});`)() as Record<string, Record<string, string>>;
+
+  it('ada dan memuat setiap bahasa aplikasi', () => {
+    expect(block).toBeTruthy();
+    for (const l of LOCALES) expect(Object.keys(messages)).toContain(l);
+  });
+
+  it('kunci setiap bahasa sama dan nilainya tidak kosong', () => {
+    const langs = Object.keys(messages);
+    const keys = Object.keys(messages[langs[0]!]!).sort();
+    expect(keys.length).toBeGreaterThan(0);
+    for (const l of langs) {
+      expect(Object.keys(messages[l]!).sort(), l).toEqual(keys);
+      for (const k of keys) expect(typeof messages[l]![k] === 'string' && messages[l]![k]!.trim().length > 0, `${l}.${k}`).toBe(true);
+    }
+  });
+
+  it('teks Indonesia tetap seperti semula', () => {
+    expect(messages.id!.hintPointer).toBe('Klik elemen atau blok teks untuk dikomentari · Esc untuk batal');
+  });
+});
 
 describe('injectEmbedTag', () => {
   it('sebelum </body> terakhir, tidak peka huruf besar, tidak dobel', () => {

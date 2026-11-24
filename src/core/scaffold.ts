@@ -8,15 +8,54 @@ import { AppError } from './errors.js';
 import { isDirectory } from './fsutil.js';
 import { parseManifest, SCHEMA_URL, writeManifest, type ManifestInput } from './manifest.js';
 import type { Registry, ResolvedPrototype } from './registry.js';
+import { defineMessages } from './i18n.js';
+
+const t = defineMessages({
+  id: {
+    tplStatic: 'HTML + CSS + JS biasa, tanpa build (bisa dari HTML artifact)',
+    tplViteVanilla: 'Vite + JavaScript, dengan HMR',
+    tplViteReact: 'Vite + React 19 (JSX), dengan HMR',
+    tplDesignSystem: 'Desain sistem: token + komponen + halaman katalog, untuk dipakai prototype lain',
+    unknownTemplate: 'Template tidak dikenal: "{template}". Pilihan: {choices}',
+    htmlStaticOnly: 'Impor HTML hanya untuk template static',
+    htmlEmpty: 'File HTML kosong',
+    dsCannotUseDs: 'Desain sistem tidak memakai desain sistem lain',
+    dsNotRegistered: 'Desain sistem "{id}" tidak terdaftar. Lihat daftar: prototyper ds list',
+    notDs: '"{id}" bukan desain sistem',
+    folderNotEmpty: 'Folder {dir} sudah ada dan tidak kosong. Pilih folder lain atau daftarkan dengan: prototyper add "{dir}"',
+  },
+  en: {
+    tplStatic: 'Plain HTML + CSS + JS, no build (can start from an HTML artifact)',
+    tplViteVanilla: 'Vite + JavaScript, with HMR',
+    tplViteReact: 'Vite + React 19 (JSX), with HMR',
+    tplDesignSystem: 'Design system: tokens + components + catalog page, for use by other prototypes',
+    unknownTemplate: 'Unknown template: "{template}". Choices: {choices}',
+    htmlStaticOnly: 'HTML import is only for the static template',
+    htmlEmpty: 'The HTML file is empty',
+    dsCannotUseDs: 'Design systems do not use other design systems',
+    dsNotRegistered: 'Design system "{id}" is not registered. See the list: prototyper ds list',
+    notDs: '"{id}" is not a design system',
+    folderNotEmpty: 'Folder {dir} already exists and is not empty. Choose another folder or register it with: prototyper add "{dir}"',
+  },
+});
 
 export const TEMPLATES = ['static', 'vite-vanilla', 'vite-react', 'design-system'] as const;
 export type TemplateName = (typeof TEMPLATES)[number];
 
-export const TEMPLATE_INFO: Record<TemplateName, string> = {
-  static: 'HTML + CSS + JS biasa, tanpa build (bisa dari HTML artifact)',
-  'vite-vanilla': 'Vite + JavaScript, dengan HMR',
-  'vite-react': 'Vite + React 19 (JSX), dengan HMR',
-  'design-system': 'Desain sistem: token + komponen + halaman katalog, untuk dipakai prototype lain',
+/** Deskripsi template (dalam bahasa aktif saat dibaca). */
+export const TEMPLATE_INFO: Readonly<Record<TemplateName, string>> = {
+  get static() {
+    return t('tplStatic');
+  },
+  get 'vite-vanilla'() {
+    return t('tplViteVanilla');
+  },
+  get 'vite-react'() {
+    return t('tplViteReact');
+  },
+  get 'design-system'() {
+    return t('tplDesignSystem');
+  },
 };
 
 export function isTemplate(v: unknown): v is TemplateName {
@@ -273,19 +312,19 @@ export function renderTemplate(
 export async function createPrototype(registry: Registry, opts: NewPrototypeOptions): Promise<NewPrototypeResult> {
   const template = opts.template ?? 'static';
   if (!isTemplate(template)) {
-    throw new AppError('BAD_REQUEST', `Template tidak dikenal: "${String(template)}". Pilihan: ${TEMPLATES.join(', ')}`);
+    throw new AppError('BAD_REQUEST', t('unknownTemplate', { template: String(template), choices: TEMPLATES.join(', ') }));
   }
   if (opts.html !== undefined && template !== 'static') {
-    throw new AppError('BAD_REQUEST', 'Impor HTML hanya untuk template static');
+    throw new AppError('BAD_REQUEST', t('htmlStaticOnly'));
   }
-  if (opts.html !== undefined && !opts.html.trim()) throw new AppError('BAD_REQUEST', 'File HTML kosong');
+  if (opts.html !== undefined && !opts.html.trim()) throw new AppError('BAD_REQUEST', t('htmlEmpty'));
   const dsId = opts.designSystem?.trim() || undefined;
-  if (dsId && template === 'design-system') throw new AppError('BAD_REQUEST', 'Desain sistem tidak memakai desain sistem lain');
+  if (dsId && template === 'design-system') throw new AppError('BAD_REQUEST', t('dsCannotUseDs'));
   if (dsId) {
     // Cek sebelum menyentuh disk agar folder tidak dibuat untuk desain sistem yang salah.
     const ds = await registry.get(dsId);
-    if (!ds) throw new AppError('NOT_FOUND', `Desain sistem "${dsId}" tidak terdaftar. Lihat daftar: prototyper ds list`);
-    if (ds.manifest?.designSystem?.source !== true) throw new AppError('BAD_REQUEST', `"${dsId}" bukan desain sistem`);
+    if (!ds) throw new AppError('NOT_FOUND', t('dsNotRegistered', { id: dsId }));
+    if (ds.manifest?.designSystem?.source !== true) throw new AppError('BAD_REQUEST', t('notDs', { id: dsId }));
   }
 
   const id = (opts.id ?? '').trim();
@@ -306,7 +345,7 @@ export async function createPrototype(registry: Registry, opts: NewPrototypeOpti
   let created = false;
   if (await isDirectory(dir)) {
     if ((await fs.readdir(dir)).length > 0) {
-      throw new AppError('CONFLICT', `Folder ${dir} sudah ada dan tidak kosong. Pilih folder lain atau daftarkan dengan: prototyper add "${dir}"`);
+      throw new AppError('CONFLICT', t('folderNotEmpty', { dir }));
     }
   } else {
     await fs.mkdir(dir, { recursive: true });

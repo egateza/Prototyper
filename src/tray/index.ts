@@ -9,6 +9,10 @@ import type { Config } from '../core/config.js';
 import { AppError } from '../core/errors.js';
 import { lanAddresses } from '../core/net.js';
 import { healthLanMode } from '../server/routes/health.js';
+import { isLocale } from '../core/i18n.js';
+import { applyLangSetting, langState, writeSettings } from '../core/settings.js';
+import type { SettingsResponse } from '../server/routes/settings.js';
+import { t } from './messages.js';
 import { runReg, StartupEntry, type RegRunner } from '../core/startup.js';
 import {
   cleanupOldExecutable,
@@ -26,7 +30,7 @@ import {
 } from '../core/update.js';
 import type { PrototypeView } from '../core/views.js';
 import { VERSION } from '../version.js';
-import { TrayController, type DaemonApi } from './controller.js';
+import { TrayController, type DaemonApi, type LanguageControl } from './controller.js';
 import { TrayHost } from './host.js';
 
 /**
@@ -139,7 +143,7 @@ export async function readAppsTheme(reg: RegRunner = runReg): Promise<'light' | 
 
 export function assertTraySupported(platform: NodeJS.Platform = process.platform): void {
   if (platform !== 'win32') {
-    throw new AppError('NOT_IMPLEMENTED', 'Ikon tray baru tersedia di Windows. Di OS ini pakai "prototyper serve" lalu buka Web UI.');
+    throw new AppError('NOT_IMPLEMENTED', t('trayUnsupported'));
   }
 }
 
@@ -190,7 +194,14 @@ export function httpApi(config: Config): DaemonApi {
       const h = await client.health();
       if (!h) return null;
       const prototypes = await client.request<PrototypeView[]>('GET', '/api/prototypes').catch(() => null);
-      return prototypes ? { prototypes, lanMode: healthLanMode(h) } : null;
+      if (!prototypes) return null;
+      const locale = h.lang?.locale;
+      return {
+        prototypes,
+        lanMode: healthLanMode(h),
+        ...(isLocale(locale) ? { locale } : {}),
+        ...(h.lang ? { lang: { setting: h.lang.setting, fromEnv: h.lang.fromEnv } } : {}),
+      };
     },
     async action(id, action) {
       await client.request('POST', `/api/prototypes/${enc(id)}/${action}`);
@@ -207,6 +218,25 @@ export function httpApi(config: Config): DaemonApi {
   };
 }
 
+/**
+ * Pengaturan bahasa dari tray. Daemon berjalan: lewat PUT /api/settings agar daemon (pesan API, Web UI)
+ * dan petunjuk agent di prototype ikut berganti. Daemon dijeda: tulis settings.json; daemon membacanya saat menyala.
+ */
+export function languageControl(config: Config): LanguageControl {
+  const client = new DaemonClient(config);
+  return {
+    get: () => langState(config.home),
+    async set(setting, daemonUp) {
+      if (daemonUp) {
+        const r = await client.request<SettingsResponse>('PUT', '/api/settings', { lang: setting });
+        return { setting: r.lang.setting, locale: r.lang.locale, fromEnv: r.lang.fromEnv };
+      }
+      await writeSettings(config.home, { lang: setting });
+      return langState(config.home);
+    },
+  };
+}
+
 /** Salin teks ke clipboard Windows lewat clip.exe (cukup untuk teks ASCII seperti URL). */
 export function copyToClipboard(text: string): void {
   const child = spawn('clip', [], { stdio: ['pipe', 'ignore', 'ignore'], windowsHide: true });
@@ -216,10 +246,12 @@ export function copyToClipboard(text: string): void {
 
 /** Proses tray sebenarnya (`prototyper tray --foreground`). Berjalan sampai Keluar. */
 export async function runTray(config: Config, opts: { restore?: string[] } = {}): Promise<void> {
+  // bahasa awal dari pengaturan; selanjutnya mengikuti bahasa daemon (lihat TrayController.poll)
+  applyLangSetting(config.home);
   assertTraySupported();
   const f = trayFiles(config.home);
   const other = runningTrayPid(config.home);
-  if (other) throw new AppError('CONFLICT', `Tray Prototyper sudah berjalan (PID ${other})`);
+  if (other) throw new AppError('CONFLICT', t('trayAlreadyRunning', { pid: other }));
   mkdirSync(config.home, { recursive: true });
   writeFileSync(f.lock, String(process.pid));
   const releaseLock = () => {
@@ -233,7 +265,7 @@ export async function runTray(config: Config, opts: { restore?: string[] } = {})
   if (APP_MODE === 'sea') await cleanupOldExecutable(process.execPath);
 
   const icon = trayIconPath();
-  if (!existsSync(icon)) throw new AppError('INTERNAL', `Icon tray tidak ditemukan: ${icon}`);
+  if (!existsSync(icon)) throw new AppError('INTERNAL', t('trayIconMissing', { path: icon }));
 
   const installCtx: InstallContext = {
     platform: process.platform,
@@ -266,10 +298,11 @@ export async function runTray(config: Config, opts: { restore?: string[] } = {})
       set: (enabled) => startup.set(enabled, trayArgs(config)),
     },
     openUrl: openBrowser,
+    language: languageControl(config),
     theme,
     settingsFile: f.settings,
     install: async (file, restore, check) => {
-      if (APP_MODE !== 'sea') throw new AppError('NOT_IMPLEMENTED', 'Pemasangan otomatis hanya untuk prototyper.exe');
+      if (APP_MODE !== 'sea') throw new AppError('NOT_IMPLEMENTED', t('autoInstallExeOnly'));
       await installUpdate(config, file, check, restoreArgs(restore));
       releaseLock();
       if (check.kind !== 'msi') spawnTray(config, restoreArgs(restore)); // MSI: skrip pemasang yang menyalakan lagi
@@ -331,7 +364,7 @@ export async function runTray(config: Config, opts: { restore?: string[] } = {})
   }
 
   host.start(f.dir, icon);
-  console.log(`Tray Prototyper berjalan (PID ${process.pid}, data ${config.home})`);
+  console.log(t('trayStarted', { pid: process.pid, home: config.home }));
   await controller.start(opts.restore ?? []);
 }
 
@@ -341,7 +374,7 @@ export function verifyApp(info: AppInfo): void {
   const out = (r.stdout ?? '').trim();
   if (r.status !== 0 || out !== info.version) {
     const detail = r.stderr ? `: ${r.stderr.trim().split(/\r?\n/)[0]}` : '';
-    throw new AppError('INTERNAL', `exit ${r.status}, versi "${out}"${detail}`);
+    throw new AppError('INTERNAL', t('verifyFailed', { status: r.status, out, detail }));
   }
 }
 
@@ -349,7 +382,7 @@ export function verifyApp(info: AppInfo): void {
 export async function installUpdate(config: Config, file: string, check: UpdateCheck, restore: string[]): Promise<void> {
   switch (check.kind) {
     case 'app': {
-      if (!APP_HOST) throw new AppError('NOT_IMPLEMENTED', 'Exe ini belum mendukung pembaruan aplikasi');
+      if (!APP_HOST) throw new AppError('NOT_IMPLEMENTED', t('appUpdateUnsupported'));
       await installAppUpdate(file, { root: APP_HOST.root, runtime: APP_HOST.runtime, active: APP_HOST.app, embedded: APP_HOST.embedded, verify: verifyApp });
       return;
     }
@@ -362,6 +395,6 @@ export async function installUpdate(config: Config, file: string, check: UpdateC
       replaceExecutable(process.execPath, file);
       return;
     default:
-      throw new AppError('BAD_REQUEST', 'Jenis pembaruan tidak dikenali');
+      throw new AppError('BAD_REQUEST', t('unknownUpdateKind'));
   }
 }

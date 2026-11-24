@@ -1,5 +1,29 @@
 import { gunzipSync, gzipSync } from 'node:zlib';
 import { AppError } from './errors.js';
+import { defineMessages } from './i18n.js';
+
+const t = defineMessages({
+  id: {
+    nameTooLong: 'Nama terlalu panjang untuk tar: {value}',
+    pathTooLong: 'Path terlalu panjang untuk tar: {name}',
+    invalidPath: 'Path tidak valid di paket: {name}',
+    notGzip: 'Paket aplikasi rusak (bukan gzip)',
+    badChecksum: 'Paket aplikasi rusak (checksum header tar)',
+    unsafePath: 'Paket aplikasi berisi path tidak aman: {name}',
+    truncated: 'Paket aplikasi terpotong',
+    unsupportedEntry: 'Paket aplikasi berisi entri tidak didukung ({name})',
+  },
+  en: {
+    nameTooLong: 'Name is too long for tar: {value}',
+    pathTooLong: 'Path is too long for tar: {name}',
+    invalidPath: 'Invalid path in package: {name}',
+    notGzip: 'The app package is corrupt (not gzip)',
+    badChecksum: 'The app package is corrupt (tar header checksum)',
+    unsafePath: 'The app package contains an unsafe path: {name}',
+    truncated: 'The app package is truncated',
+    unsupportedEntry: 'The app package contains an unsupported entry ({name})',
+  },
+});
 
 /**
  * Paket aplikasi untuk pembaruan (`prototyper-<versi>-app-r<runtime>.tar.gz`): tar ustar + gzip
@@ -13,7 +37,7 @@ const MTIME = 1_767_225_600;
 
 function writeString(buf: Buffer, value: string, offset: number, length: number): void {
   const bytes = Buffer.from(value, 'utf8');
-  if (bytes.length > length) throw new AppError('INTERNAL', `Nama terlalu panjang untuk tar: ${value}`);
+  if (bytes.length > length) throw new AppError('INTERNAL', t('nameTooLong', { value }));
   bytes.copy(buf, offset);
 }
 
@@ -29,7 +53,7 @@ function splitName(name: string): { prefix: string; name: string } {
     const rest = name.slice(i + 1);
     if (Buffer.byteLength(prefix) <= 155 && Buffer.byteLength(rest) <= 100) return { prefix, name: rest };
   }
-  throw new AppError('INTERNAL', `Path terlalu panjang untuk tar: ${name}`);
+  throw new AppError('INTERNAL', t('pathTooLong', { name }));
 }
 
 function header(file: string, size: number): Buffer {
@@ -62,7 +86,7 @@ export function isSafeRelativePath(p: string): boolean {
 export function packFiles(files: Map<string, Buffer>): Buffer {
   const parts: Buffer[] = [];
   for (const name of [...files.keys()].sort()) {
-    if (!isSafeRelativePath(name)) throw new AppError('INTERNAL', `Path tidak valid di paket: ${name}`);
+    if (!isSafeRelativePath(name)) throw new AppError('INTERNAL', t('invalidPath', { name }));
     const data = files.get(name)!;
     parts.push(header(name, data.length), data);
     const pad = (BLOCK - (data.length % BLOCK)) % BLOCK;
@@ -89,7 +113,7 @@ export function unpackFiles(gz: Buffer): Map<string, Buffer> {
   try {
     tar = gunzipSync(gz);
   } catch {
-    throw new AppError('BAD_REQUEST', 'Paket aplikasi rusak (bukan gzip)');
+    throw new AppError('BAD_REQUEST', t('notGzip'));
   }
   const out = new Map<string, Buffer>();
   let pos = 0;
@@ -98,20 +122,20 @@ export function unpackFiles(gz: Buffer): Map<string, Buffer> {
     if (h.every((b) => b === 0)) return out;
     let sum = 0;
     for (let i = 0; i < BLOCK; i++) sum += i >= 148 && i < 156 ? 0x20 : h[i]!;
-    if (sum !== readOctal(h, 148, 8)) throw new AppError('BAD_REQUEST', 'Paket aplikasi rusak (checksum header tar)');
+    if (sum !== readOctal(h, 148, 8)) throw new AppError('BAD_REQUEST', t('badChecksum'));
     const prefix = readString(h, 345, 155);
     const name = (prefix ? `${prefix}/${readString(h, 0, 100)}` : readString(h, 0, 100)).replace(/\/$/, '');
     const size = readOctal(h, 124, 12);
     const type = String.fromCharCode(h[156]!);
     pos += BLOCK;
     if (type === '0' || type === '\0') {
-      if (!isSafeRelativePath(name)) throw new AppError('BAD_REQUEST', `Paket aplikasi berisi path tidak aman: ${name}`);
-      if (pos + size > tar.length) throw new AppError('BAD_REQUEST', 'Paket aplikasi terpotong');
+      if (!isSafeRelativePath(name)) throw new AppError('BAD_REQUEST', t('unsafePath', { name }));
+      if (pos + size > tar.length) throw new AppError('BAD_REQUEST', t('truncated'));
       out.set(name, Buffer.from(tar.subarray(pos, pos + size)));
     } else if (type !== '5') {
-      throw new AppError('BAD_REQUEST', `Paket aplikasi berisi entri tidak didukung (${name})`);
+      throw new AppError('BAD_REQUEST', t('unsupportedEntry', { name }));
     }
     pos += Math.ceil(size / BLOCK) * BLOCK;
   }
-  throw new AppError('BAD_REQUEST', 'Paket aplikasi terpotong');
+  throw new AppError('BAD_REQUEST', t('truncated'));
 }

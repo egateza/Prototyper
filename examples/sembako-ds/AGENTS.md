@@ -45,6 +45,7 @@ Pengguna menulis komentar di Web UI Prototyper. Bila diminta "kerjakan komentar"
 3. Bila ada beberapa kemungkinan, jangan menebak: `prototyper comments ask sembako-ds <commentId> "<pertanyaan>" --option "A" --option "B"` (`--multi` bila boleh lebih dari satu), lalu biarkan open.
 4. Pertanyaan balik atau permintaan revisi dari pengguna dijawab dengan `prototyper comments reply sembako-ds <commentId> "<jawaban>"`.
 5. Komentar dengan `waitingFor: "user"` sedang menunggu pengguna — jangan dikerjakan dulu.
+6. Tulis balasan dan pertanyaan komentar dalam Bahasa Indonesia.
 
 Teks lebih dari satu baris (daftar, paragraf) **jangan** dikirim sebagai argumen: di Windows terpotong di baris pertama. Kirim lewat stdin dengan `--file -`, mis. `prototyper comments reply sembako-ds <commentId> --file - <<'EOF'` … `EOF` (berlaku juga untuk `add` dan `ask`), atau tulis ke file di luar folder prototype lalu `--file <path>`.
 

@@ -11,6 +11,42 @@ import { httpApi, installUpdate, quitDeps, restoreArgs, runningTrayPid, spawnTra
 import { VERSION } from '../version.js';
 import { DaemonClient } from './client.js';
 import { printJson } from './output.js';
+import { defineMessages } from '../core/i18n.js';
+
+const t = defineMessages({
+  id: {
+    autoInstallSeaOnly: 'Pemasangan otomatis hanya untuk prototyper.exe',
+    upToDate: '✓ Prototyper {current} sudah versi terbaru',
+    available: 'Pembaruan tersedia: {current} → {latest}',
+    releaseNotes: '  Catatan rilis: {url}',
+    installWith: '  Pasang dengan: prototyper update',
+    manual: '  Instalasi ini tidak bisa diperbarui otomatis. {hint}',
+    releasePage: '  Halaman rilis: {url}',
+    restartedTray: 'Tray dinyalakan lagi',
+    restartedDaemon: 'Daemon dinyalakan lagi',
+    restartedInstaller: 'Installer MSI berjalan di latar dan akan menyalakan tray lagi',
+    restoredPrototypes: ', prototype dinyalakan lagi: {ids}',
+    installed: '✓ Prototyper {latest} terpasang (sebelumnya {current})',
+    updateDesc: 'periksa & pasang pembaruan Prototyper dari GitHub Releases',
+    optCheck: 'hanya periksa, jangan pasang',
+  },
+  en: {
+    autoInstallSeaOnly: 'Automatic installation is only available for prototyper.exe',
+    upToDate: '✓ Prototyper {current} is the latest version',
+    available: 'Update available: {current} → {latest}',
+    releaseNotes: '  Release notes: {url}',
+    installWith: '  Install with: prototyper update',
+    manual: '  This installation cannot be updated automatically. {hint}',
+    releasePage: '  Release page: {url}',
+    restartedTray: 'Tray started again',
+    restartedDaemon: 'Daemon started again',
+    restartedInstaller: 'The MSI installer is running in the background and will start the tray again',
+    restoredPrototypes: ', prototypes started again: {ids}',
+    installed: '✓ Prototyper {latest} installed (previously {current})',
+    updateDesc: 'check for & install Prototyper updates from GitHub Releases',
+    optCheck: 'only check, do not install',
+  },
+});
 
 /** Dependensi nyata `prototyper update` untuk instalasi ini. */
 export function selfUpdateDeps(config: Config, log: (m: string) => void, onProgress?: (f: number) => void): SelfUpdateDeps {
@@ -27,7 +63,7 @@ export function selfUpdateDeps(config: Config, log: (m: string) => void, onProgr
     trayPid: () => runningTrayPid(config.home),
     killTray: (pid) => quitDeps(config).killTree(pid),
     install: async (file, check, restore) => {
-      if (APP_MODE !== 'sea') throw new AppError('NOT_IMPLEMENTED', 'Pemasangan otomatis hanya untuk prototyper.exe');
+      if (APP_MODE !== 'sea') throw new AppError('NOT_IMPLEMENTED', t('autoInstallSeaOnly'));
       await installUpdate(config, file, check, restoreArgs(restore));
     },
     spawnTray: (restore) => void spawnTray(config, restoreArgs(restore)),
@@ -57,21 +93,21 @@ export function spawnSelfUpdate(config: Config): string {
 function describe(r: SelfUpdateResult): string[] {
   switch (r.status) {
     case 'uptodate':
-      return [`✓ Prototyper ${r.current} sudah versi terbaru`];
+      return [t('upToDate', { current: r.current })];
     case 'available':
-      return [`Pembaruan tersedia: ${r.current} → ${r.latest}`, `  Catatan rilis: ${r.pageUrl}`, '  Pasang dengan: prototyper update'];
+      return [t('available', { current: r.current, latest: r.latest }), t('releaseNotes', { url: r.pageUrl }), t('installWith')];
     case 'manual':
       return [
-        `Pembaruan tersedia: ${r.current} → ${r.latest}`,
-        `  Instalasi ini tidak bisa diperbarui otomatis. ${manualHint(APP_MODE)}`,
-        `  Halaman rilis: ${r.pageUrl}`,
+        t('available', { current: r.current, latest: r.latest }),
+        t('manual', { hint: manualHint(APP_MODE) }),
+        t('releasePage', { url: r.pageUrl }),
       ];
     case 'installed': {
       const again =
-        r.restarted === 'tray' ? 'Tray dinyalakan lagi' : r.restarted === 'daemon' ? 'Daemon dinyalakan lagi' : r.restarted === 'installer' ? 'Installer MSI berjalan di latar dan akan menyalakan tray lagi' : null;
+        r.restarted === 'tray' ? t('restartedTray') : r.restarted === 'daemon' ? t('restartedDaemon') : r.restarted === 'installer' ? t('restartedInstaller') : null;
       return [
-        `✓ Prototyper ${r.latest} terpasang (sebelumnya ${r.current})`,
-        ...(again ? [`  ${again}${r.restore.length ? `, prototype dinyalakan lagi: ${r.restore.join(', ')}` : ''}.`] : []),
+        t('installed', { latest: r.latest, current: r.current }),
+        ...(again ? [`  ${again}${r.restore.length ? t('restoredPrototypes', { ids: r.restore.join(', ') }) : ''}.`] : []),
       ];
     }
   }
@@ -83,8 +119,8 @@ export function registerUpdateCommand(
 ): void {
   program
     .command('update')
-    .description('periksa & pasang pembaruan Prototyper dari GitHub Releases')
-    .option('--check', 'hanya periksa, jangan pasang')
+    .description(t('updateDesc'))
+    .option('--check', t('optCheck'))
     .action(
       act(async (ctx, _args, cmd) => {
         const { check } = cmd.opts<{ check?: boolean }>();
